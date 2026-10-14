@@ -1,0 +1,35 @@
+version: 1
+backend:
+  phases:
+    build:
+      commands:
+        - npm ci --prefix amplify
+        - node amplify/verify-scope.mjs
+        - source .build/deployment.env
+        - node infra/scripts/checkout-kanbus.mjs
+        - npm ci --prefix .build/kanbus/packages/ui
+        - npm run build --prefix .build/kanbus/packages/ui
+        - npm ci
+        - npm run typecheck
+        - npm test
+        - bash infra/scripts/build-backend.sh
+        - npm ci --prefix infra
+        - npm run check --prefix infra
+        - npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - node infra/scripts/write-frontend-env.mjs
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - .build/target/**/*
+      - amplify/node_modules/**/*
+      - node_modules/**/*

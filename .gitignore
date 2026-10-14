@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.build/
+.env*
+!.env.example
+playwright-report/
+test-results/
+local-data/
+*.log
+infra/cdk.out/
+.artifacts/
+project/.cache/
+project/events/
+
+project/.overlay/
