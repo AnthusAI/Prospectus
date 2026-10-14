@@ -22,8 +22,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm ci --prefix infra
-      - run: npm run check --prefix infra
       - run: npm ci --prefix amplify
+      - run: npm run check --prefix infra
       - run: npm run check:amplify --prefix infra
       - run: npm run synth:amplify-review --prefix infra
       - run: bash infra/scripts/build-backend.sh

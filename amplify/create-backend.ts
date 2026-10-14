@@ -2,17 +2,14 @@ import { defineBackend } from "@aws-amplify/backend";
 import { Code, CfnFunction } from "aws-cdk-lib/aws-lambda";
 import { CfnRole, CfnPolicy } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { Stack, DefaultStackSynthesizer, Token, RemovalPolicy } from "aws-cdk-lib";
+import { Stack, Token, RemovalPolicy } from "aws-cdk-lib";
 import { ProspectusBackend } from "../infra/lib/prospectus-backend";
 import { TARGET_ACCOUNT, TARGET_REGION, AMPLIFY_APP_ID, DEPLOYMENT_BRANCH, SOURCE_REPOSITORY, SITE_DOMAIN, assertDeploymentScope } from "../infra/lib/scope";
-// pipeline-deploy has no qualifier flag. CDK documents this public context key;
-// set it before defineBackend constructs its App and binds its root synthesizer.
 export function createProspectusBackend(code: (stack: Stack) => Code) {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
-  process.env.CDK_CONTEXT_JSON = JSON.stringify({ ...context, "@aws-cdk/core:bootstrapQualifier": "prspctus" });
   if (context["amplify-backend-namespace"] !== AMPLIFY_APP_ID || context["amplify-backend-name"] !== DEPLOYMENT_BRANCH || context["amplify-backend-type"] !== "branch") throw new Error("Prospectus deployment must target its approved Amplify app proof branch");
+  // Let Amplify bind its normal CDK synthesizer and account bootstrap.
   const backend = defineBackend({});
-  if (!(backend.stack.synthesizer instanceof DefaultStackSynthesizer) || backend.stack.synthesizer.bootstrapQualifier !== "prspctus") throw new Error("Amplify did not bind the isolated Prospectus CDK synthesizer; refusing marketing bootstrap");
   const stack = backend.createStack("prospectus");
   const environment = Stack.of(stack);
   const account = Token.isUnresolved(environment.account) ? process.env.CDK_DEFAULT_ACCOUNT : environment.account;

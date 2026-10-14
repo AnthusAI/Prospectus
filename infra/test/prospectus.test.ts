@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
-import { ProspectusDeploymentStack } from "../lib/prospectus-deployment-stack";
 import { ProspectusBackend } from "../lib/prospectus-backend";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -51,6 +55,7 @@ test("dedicated user pool disables signup and browser client uses authorization 
     DeletionProtection: "ACTIVE",
   });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "prospectus-members" });
+  template.hasResourceProperties("AWS::Cognito::UserPoolDomain", { Domain: `prospectus-cyclotron-${TARGET_ACCOUNT}` });
   template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
     GenerateSecret: false,
     AllowedOAuthFlows: ["code"],
@@ -125,13 +130,19 @@ test("scope changes fail unless the exact account, region, hostname and source a
 });
 
 
-test("deployment identities use isolated file bootstrap and omit direct marketing IAM or pipeline grants", () => {
-  const template = Template.fromStack(new ProspectusDeploymentStack(new cdk.App(), "DeliveryReview", { env }));
-  template.resourceCountIs("AWS::IAM::Role", 5);
-  template.resourceCountIs("AWS::ECR::Repository", 0);
-  template.hasResourceProperties("AWS::SSM::Parameter", { Name: "/cdk-bootstrap/prspctus/version", Value: "8" });
-  const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));
-  for (const forbidden of ["AdministratorAccess", "AmplifyBackendDeployFullAccess", "CyclotronMarketing", "codepipeline:", "cloudfront:", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "route53:"]) assert.ok(!policies.includes(forbidden), forbidden);
+test("actual Amplify Gen2 assembly uses standard bootstrap and only application roles", () => {
+  const output = mkdtempSync(resolve(tmpdir(), "prospectus-amplify-review-"));
+  try {
+    const result = spawnSync(process.execPath, ["--import", "tsx", "infra/scripts/synth-amplify-review.ts"], {
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      env: { ...process.env, PROSPECTUS_REVIEW_OUTDIR: output },
+      encoding: "utf8", timeout: 60_000,
+    });
+    assert.equal(result.status, 0, result.error?.message ?? `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /standard hnb659fds bootstrap references and scoped application roles/);
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
 });
 
 

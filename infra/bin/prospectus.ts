@@ -9,6 +9,3 @@ const bucket = new cdk.CfnParameter(stack, "ReviewedArtifactBucket", { type: "St
 const key = new cdk.CfnParameter(stack, "ReviewedArtifactKey", { type: "String" });
 const backend = new ProspectusBackend(stack, "Prospectus", lambda.Code.fromCfnParameters({ bucketNameParam: bucket, objectKeyParam: key }));
 for (const [name, value] of Object.entries(backend.outputs)) new cdk.CfnOutput(stack, name, { value });
-
-import { ProspectusDeploymentStack } from "../lib/prospectus-deployment-stack";
-new ProspectusDeploymentStack(app, "ProspectusDeploymentReview", { env: { account: TARGET_ACCOUNT, region: TARGET_REGION } });
