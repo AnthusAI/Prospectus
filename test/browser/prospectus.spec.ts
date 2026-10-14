@@ -7,7 +7,7 @@ test("anonymous visitors see sign-in without requesting CRM records", async ({ p
   page.on("request", (request) => { if (request.url().includes("/api/issues")) crmRequests.push(request.url()); });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Prospectus", exact: true })).toBeVisible();
-  await expect(page.getByText("Private workspace · Access is limited to invited members.")).toBeVisible();
+  await expect(page.getByText("Private workspace · Sign in with Google, then request workspace access.")).toBeVisible();
   expect(crmRequests).toEqual([]);
 });
 

@@ -1,4 +1,18 @@
 Feature: A private sales workspace built from Kanbus
+  Scenario: Google sign-in creates an identity before access is assigned
+    Given a Google user without a pre-enrolled Prospectus profile
+    When the user completes Google sign-in
+    Then Cognito can create the federated identity without an invitation or identity-linking trigger
+    And the browser client does not permit password authentication
+    And CRM requests remain denied until the existing identity receives workspace membership
+
+  Scenario: An existing Google identity receives application administrator access
+    Given an existing authenticated Google identity in the Prospectus user pool
+    When the operator assigns the admin role and workspace membership to that identity
+    Then no new user or invitation is created
+    And refreshed tokens carry the app-scoped roles
+    And the identity can access the complete CRM workspace
+
   Scenario: Members sign in through Google with a verified OAuth callback
     When a visitor selects Sign in with Google
     Then Cognito authorization requests Google with an authorization code and S256 PKCE

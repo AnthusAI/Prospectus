@@ -98,7 +98,7 @@ export function App() {
     {authentication ? <button onClick={() => void signIn(authentication).catch((cause: Error) => setError(cause.message))}>Sign in with Google</button>
       : import.meta.env.DEV ? <form onSubmit={(event) => { event.preventDefault(); setLocalToken(String(new FormData(event.currentTarget).get("token"))); setSignedIn(true); }}><label>Local access token<input name="token" type="password" required autoComplete="off" /></label><button>Open local workspace</button></form>
       : <p>Workspace sign-in has not been configured.</p>}
-    <small>Private workspace · Access is limited to invited members.</small>
+    <small>Private workspace · Sign in with Google, then request workspace access.</small>
   </main>;
 
   return <Tabs value={view} onValueChange={(value) => { setView(value as View); setSelected(null); }} className="application">

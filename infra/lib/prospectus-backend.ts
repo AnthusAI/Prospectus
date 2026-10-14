@@ -9,7 +9,6 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import { fileURLToPath } from "node:url";
 import { Construct } from "constructs";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
@@ -80,41 +79,13 @@ export class ProspectusBackend extends Construct {
         emailVerified: cognito.ProviderAttribute.GOOGLE_EMAIL_VERIFIED,
       },
     });
-    const admissionLogs = new logs.LogGroup(this, "GoogleAdmissionLogs", {
-      logGroupName: "/aws/lambda/prospectus-cyclotron-google-admission",
-      retention: logs.RetentionDays.ONE_WEEK, removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-    const admissionRole = new iam.Role(this, "GoogleAdmissionRole", {
-      roleName: "prospectus-cyclotron-google-admission", assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-    });
-    admissionRole.addToPolicy(new iam.PolicyStatement({
-      actions: ["logs:CreateLogStream", "logs:PutLogEvents"], resources: [admissionLogs.logGroupArn],
-    }));
-    admissionRole.addToPolicy(new iam.PolicyStatement({
-      actions: ["cognito-idp:DescribeUserPool", "cognito-idp:ListUsers", "cognito-idp:AdminListGroupsForUser", "cognito-idp:AdminLinkProviderForUser"],
-      resources: [pool.userPoolArn],
-    }));
-    const admissionCode = lambda.Code.fromAsset(fileURLToPath(new URL("../../amplify/auth-admission/", import.meta.url))).bind(this).s3Location;
-    if (!admissionCode) throw new Error("Google admission source asset was not packaged");
-    // Low-level function avoids a pool -> trigger -> default policy -> pool
-    // dependency cycle. The policy can attach after the pool is created; no user
-    // is created during stack deployment.
-    const admission = new lambda.CfnFunction(this, "GoogleAdmission", {
-      functionName: "prospectus-cyclotron-google-admission",
-      runtime: "nodejs22.x", handler: "index.handler", role: admissionRole.roleArn,
-      code: { s3Bucket: admissionCode.bucketName, s3Key: admissionCode.objectKey },
-      loggingConfig: { logGroup: admissionLogs.logGroupName },
-      memorySize: 128, timeout: 5,
-    });
-    (pool.node.defaultChild as cognito.CfnUserPool).lambdaConfig = { preSignUp: admission.attrArn };
-    new lambda.CfnPermission(this, "GoogleAdmissionInvoke", {
-      action: "lambda:InvokeFunction", functionName: admission.ref,
-      principal: "cognito-idp.amazonaws.com", sourceAccount: TARGET_ACCOUNT,
-      sourceArn: pool.userPoolArn,
-    });
     new cognito.CfnUserPoolGroup(this, "MemberGroup", {
       groupName: MEMBER_GROUP, userPoolId: pool.userPoolId,
       description: "Explicit membership required by the Kanbus API after JWT verification.",
+    });
+    new cognito.CfnUserPoolGroup(this, "AdministratorGroup", {
+      groupName: "admin", userPoolId: pool.userPoolId,
+      description: "Prospectus application administrators; workspace access also requires membership.",
     });
     const appUrl = `https://${SITE_DOMAIN}`;
     const client = pool.addClient("Browser", {

@@ -1,6 +1,6 @@
 # Prospectus
 
-MIT-licensed Cyclotron CRM built from Kanbus's configured issue model, shared board/list components, and generic writable API. The deployed workspace is private to invited members. A prospect remains the same issue as it moves through sales stages into customer success. Owners, contact details and follow-up dates are ordinary issue fields and `custom` values.
+MIT-licensed Cyclotron CRM built from Kanbus's configured issue model, shared board/list components, and generic writable API. The deployed workspace is private to approved members. A prospect remains the same issue as it moves through sales stages into customer success. Owners, contact details and follow-up dates are ordinary issue fields and `custom` values.
 
 The canonical cloud project is an ordinary Kanbus folder in S3: the same relative paths and bytes for `.kanbus.yml`, issues, events and attachments. DynamoDB is a supplemental card catalog containing query metadata and references. It never contains canonical issue or history payloads. Copying a project into S3 requires an explicit catalog rebuild; exporting copies the canonical project prefix back to a folder. The filesystem adapter remains available locally and on EFS.
 
@@ -25,14 +25,4 @@ Create a separate local data folder and copy `config/prospectus.kanbus.yml` into
 
 The authorized destination is a separate Amplify app at `prospectus.cyclotron.anth.us` in `cyclotron-production`, AWS account `682849160744`, region `us-east-1`. The new deployment is separate from Cyclotron marketing. Amplify owns backend resources through custom CDK configuration; the application transport remains generic REST. See [infra/README.md](infra/README.md) for the Gen2 build and deployment contract. Source revisions must be pinned before a release build; build success is not deployment verification. Final acceptance requires creating and moving a prospect in the deployed private UI.
 
-Deployment uses normal Amplify service-role setup and the existing standard CDK account bootstrap. The local code no longer requires a separate bootstrap or custom deployment-role stack. Standard service-role creation/assignment and deployment are explicitly authorized, but had not occurred at this local documentation update. The owner is creating the Google project; usable OAuth client credentials are still unavailable and no hosted authentication has been verified. The preceding account inspection found no assigned service role or connected repository and no proof deployment jobs. See [infra/DEPLOYMENT_REVIEW.md](infra/DEPLOYMENT_REVIEW.md) for that evidence, the exact proposed Gen2 managed policy and the existing account-policy concern. Additional permission expansion requires separate review.
-
-Production sign-in uses a dedicated Cognito client with authorization code and PKCE. API Gateway verifies the JWT; the backend additionally requires membership in the configured group. Self-signup and public issue reads are not provided. No shared Cognito arrangement with Papyrus is assumed. Public intake is a separately tracked milestone; the application does not expose an unauthenticated CRM endpoint.
-
-## Tracking and scope
-
-Kanbus initiative `kbs-3df9cc` and [board draft PR #398](https://github.com/AnthusAI/Kanbus/pull/398) contain the cross-project milestones and BDD stories. This repository's `.kanbus.yml` tracks development work; `config/prospectus.kanbus.yml` is the operational CRM configuration. Never use the development issue board as customer data.
-
-Multi-project selection is a future shared Kanbus UI capability. The first Prospectus deployment is scoped to one authorized project. Billing, subscriptions, broad Salesforce parity and Papyrus plugins are outside this milestone.
-
-See [LICENSE](LICENSE) for the MIT license. Customer records and credentials are never part of this public source repository.
+Deployment uses the standard Amplify Gen2 service role and CDK account bootstrap. The Cyclotron proof deployment is live at https://prospectus.cyclotron.anth.us/. Google sign-in creates a federated Cognito identity first; an operator assigns workspace membership afterward. Application administrators receive both `admin` and `prospectus-members` groups in this app's dedicated pool. No invitation or password account is required. See [infra/DEPLOYMENT_REVIEW.md](infra/DEPLOYMENT_REVIEW.md) for the current resource and access contract.

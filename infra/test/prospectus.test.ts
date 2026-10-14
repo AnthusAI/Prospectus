@@ -48,18 +48,21 @@ test("canonical files remain private, retained S3 objects; catalog is scoped met
   }
 });
 
-test("dedicated user pool disables signup and browser client uses authorization code only", () => {
+test("Google-first identity creation has no pre-enrollment gate and CRM roles are assigned separately", () => {
   const template = appTemplate();
   template.hasResourceProperties("AWS::Cognito::UserPool", {
     AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
     DeletionProtection: "ACTIVE",
+    LambdaConfig: Match.absent(),
   });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "prospectus-members" });
+  template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "admin" });
   template.hasResourceProperties("AWS::Cognito::UserPoolDomain", { Domain: `prospectus-cyclotron-${TARGET_ACCOUNT}` });
   template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
     GenerateSecret: false,
     AllowedOAuthFlows: ["code"],
     SupportedIdentityProviders: ["Google"],
+    ExplicitAuthFlows: ["ALLOW_REFRESH_TOKEN_AUTH"],
     CallbackURLs: [`https://${SITE_DOMAIN}/auth/callback`],
     LogoutURLs: [`https://${SITE_DOMAIN}/`],
   });
@@ -146,15 +149,9 @@ test("actual Amplify Gen2 assembly uses standard bootstrap and only application 
 });
 
 
-test("Google admission runtime links only in its own pool and reads no OAuth secret", () => {
+test("Google-first sign-in creates no enrollment or identity-linking Lambda privileges", () => {
  const template = appTemplate();
- template.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "prospectus-cyclotron-google-admission", Runtime: "nodejs22.x" });
- const policies = Object.values(template.findResources("AWS::IAM::Policy"));
- const admission = policies.find(policy => JSON.stringify(policy).includes("cognito-idp:AdminLinkProviderForUser"));
- assert.ok(admission);
- const text = JSON.stringify(admission);
- assert.ok(!text.includes("secretsmanager:"));
- assert.ok(!text.includes("cognito-idp:AdminCreateUser"));
- assert.ok(!text.includes("cognito-idp:AdminAddUserToGroup"));
- assert.ok(!text.includes('"Resource":"*"'));
+ template.resourceCountIs("AWS::Lambda::Function", 1);
+ const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));
+ for (const action of ["cognito-idp:AdminLinkProviderForUser", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup"]) assert.ok(!policies.includes(action));
 });

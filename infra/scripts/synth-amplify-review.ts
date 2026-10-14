@@ -60,7 +60,7 @@ const resources: Resource[] = readdirSync(assembly.directory)
   .flatMap(name => Object.values(JSON.parse(readFileSync(resolve(assembly.directory, name), "utf8")).Resources ?? {}) as Resource[]);
 const roles = resources.filter(resource => resource.Type === "AWS::IAM::Role");
 assert.deepEqual(roles.map(resource => resource.Properties?.RoleName).sort(), [
-  "prospectus-cyclotron-runtime", "prospectus-cyclotron-google-admission",
+  "prospectus-cyclotron-runtime",
   `prospectus-${AMPLIFY_APP_ID}-${DEPLOYMENT_BRANCH}-linker`,
   `prospectus-${AMPLIFY_APP_ID}-${DEPLOYMENT_BRANCH}-provider`,
 ].sort(), "Gen2 should create application roles only, not a service role or account bootstrap");
