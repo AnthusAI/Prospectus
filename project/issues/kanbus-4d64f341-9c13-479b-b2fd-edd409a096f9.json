@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-4d64f341-9c13-479b-b2fd-edd409a096f9",
+  "title": "Prove private Prospectus on shared Kanbus storage and components",
+  "description": "Deliver the first private Cyclotron CRM using the general Kanbus issue model and shared UI. Cross-project initiative: Kanbus kbs-3df9cc. Canonical cloud data retains normal Kanbus paths and raw bytes in S3; DynamoDB is a supplemental query catalog. User-authorized destination prospectus.cyclotron.anth.us in cyclotron-production account 682849160744. Persistent IAM and authentication changes require concrete platform approval before provisioning. No public lead record access.",
+  "type": "epic",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-14T00:28:45.621780Z",
+  "updated_at": "2026-10-14T00:28:45.621821Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "GPT-6",
+    "name": "Prospectus Foundation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
