@@ -1,0 +1,85 @@
+import { expect, test } from "@playwright/test";
+
+const token = process.env.PROSPECTUS_TEST_TOKEN;
+
+test("anonymous visitors see sign-in without requesting CRM records", async ({ page }) => {
+  const crmRequests: string[] = [];
+  page.on("request", (request) => { if (request.url().includes("/api/issues")) crmRequests.push(request.url()); });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Prospectus", exact: true })).toBeVisible();
+  await expect(page.getByText("Private workspace · Access is limited to invited members.")).toBeVisible();
+  expect(crmRequests).toEqual([]);
+});
+
+test("real backend retains a prospect through sales, handoff, notes and reload", async ({ page, request }) => {
+  test.skip(!token, "Set PROSPECTUS_TEST_TOKEN and run the real Kanbus API on port 5418.");
+  const unauthorized = await request.get("http://127.0.0.1:5418/api/issues");
+  expect(unauthorized.status()).toBe(401);
+  await page.goto("/");
+  await page.getByLabel("Local access token").fill(token!);
+  await page.getByRole("button", { name: "Open local workspace" }).click();
+  await expect(page.getByRole("button", { name: "New prospect", exact: true })).toBeVisible();
+  await expect(page.getByText("Loading workspace…", { exact: true })).toHaveCount(0);
+  const pipeline = page.getByRole("tab", { name: "Pipeline", exact: true });
+  const followups = page.getByRole("tab", { name: "My due follow-ups", exact: true });
+  const customers = page.getByRole("tab", { name: "Customers", exact: true });
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible();
+  await pipeline.focus();
+  await pipeline.press("ArrowRight");
+  await expect(followups).toBeFocused();
+  await expect(followups).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "My due follow-ups", exact: true })).toBeVisible();
+  await followups.press("End");
+  await expect(customers).toBeFocused();
+  await expect(customers).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "Customers", exact: true })).toBeVisible();
+  await customers.press("Home");
+  await expect(pipeline).toBeFocused();
+  await expect(pipeline).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "Pipeline", exact: true })).toBeVisible();
+  await expect(page.getByRole("tabpanel")).toHaveCount(1);
+  await page.getByRole("button", { name: "New prospect", exact: true }).click();
+  const title = `Proof contact ${Date.now()}`;
+  await page.getByLabel("Name", { exact: true }).fill(title);
+  await page.getByLabel("Company").fill("Example research team");
+  await page.getByLabel("Email").fill("proof@example.invalid");
+  await page.getByLabel("Next follow-up").fill("2026-01-01");
+  await page.getByLabel("Conversation", { exact: true }).fill("Asked for a demonstration. Synthetic local test record.");
+  await page.getByRole("button", { name: "Create prospect", exact: true }).click();
+  await expect(page.locator("aside").getByRole("heading", { name: title, exact: true })).toBeVisible();
+  const identifier = await page.locator("aside .eyebrow").textContent();
+  await page.getByRole("tab", { name: "My due follow-ups", exact: true }).click();
+  await page.getByRole("combobox", { name: "Layout", exact: true }).selectOption("list");
+  await page.getByText(title, { exact: true }).click();
+  await expect(page.locator("aside .eyebrow")).toHaveText(identifier!);
+  for (const stage of ["contacted", "qualified", "proposal", "customer"]) {
+    await page.getByRole("combobox", { name: "Stage", exact: true }).selectOption(stage);
+    const response = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"));
+    await page.getByRole("button", { name: "Save changes" }).click();
+    expect((await response).ok()).toBe(true);
+    await expect(page.getByRole("combobox", { name: "Stage", exact: true })).toHaveValue(stage);
+  }
+  await page.getByLabel("Owner", { exact: true }).fill("customer-success");
+  const handoff = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"));
+  await page.getByRole("button", { name: "Save changes" }).click();
+  expect((await handoff).ok()).toBe(true);
+  await page.getByLabel("Add a note").fill("Customer success owns the next check-in.");
+  await page.getByRole("button", { name: "Add note", exact: true }).click();
+  await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole("tab", { name: "Customers", exact: true }).click();
+  await page.getByRole("combobox", { name: "Layout", exact: true }).selectOption("list");
+  await page.getByText(title, { exact: true }).click();
+  await expect(page.locator("aside .eyebrow")).toHaveText(identifier!);
+  await expect(page.getByLabel("Owner", { exact: true })).toHaveValue("customer-success");
+  await expect(page.getByText("proof@example.invalid", { exact: true })).toBeVisible();
+  await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();
+  const persisted = await request.get(`http://127.0.0.1:5418/api/issues/${identifier}`, { headers: { Authorization: `Bearer ${token}` } });
+  expect(persisted.ok()).toBe(true);
+  const record = (await persisted.json()).issue;
+  expect(record.id).toBe(identifier);
+  expect(record.status).toBe("customer");
+  expect(record.assignee).toBe("customer-success");
+  expect(record.comments.at(-1).text).toBe("Customer success owns the next check-in.");
+  await page.screenshot({ path: "test-results/prospectus-local-proof.png", fullPage: true });
+});

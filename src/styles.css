@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: var(--text-foreground); background: var(--background); font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select, textarea { font: inherit; }
+.header-actions button, .filters button, .prospect-panel button, .sign-in button, .collection > button, .error button { border: 0; border-radius: 8px; padding: 12px 16px; background: var(--text-foreground); color: var(--background); cursor: pointer; }
+button:disabled { opacity: .55; cursor: progress; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--text-selected); outline-offset: 3px; }
+.header-actions .quiet, .filters .quiet, .prospect-panel .quiet { background: var(--card-muted); color: var(--text-foreground); }
+input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: inherit; }
+textarea { resize: vertical; }
+label { display: grid; gap: 8px; font-size: 14px; font-weight: 600; }
+form { display: grid; gap: 16px; }
+h1 { font-size: 28px; font-weight: 600; letter-spacing: -.04em; margin: 0; }
+h2 { font-size: 20px; margin: 8px 0; }
+.prospect-panel h3 { font-size: 16px; margin-top: 32px; }
+p { line-height: 1.6; }
+small { color: #60716a; }
+.eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; margin: 0 0 4px; color: #597369; }
+.application { min-height: 100vh; }
+header { padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; background: var(--frame); gap: 24px; }
+.header-actions, .toolbar, nav, .filters { display: flex; align-items: center; gap: 8px; }
+.toolbar { padding: 24px 32px; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.filters input { min-width: 200px; }
+.filters select { width: auto; }
+.workspace { display: flex; align-items: flex-start; gap: 24px; padding: 0 32px 32px; margin: 0; }
+.collection { min-width: 0; flex: 1; overflow-x: auto; }
+aside { flex: 0 0 352px; }
+.prospect-panel { padding: 24px; }
+.panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.panel-heading .eyebrow { overflow-wrap: anywhere; }
+.description, .notes p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.notes { list-style: none; padding: 0; display: grid; gap: 16px; }
+.notes li { background: var(--card-muted); padding: 16px; border-radius: 8px; }
+.notes p { margin: 0 0 8px; }
+.error, .notice { padding: 16px; margin: 0 32px 24px; border-radius: 8px; }
+.error { background: #f4e5e2; color: #7d3931; }
+.notice { background: #e1eee7; }
+.empty { padding: 24px; color: #60716a; }
+.sign-in { max-width: 432px; margin: 15vh auto; padding: 32px; background: var(--card); border-radius: var(--card-radius); }
+.sign-in .error { margin: 16px 0; }
+.sign-in small { display: block; margin-top: 32px; }
+footer { padding: 16px 32px; color: #6e7c76; font-size: 12px; }
+@media (max-width: 800px) { header, .toolbar { padding: 16px; } .workspace { flex-direction: column; padding: 0 16px 16px; } .collection, aside { width: 100%; } aside { flex-basis: auto; } .filters { width: 100%; } nav { flex-wrap: wrap; } .filters input { min-width: 0; } .error, .notice { margin-inline: 16px; } }

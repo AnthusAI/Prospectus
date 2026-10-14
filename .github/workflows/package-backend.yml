@@ -1,0 +1,23 @@
+name: Package reviewed backend
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: bash infra/scripts/build-backend.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prospectus-backend-${{ github.sha }}
+          path: |
+            .artifacts/backend/bootstrap.zip
+            .artifacts/backend/bootstrap.zip.sha256
+            .artifacts/backend/provenance.json
+          if-no-files-found: error
+          retention-days: 30
