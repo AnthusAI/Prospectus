@@ -28,7 +28,7 @@ cp config/prospectus.kanbus.yml "$proof_fixture/kanbus/.kanbus.yml"
 proof_token=$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')
 export KANBUS_BACKEND=file KANBUS_ROOT="$proof_fixture/kanbus" KANBUS_NAMESPACE=cyclotron/prospectus KANBUS_PORT=5418
 export KANBUS_LOCAL_TOKEN="$proof_token" PROSPECTUS_TEST_TOKEN="$proof_token"
-export VITE_KANBUS_API_URL=http://127.0.0.1:5418 CI=1
+export VITE_KANBUS_API_URL='' CI=1
 unset VITE_COGNITO_CLIENT_ID VITE_COGNITO_DOMAIN_URL VITE_COGNITO_REDIRECT_URI VITE_COGNITO_LOGOUT_URI
 .build/target/release/kanbus-api-local >"$proof_fixture/api.log" 2>&1 &
 proof_api_pid=$!
