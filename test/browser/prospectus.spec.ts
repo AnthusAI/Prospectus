@@ -2,6 +2,20 @@ import { expect, test } from "@playwright/test";
 
 const token = process.env.PROSPECTUS_TEST_TOKEN;
 
+test("a signed-in identity without membership sees access pending and no CRM controls", async ({ page }) => {
+  test.skip(!token, "Run with the isolated local proof fixture.");
+  const issueRequests: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/issues")) issueRequests.push(request.url()); });
+  await page.route("**/api/config", route => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden", message: "Project membership is required." }) }));
+  await page.goto("/");
+  await page.getByLabel("Local access token").fill(token!);
+  await page.getByRole("button", { name: "Open local workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Workspace access pending" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New prospect", exact: true })).toHaveCount(0);
+  expect(issueRequests).toEqual([]);
+});
+
 test("anonymous visitors see sign-in without requesting CRM records", async ({ page }) => {
   const crmRequests: string[] = [];
   page.on("request", (request) => { if (request.url().includes("/api/issues")) crmRequests.push(request.url()); });

@@ -1,4 +1,10 @@
 Feature: A private sales workspace built from Kanbus
+  Scenario: A role change can refresh an already signed-in session
+    Given an authenticated identity whose token does not yet include workspace membership
+    When the configuration request is denied
+    Then the app shows an access-pending screen without CRM controls or record queries
+    And the user can refresh access through a new Google authorization-code exchange
+
   Scenario: Google sign-in creates an identity before access is assigned
     Given a Google user without a pre-enrolled Prospectus profile
     When the user completes Google sign-in

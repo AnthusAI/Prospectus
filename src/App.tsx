@@ -14,6 +14,7 @@ type View = "pipeline" | "followups" | "customers";
 
 export function App() {
   const [signedIn, setSignedIn] = useState(Boolean(getAccessToken()));
+  const [accessDenied, setAccessDenied] = useState(false);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [records, setRecords] = useState<IssueRecord[]>([]);
   const [selected, setSelected] = useState<IssueRecord | null>(null);
@@ -32,7 +33,10 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!signedIn) return;
-    void api.config().then(setConfiguration).catch((cause: Error) => setError(cause.message));
+    void api.config().then(setConfiguration).catch((cause: Error) => {
+      setAccessDenied(cause instanceof ApiError && cause.status === 403);
+      setError(cause.message);
+    });
   }, [signedIn]);
 
   const query = useMemo<Query>(() => ({
@@ -99,6 +103,14 @@ export function App() {
       : import.meta.env.DEV ? <form onSubmit={(event) => { event.preventDefault(); setLocalToken(String(new FormData(event.currentTarget).get("token"))); setSignedIn(true); }}><label>Local access token<input name="token" type="password" required autoComplete="off" /></label><button>Open local workspace</button></form>
       : <p>Workspace sign-in has not been configured.</p>}
     <small>Private workspace · Sign in with Google, then request workspace access.</small>
+  </main>;
+
+  if (accessDenied) return <main className="sign-in">
+    <p className="eyebrow">Cyclotron · Prospectus</p><h1>Workspace access pending</h1>
+    <p>You are signed in. An administrator must assign workspace access before you can view prospects.</p>
+    <p>If access was just assigned, refresh your sign-in to load the new permissions.</p>
+    {authentication && <button onClick={() => void signIn(authentication).catch((cause: Error) => setError(cause.message))}>Refresh access</button>}
+    <button className="quiet" onClick={() => signOut(authentication)}>Sign out</button>
   </main>;
 
   return <Tabs value={view} onValueChange={(value) => { setView(value as View); setSelected(null); }} className="application">
