@@ -97,7 +97,7 @@ export function App() {
   }
 
   if (!signedIn) return <main className="sign-in">
-    <p className="eyebrow">Cyclotron</p><h1>Prospectus</h1><p>Your sales conversations, with a clear next step.</p>
+    <p className="eyebrow">Anthus</p><h1>Prospectus</h1><p>Your sales conversations, with a clear next step.</p>
     {error && <p role="alert" className="error">{error}</p>}
     {authentication ? <button onClick={() => void signIn(authentication).catch((cause: Error) => setError(cause.message))}>Sign in with Google</button>
       : import.meta.env.DEV ? <form onSubmit={(event) => { event.preventDefault(); setLocalToken(String(new FormData(event.currentTarget).get("token"))); setSignedIn(true); }}><label>Local access token<input name="token" type="password" required autoComplete="off" /></label><button>Open local workspace</button></form>
@@ -106,7 +106,7 @@ export function App() {
   </main>;
 
   if (accessDenied) return <main className="sign-in">
-    <p className="eyebrow">Cyclotron · Prospectus</p><h1>Workspace access pending</h1>
+    <p className="eyebrow">Anthus · Prospectus</p><h1>Workspace access pending</h1>
     <p>You are signed in. An administrator must assign workspace access before you can view prospects.</p>
     <p>If access was just assigned, refresh your sign-in to load the new permissions.</p>
     {authentication && <button onClick={() => void signIn(authentication).catch((cause: Error) => setError(cause.message))}>Refresh access</button>}
@@ -114,7 +114,7 @@ export function App() {
   </main>;
 
   return <Tabs value={view} onValueChange={(value) => { setView(value as View); setSelected(null); }} className="application">
-    <header><div><p className="eyebrow">Cyclotron</p><h1>Prospectus</h1></div><div className="header-actions"><button className="quiet" onClick={() => signOut(authentication)}>Sign out</button><button onClick={() => { setCreating(true); setSelected(null); }}>New prospect</button></div></header>
+    <header><div><p className="eyebrow">Anthus</p><h1>Prospectus</h1></div><div className="header-actions"><button className="quiet" onClick={() => signOut(authentication)}>Sign out</button><button onClick={() => { setCreating(true); setSelected(null); }}>New prospect</button></div></header>
     <div className="toolbar"><TabsList aria-label="Workspace views">{([['pipeline', 'Pipeline'], ['followups', 'My due follow-ups'], ['customers', 'Customers']] as const).map(([key, label]) => <TabsTrigger key={key} value={key}>{label}</TabsTrigger>)}</TabsList><div className="filters"><input type="search" aria-label="Search prospects" placeholder="Search conversations" value={search} onChange={(event) => setSearch(event.target.value)} /><select aria-label="Layout" value={layout} onChange={(event) => setLayout(event.target.value as "board" | "list")}><option value="board">Board</option><option value="list">List</option></select><button className="quiet" onClick={() => void refresh()}>Refresh</button></div></div>
     {error && <div role="alert" className="error">{error}{selected && <button className="quiet" onClick={() => void api.issue(selected.issue.id).then((record) => { setSelected(record); setError(""); })}>Reload latest record</button>}</div>}
     {notice && <p role="status" className="notice">{notice}</p>}
