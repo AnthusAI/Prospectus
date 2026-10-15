@@ -1,0 +1,62 @@
+Feature: Verified Google identities across independently branded pools
+  Identity association uses registered Cognito evidence and grants no account access.
+
+  Scenario: One Google account in two registered pools resolves one person
+    Given two reviewed Google-only unlinked product pools
+    And each product obtains a login challenge before its code exchange
+    When independently signed ID and access pairs have the expected nonce and the same Google subject
+    Then both resolutions return one Person with distinct provenance-bearing Cognito aliases
+    And no account memberships or entitlements are created
+
+  Scenario: Email does not associate different Google accounts
+    Given two valid token pairs have matching email but different Google subjects
+    When their fresh challenges are resolved
+    Then different People are returned
+
+  Scenario: Lost responses and concurrent identical retries are idempotent
+    Given a challenge has a committed identity resolution
+    When independent workers retry the identical proof during the challenge lifetime
+    Then the same Person is returned without a second association
+    But different proof with the same challenge is rejected
+
+  Scenario Outline: Invalid evidence never associates an identity
+    Given <failure>
+    When a Google identity resolution is attempted
+    Then the request fails without consuming a successful association
+    Examples:
+      | failure |
+      | wrong machine role or disabled product |
+      | unreviewed federation policy |
+      | wrong issuer or client audience |
+      | forged, expired or stale ID or access token |
+      | mismatched pool subject, authentication time or refresh lineage |
+      | wrong, expired or replayed nonce with different proof |
+      | multiple linked profiles or a non-Google identity |
+      | a Cognito alias already bound to another Google identity or Person |
+
+  Scenario: Continuation does not enroll new identities
+    Given a valid enrolled Cognito alias
+    When its registered product requests the current person using a valid access token
+    Then the existing Person is returned without creating aliases
+    And an unknown alias returns null
+    And a changed federation policy requires fresh enrollment
+
+  Scenario: Recoverable canonical files never authorize a partial enrollment
+    Given enrollment writes ordinary canonical files through Virtuus conditional journals
+    When a worker crashes before or after any publication phase
+    Then a fresh worker can resume the recorded decision without changing the Person
+    And pending or partially linked records never authorize identity or account access
+    And a lost response is recovered using the existing operation receipt
+
+  Scenario: Independent processes reserve one Google identity and reject conflicting aliases
+    Given multiple processes share a Virtuus filesystem namespace
+    When the same Google account signs in concurrently through different pools
+    Then one canonical Google file determines the Person for all committed aliases
+    And a conflicting alias cannot be overwritten
+
+  Scenario: Account operations consume the same canonical Person directory
+    Given a committed Google enrollment and an account service using that directory
+    When accounts are created listed and authorized
+    Then every result uses the enrolled Person ID
+    And membership role entitlement and last-owner checks still apply
+    And a conflicting prior Person mapping fails before any account side effect

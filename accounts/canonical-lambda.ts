@@ -1,0 +1,11 @@
+import {resolve} from "node:path";
+import {canonicalAccountsHandler} from "./canonical-handler";
+import {VirtuusS3IdentityFiles,VirtuusS3AccountFiles} from "./identity-files";
+import {registrations} from "./registration";
+import {CognitoKeys} from "./auth";
+if(process.env.PROSPECTUS_CANONICAL_ACCOUNTS!=="enabled")throw new Error("Canonical accounts runtime not enabled.");
+const bucket=process.env.PROSPECTUS_ACCOUNTS_BUCKET??"",owner=process.env.PROSPECTUS_ACCOUNTS_OWNER??"";
+const config={enabled:true as const,bucket,region:"us-east-1" as const,expectedOwner:owner,tenant:"prospectus-central"};
+const executable=resolve(process.env.LAMBDA_TASK_ROOT??process.cwd(),"identity-files");
+const keys=new CognitoKeys();
+export const handler=canonicalAccountsHandler(new VirtuusS3IdentityFiles({...config,project:"identities"},executable),new VirtuusS3AccountFiles(config,executable),registrations(JSON.parse(process.env.PROSPECTUS_PRODUCTS??"[]")),(issuer,kid)=>keys.resolve(issuer,kid));

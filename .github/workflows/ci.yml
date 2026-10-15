@@ -18,6 +18,7 @@ jobs:
       - run: npm ci --prefix .build/kanbus-ui/packages/ui
       - run: npm run build --prefix .build/kanbus-ui/packages/ui
       - run: npm ci
+      - run: npm ci --prefix packages/accounts-client
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -26,7 +27,25 @@ jobs:
       - run: npm run check --prefix infra
       - run: npm run check:amplify --prefix infra
       - run: npm run synth:amplify-review --prefix infra
+      - run: npm run synth:accounts:review --prefix infra
       - run: bash infra/scripts/build-backend.sh
       - run: node infra/scripts/build-evaluation-if-enabled.mjs
+      - run: node --import tsx accounts/build-deployment.ts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify the enabled Accounts package and persisted isolation
+        run: |
+          if node -e 'process.exit(require("./accounts/deployment.json").enabled ? 0 : 1)'; then
+            PROSPECTUS_PACKAGE_NODE_MAJOR=24 node accounts/package-smoke.mjs
+            mkdir -p .build/intake-control-target/debug
+            ln -s "$PWD/.artifacts/canonical-accounts/identity-files" .build/intake-control-target/debug/prospectus-identity-files
+            node --import tsx --test accounts/durable-accounts.test.ts accounts/durable-google-identities.test.ts accounts/directory.test.ts
+          fi
       - run: bash infra/scripts/test-browser-ci.sh
       - run: PROSPECTUS_ACCOUNTS_UI=1 node --import tsx --test test/accounts-directory-ui.test.ts
+      - name: Verify the persisted Accounts browser flow when enabled
+        run: |
+          if node -e 'process.exit(require("./accounts/deployment.json").enabled ? 0 : 1)'; then
+            PROSPECTUS_ACCOUNTS_UI=1 node --import tsx --test test/accounts-persisted-ui.test.ts
+          fi

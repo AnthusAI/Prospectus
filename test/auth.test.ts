@@ -96,3 +96,15 @@ test("callback requires an access token rather than accepting only an ID token",
   await assert.rejects(finishSignIn(configuration), /Sign-in failed/);
   assert.equal(getAccessToken(), null);
 });
+
+test("Accounts sign-in binds central nonce and forwards ID evidence transiently through BFF",async(context)=>{
+ const environment=browser(context,"?code=fresh-code&state=expected");environment.values.set("prospectus.login",JSON.stringify({state:"expected",verifier:"saved",accounts:{challengeId:"11111111-1111-4111-8111-111111111111",nonce:"central-nonce"}}));let forwarded=false;
+ context.mock.method(globalThis,"fetch",async(input:any,init:any)=>{
+  if(String(input).includes("oauth2/token"))return new Response(JSON.stringify({access_token:"synthetic-access",id_token:"synthetic-id-evidence",expires_in:3600}));
+  assert.equal(String(input),"https://bff.invalid/api/saas/identity/resolve");assert.equal(init.headers.authorization,"Bearer synthetic-access");assert.deepEqual(JSON.parse(init.body),{challengeId:"11111111-1111-4111-8111-111111111111",idToken:"synthetic-id-evidence"});forwarded=true;return new Response("{}");
+ });
+ assert.equal(await finishSignIn({...configuration,accountsBffUrl:"https://bff.invalid/api/saas"}),true);assert.ok(forwarded);assert.equal(environment.cleaned(),"/?view=accounts");assert.ok(!JSON.stringify([...environment.values]).includes("synthetic-id-evidence"));
+});
+test("Accounts authorization URL includes the centrally issued nonce without changing CRM flow",async(context)=>{
+ const environment=browser(context);await signIn({...configuration,accountsBffUrl:"https://bff.invalid"},{challengeId:"synthetic-challenge",nonce:"central-nonce"});const url=new URL(environment.destination());assert.equal(url.searchParams.get("nonce"),"central-nonce");assert.equal(url.searchParams.get("prompt"),"login");
+});
