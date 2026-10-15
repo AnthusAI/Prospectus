@@ -1,6 +1,6 @@
 {
   "clientEnabled": true,
-  "pairEnabled": false,
+  "pairEnabled": true,
   "federationReviewId": "cyclotron-google-only-unlinked-v1-20261015",
   "pairReviewId": "cyclotron-execution-pair-v1-20261015"
 }

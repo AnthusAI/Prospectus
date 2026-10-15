@@ -201,7 +201,7 @@ export class ProspectusBackend extends Construct {
       enableTokenRevocation: true,
     }) : undefined;
     consoleClient?.node.addDependency(google);
-    const accountsPlane=accounts?new AccountsPlane(this,"SaasAccounts",objects,pool,client,accounts):null;
+    const accountsPlane=accounts?new AccountsPlane(this,"SaasAccounts",objects,pool,client,{...accounts,consoleClient}):null;
     if(accountsPlane)api.addRoutes({path:"/api/saas/{proxy+}",methods:[apigw.HttpMethod.GET,apigw.HttpMethod.POST],integration:new HttpLambdaIntegration("AccountsDirectory",accountsPlane.bff)});
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
