@@ -6,5 +6,9 @@
   "virtuus": {
     "repository": "AnthusAI/Virtuus",
     "revision": "639f873a73ebf1f68add2ae4b93f5fd117a539dc"
+  },
+  "kanbus_ui": {
+    "repository": "AnthusAI/Kanbus",
+    "revision": "19ac9211b46f6a92d11d9cbc6afa44792adb455e"
   }
 }

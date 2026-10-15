@@ -9,11 +9,19 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
+    "intake:local": "node --import tsx server/local.ts",
+    "test:intake": "node --import tsx --test test/intake*.test.ts",
+    "test:intake:integration": "node --import tsx --test test/integration/intake.integration.ts",
+    "preview:local": "node --import tsx scripts/local-preview.ts",
+    "test:control-binding": "bash scripts/test-control-binding.sh",
     "test:e2e": "playwright test",
-    "preview": "vite preview --host 127.0.0.1 --port 5417 --strictPort"
+    "preview": "vite preview --host 127.0.0.1 --port 5417 --strictPort",
+    "preview:lan": "node --import tsx scripts/lan-preview.ts",
+    "build:lan": "vite build --mode synthetic-review --outDir .build/lan-static"
   },
   "dependencies": {
-    "@kanbus/ui": "file:.build/kanbus/packages/ui",
+    "@aws-sdk/client-lambda": "3.1152.0",
+    "@kanbus/ui": "file:.build/kanbus-ui/packages/ui",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -24,6 +32,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
+    "esbuild": "0.28.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.23.12",

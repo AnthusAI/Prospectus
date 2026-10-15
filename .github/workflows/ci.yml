@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [develop, main, proof, papyrus-proof]
+    branches: [develop, main]
   pull_request:
 permissions:
   contents: read
@@ -15,8 +15,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: node infra/scripts/checkout-kanbus.mjs
-      - run: npm ci --prefix .build/kanbus/packages/ui
-      - run: npm run build --prefix .build/kanbus/packages/ui
+      - run: npm ci --prefix .build/kanbus-ui/packages/ui
+      - run: npm run build --prefix .build/kanbus-ui/packages/ui
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -27,4 +27,5 @@ jobs:
       - run: npm run check:amplify --prefix infra
       - run: npm run synth:amplify-review --prefix infra
       - run: bash infra/scripts/build-backend.sh
+      - run: node infra/scripts/build-evaluation-if-enabled.mjs
       - run: bash infra/scripts/test-browser-ci.sh

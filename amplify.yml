@@ -7,12 +7,13 @@ backend:
         - node amplify/verify-scope.mjs
         - source .build/deployment.env
         - node infra/scripts/checkout-kanbus.mjs
-        - npm ci --prefix .build/kanbus/packages/ui
-        - npm run build --prefix .build/kanbus/packages/ui
+        - npm ci --prefix .build/kanbus-ui/packages/ui
+        - npm run build --prefix .build/kanbus-ui/packages/ui
         - npm ci
         - npm run typecheck
         - npm test
         - bash infra/scripts/build-backend.sh
+        - node infra/scripts/build-evaluation-if-enabled.mjs
         - npm ci --prefix infra
         - npm run check --prefix infra
         - npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"

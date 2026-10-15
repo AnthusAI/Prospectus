@@ -1,4 +1,10 @@
 Feature: A private sales workspace built from Kanbus
+  Scenario: The shared board retains column collapse across views and reload
+    Given an authenticated member in the configured Prospectus workspace
+    When the member collapses a column, switches layout, and reloads
+    Then the same shared Kanbus column remains collapsed
+    And the member can expand it using its keyboard-accessible shared control
+
   Scenario: The shared Anthus workspace displays its brand consistently
     Given a visitor opens the shared Prospectus application
     When they view sign-in, pending access, or the authorized workspace

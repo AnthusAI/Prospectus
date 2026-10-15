@@ -13,6 +13,7 @@ input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--bo
 textarea { resize: vertical; }
 label { display: grid; gap: 8px; font-size: 14px; font-weight: 600; }
 form { display: grid; gap: 16px; }
+fieldset { display: grid; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
 h1 { font-size: 28px; font-weight: 600; letter-spacing: -.04em; margin: 0; }
 h2 { font-size: 20px; margin: 8px 0; }
 .prospect-panel h3 { font-size: 16px; margin-top: 32px; }
@@ -43,4 +44,37 @@ aside { flex: 0 0 352px; }
 .sign-in .error { margin: 16px 0; }
 .sign-in small { display: block; margin-top: 32px; }
 footer { padding: 16px 32px; color: #6e7c76; font-size: 12px; }
+.intake-page { width: min(100% - 32px, 600px); margin: 48px auto; padding: 32px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
+.intake-page button { border: 0; border-radius: 8px; padding: 12px 16px; background: var(--text-foreground); color: var(--background); cursor: pointer; }
+.demo-notice { padding: 16px; margin: 24px 0; background: var(--card-muted); line-height: 1.6; border-radius: 8px; }
+.intake-page .error { margin: 0; }
+.intake-page footer { padding: 24px 0 0; }
+.checkbox { display: flex; align-items: flex-start; font-weight: 400; }
+.checkbox input { width: auto; margin-top: 3px; }
+.honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.optional, .privacy-note { color: var(--text-muted); font-size: 13px; font-weight: 400; }
+.receipt { overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) {
+  body:has(.intake-page) { background: #0c1511; }
+  .intake-page { color-scheme: dark; --background: #0c1511; --card: #18201d; --card-muted: #24352c; --border: #45554d; --text-foreground: #e5f1eb; --text-muted: #bbc8c0; color: var(--text-foreground); }
+  .intake-page .eyebrow, .intake-page footer { color: #a6bfb3; }
+  .intake-page a { color: #a6d9c1; }
+}
+@media (max-width: 480px) { .intake-page { margin: 16px auto; padding: 20px; } }
 @media (max-width: 800px) { header, .toolbar { padding: 16px; } .workspace { flex-direction: column; padding: 0 16px 16px; } .collection, aside { width: 100%; } aside { flex-basis: auto; } .filters { width: 100%; } nav { flex-wrap: wrap; } .filters input { min-width: 0; } .error, .notice { margin-inline: 16px; } }
+
+.application.kb-theme-organizer { background: var(--background); }
+.application.kb-theme-organizer h1 { font: 40px/1 var(--kb-display-font); letter-spacing: 0; }
+.application.kb-theme-organizer .eyebrow { color: var(--text-muted); font-family: var(--kb-label-font); font-size: 16px; }
+.application.kb-theme-organizer header { border-bottom: 2px solid var(--text-foreground); }
+.application.kb-theme-organizer .prospect-panel, .application.kb-theme-organizer input, .application.kb-theme-organizer select, .application.kb-theme-organizer textarea, .application.kb-theme-organizer button, .application.kb-theme-organizer .notes li { border-radius: 0; }
+.application.kb-theme-organizer .header-actions button, .application.kb-theme-organizer .filters button, .application.kb-theme-organizer .prospect-panel button { border: 2px solid var(--text-foreground); box-shadow: 2px 2px 0 var(--organizer-shadow); }
+.application.kb-theme-organizer .workspace { padding-top: 24px; }
+.application.kb-theme-organizer .prospect-panel { border: var(--kb-card-border); box-shadow: var(--kb-card-shadow); }
+.application.kb-theme-organizer .collection { min-width: 0; }
+.application.kb-theme-organizer .toolbar { min-width: 0; }
+@media (max-width: 800px) { .application.kb-theme-organizer .toolbar > div, .application.kb-theme-organizer .filters { min-width: 0; max-width: 100%; flex-wrap: wrap; } }
+@media (max-width: 800px) {
+  .application.kb-theme-organizer header, .application.kb-theme-organizer .header-actions { flex-wrap: wrap; }
+  .application.kb-theme-organizer [role="tablist"] { flex-wrap: wrap; height: auto; padding-block: 8px; }
+}
