@@ -35,5 +35,6 @@ frontend:
     paths:
       - .build/target/**/*
       - .build/accounts-linux-target/**/*
+      - .build/accounts-linux-target/**/*
       - amplify/node_modules/**/*
       - node_modules/**/*

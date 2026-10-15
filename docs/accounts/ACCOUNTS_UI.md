@@ -52,3 +52,7 @@ Local checks: 44 root tests passed plus two server-signing security tests (two o
 Independent console checkpoint `785ebf8` verifies the real Python BFF against canonical handlers and durable Virtuus accounts across restart, including selected workspace authorization, viewer/member distinctions, revocation, creation replay and cross-product denial. It is local synthetic proof, not a hosted console or IAM claim.
 
 Disabled deployment skips Accounts native packaging (`accounts/build-deployment.ts`), so this preparation does not add native build work to routine CRM deployments. The native Linux build is separately validated before activation; current task verification and any packaging limitation are recorded in the final handoff.
+
+## Activation integration
+
+The central deployment includes the Accounts runtime only after the approved Linux package passes its Node24 checks. The integration preserves the separately disabled synthetic intake and the existing CRM bucket, catalog, namespace, Cognito client and authorization. CI checks the actual additive Gen2 assembly and tests account/member isolation with persisted disposable fixtures. Deployment never seeds an organization or grants a human membership. Real Google sign-in must satisfy the existing freshness and nonce checks; these checks are not relaxed for an existing hosted-UI session.
