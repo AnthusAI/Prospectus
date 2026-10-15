@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -154,4 +154,18 @@ test("Google-first sign-in creates no enrollment or identity-linking Lambda priv
  template.resourceCountIs("AWS::Lambda::Function", 1);
  const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));
  for (const action of ["cognito-idp:AdminLinkProviderForUser", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup"]) assert.ok(!policies.includes(action));
+});
+
+
+test("hosting SPA rewrite handles dotted application paths while preserving static assets", () => {
+  const settings = JSON.parse(readFileSync(new URL("../hosting-settings.json", import.meta.url), "utf8"));
+  const rule = settings.customRules[0];
+  assert.equal(rule.target, "/index.html");
+  assert.equal(rule.status, "200");
+  assert.ok(rule.source.startsWith("</") && rule.source.endsWith("/>"));
+  const route = new RegExp(rule.source.slice(2, -2));
+  for (const path of ["/auth/callback", "/prospects/acme.example", "/sales/report.csv"]) assert.ok(route.test(path), path);
+  for (const path of ["/assets/app.js", "/assets/style.css", "/assets/icon.svg", "/assets/font.woff2", "/config.json"]) assert.ok(!route.test(path), path);
+  assert.equal(settings.enableBranchAutoBuild, false);
+  assert.equal(settings.enableAutoBranchCreation, false);
 });
