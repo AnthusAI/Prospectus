@@ -20,6 +20,8 @@ export function accountsBffHandler(options:AccountsBffOptions) {
    if(method==="POST" && headers.origin!==options.origin)fail(403,"origin","Request origin is not permitted.");
    if(method==="GET") {
     if(Object.keys(body).length)fail(400,"body","Read payload must be empty.");const client=options.client(access!);
+    if(event.rawPath==="/api/saas/operator/accounts")return response(200,await client.operatorList());
+    const operatorMatch=/^\/api\/saas\/operator\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);if(operatorMatch)return response(200,await client.operatorDetail(operatorMatch[1]));
     if(event.rawPath==="/api/saas/accounts")return response(200,await client.directoryList());
     const match=/^\/api\/saas\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);if(match)return response(200,await client.directoryDetail(match[1]));
    }

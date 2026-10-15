@@ -13,3 +13,4 @@ project/.cache/
 project/events/
 
 project/.overlay/
+project-local/

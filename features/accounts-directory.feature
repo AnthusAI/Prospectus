@@ -28,3 +28,19 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     And I see progress with both controls disabled
     When confirmation fails
     Then I see an actionable error and can retry
+
+  Scenario: Central operator administration is independent of personal membership
+    Given a verified canonical person with current Google session proof
+    And an explicitly approved accounts:admin:read grant for that exact product, issuer and subject
+    When they open Account administration
+    Then they can read all central organizations, entitlements and memberships
+    And no organization membership or product entitlement is granted to them
+    And their My memberships view remains restricted to their own active memberships
+
+  Scenario: Operator access is inactive without an approved grant
+    Given a CRM administrator or account owner without a central operator grant
+    When they request the operator list or organization detail
+    Then access is denied
+    And no organizations or memberships are disclosed
+    When an operator's grant is removed or their current identity proof is absent
+    Then operator reads are denied

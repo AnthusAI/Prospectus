@@ -11,9 +11,11 @@ export async function decode(response: Response): Promise<any> {
   if(!response.ok) throw new AccountsClientError(response.status,body.error ?? "request_failed",body.message ?? "Account request failed.");
   return body;
 }
-import type {DirectoryList,DirectoryDetail} from "./directory.js";
+import type {DirectoryList,DirectoryDetail,OperatorList,OperatorDetail} from "./directory.js";
 export class AccountsClient {
   constructor(private transport: Transport) {}
+  operatorList():Promise<OperatorList>{return this.transport("/v1/account-directory/operator/accounts","GET") as Promise<OperatorList>;}
+  operatorDetail(id:string):Promise<{account:OperatorDetail}>{return this.transport(`/v1/account-directory/operator/accounts/${encodeURIComponent(id)}`,"GET") as Promise<{account:OperatorDetail}>;}
   directoryList():Promise<DirectoryList>{return this.transport("/v1/account-directory","GET") as Promise<DirectoryList>;}
   directoryDetail(id:string):Promise<{account:DirectoryDetail}>{return this.transport(`/v1/account-directory/${encodeURIComponent(id)}`,"GET") as Promise<{account:DirectoryDetail}>;}
   challenge():Promise<{challengeId:string;nonce:string;expiresAt:number}>{return this.transport("/v1/identities/google/challenge","POST",{}) as any;}

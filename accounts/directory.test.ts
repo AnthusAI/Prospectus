@@ -1,3 +1,4 @@
+import {operatorSubjectHash} from "./operator-policy";
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {rm} from "node:fs/promises";
@@ -53,5 +54,27 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
   const confirmed=await bff(resolve);assert.equal(confirmed.statusCode,200);assert.equal(JSON.parse(confirmed.body).person.id,x.owner.person.id);
   const afterEnrollment=await bff(directoryRead);assert.equal(afterEnrollment.statusCode,200);assert.equal(JSON.parse(afterEnrollment.body).accounts[0].id,x.account.id);
   assert.equal((await bff({...resolve,body:JSON.stringify({challengeId:challenge.challengeId,idToken:"forged"})})).statusCode,401);
+ }finally{await rm(x.root,{recursive:true,force:true});}
+});
+
+test("explicit central operator reads cross-organization records without membership or CRM-admin inheritance",async()=>{
+ const x=await directoryFixture();try{
+  const grants=[{product:x.outsider.context.product,issuer:x.outsider.context.human.issuer,subjectHash:operatorSubjectHash(x.outsider.context.human.subject),permission:"accounts:admin:read" as const,reviewedGrantId:"synthetic-approval-v1"}];
+  const operator=canonicalAccountsHandler(new VirtuusIdentityFiles(x.root),new VirtuusAccountFiles(x.root),x.products,x.f.keys,()=>x.f.now,grants);
+  const event=(path:string,proof=x.outsider.proof)=>x.f.event(0,path,{},proof,"GET");
+  const listPath="/v1/account-directory/operator/accounts",detailPath=`${listPath}/${x.account.id}`;
+  assert.equal((await x.handler()(event(listPath))).statusCode,403,"CRM admin alone never grants operator access");
+  assert.equal((await x.handler()(event(detailPath))).statusCode,403);
+  const personal=JSON.parse((await operator(event("/v1/account-directory"))).body);assert.deepEqual(personal.accounts,[]);assert.equal(personal.operatorAccess,true);
+  assert.equal((await operator(event(`/v1/account-directory/${x.account.id}`))).statusCode,403,"operator does not become an account member");
+  const list=await operator(event(listPath));assert.equal(list.statusCode,200);assert.equal(JSON.parse(list.body).accounts[0].id,x.account.id);assert.equal(JSON.parse(list.body).accounts[0].activeMembers,2);
+  const detail=JSON.parse((await operator(event(detailPath))).body).account;assert.equal(detail.memberships.length,2);assert.equal(detail.entitlements[0].product,"papyrus");assert.equal(detail.role,undefined);
+  assert.equal((await operator(x.f.event(0,listPath,{},x.memberDirectory.proof,"GET"))).statusCode,403,"a different linked person cannot borrow the grant");
+  const newSession=x.f.pair(0,"synthetic-unconfirmed","synthetic-google-outsider",{sub:x.outsider.context.human.subject,origin_jti:"new-unconfirmed-family"},{sub:x.outsider.context.human.subject,origin_jti:"new-unconfirmed-family"});
+  assert.equal((await operator(event(listPath,newSession))).statusCode,403,"operator still needs current canonical proof");
+  assert.equal((await operator({...event(detailPath),httpMethod:"POST"})).statusCode,400,"operator surface is read-only");
+  const revoked=canonicalAccountsHandler(new VirtuusIdentityFiles(x.root),new VirtuusAccountFiles(x.root),x.products,x.f.keys,()=>x.f.now,[]);
+  assert.equal((await revoked(event(listPath))).statusCode,403,"removing the grant takes effect without changing memberships");
+  assert.equal((await operator(event(`${listPath}/00000000-0000-4000-8000-000000000000`))).statusCode,404);
  }finally{await rm(x.root,{recursive:true,force:true});}
 });

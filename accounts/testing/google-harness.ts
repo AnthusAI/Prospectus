@@ -24,7 +24,7 @@ for await(const line of lines) {
     const message=JSON.parse(line);
     if(message.op === "configure" && !handler) {
       const products=registrations(message.products);
-      if(products.some(product=>!/^https:\/\/cognito-idp\.us-east-1\.amazonaws\.com\/us-east-1_Synthetic[0-9A-Za-z]*$/.test(product.issuer) || !/^arn:aws:iam::111111111111:role\/Synthetic[0-9A-Za-z]*$/.test(product.roleArn))) throw new Error("Synthetic registrations only");
+      if(products.some(product=>!/^https:\/\/cognito-idp\.us-east-1\.amazonaws\.com\/us-east-1_Synthetic[0-9A-Za-z]*$/.test(product.issuer) || [product.roleArn,...(product.executionDelegation?[product.executionDelegation.roleArn]:[])].some(role=>!/^arn:aws:iam::111111111111:role\/Synthetic[0-9A-Za-z]*$/.test(role)))) throw new Error("Synthetic registrations only");
       if(!Number.isSafeInteger(message.nowSeconds) || !message.keys || typeof message.keys !== "object") throw new Error("Synthetic clock and public keys required");
       const publicKeys:Record<string,Record<string,JsonWebKey>>=message.keys;
       for(const issuer of Object.values(publicKeys)) for(const key of Object.values(issuer)) {

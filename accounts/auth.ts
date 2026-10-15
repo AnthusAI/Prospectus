@@ -1,27 +1,44 @@
 import { createHash, createPublicKey, verify, type JsonWebKey } from "node:crypto";
-import { fail, type Context, type Human, type Operation } from "./model";
+import { fail, UUID_PATTERN, type Context, type Human, type Operation } from "./model";
+import { registrations } from "./registration";
+export interface ExecutionDelegation {
+  roleArn: string;
+  enrollmentRoleArn: string;
+  issuer: string;
+  clientId: string;
+  enrollmentPolicyRevision: string;
+  reviewedPolicyId: string;
+}
 export interface ProductRegistration {
   product: string; roleArn: string; issuer: string; clientIds: string[];
   capabilities: Operation[]; enabled: boolean;
   accountDirectory?: true;
   googleFederation?: {policy: "google-only-unlinked-v1"; reviewedPolicyId: string; clientId: string};
+  executionDelegation?: ExecutionDelegation;
 }
 export interface RestEvent {
   httpMethod: string; path: string; headers?: Record<string,string | undefined>; body?: string | null; isBase64Encoded?: boolean;
   requestContext?: { identity?: { userArn?: string; accountId?: string }; stage?: string };
 }
-export interface VerifiedCaller { registration: ProductRegistration; principal: string }
+export interface VerifiedCaller { registration: ProductRegistration; principal: string; authority: "enrollment" | "execution" }
 export function caller(event: RestEvent, products: readonly ProductRegistration[]): VerifiedCaller {
   const arn = event.requestContext?.identity?.userArn;
   const accountId = event.requestContext?.identity?.accountId;
   const session = /^arn:aws:sts::(\d{12}):assumed-role\/([^/]+)\/[^/]+$/.exec(arn ?? "");
   if(!session || session[1] !== accountId) fail(403,"caller_forbidden","A registered temporary runtime role is required.");
-  const registration = products.find(product => {
-    const role = /^arn:aws:iam::(\d{12}):role\/(?:[^/]+\/)*([^/]+)$/.exec(product.roleArn);
-    return product.enabled && role?.[1] === session[1] && role[2] === session[2];
-  });
-  if(!registration) fail(403,"caller_forbidden","Calling product is not registered.");
-  return {registration,principal:registration.roleArn};
+  // Validate all principals together. A pair belongs to one product, never
+  // another product row or a transitive delegation chain.
+  for(const registration of registrations(products)) {
+    if(!registration.enabled)continue;
+    for(const [authority,principal] of [["enrollment",registration.roleArn],["execution",registration.executionDelegation?.roleArn]] as const) {
+      const role = /^arn:aws:iam::(\d{12}):role\/(?:[^/]+\/)*([^/]+)$/.exec(principal??"");
+      if(role?.[1]!==session[1] || role[2]!==session[2])continue;
+      const account=/^\/v1\/accounts\/([a-f0-9-]{36})\/authorize$/.exec(event.path);
+      if(authority==="execution" && !(event.httpMethod==="GET" && event.path==="/v1/identities/me" || event.httpMethod==="POST" && account && UUID_PATTERN.test(account[1])))fail(403,"execution_route_forbidden","Execution principal may only check its enrolled session and current account authorization.");
+      return {registration,principal:principal!,authority};
+    }
+  }
+  fail(403,"caller_forbidden","Calling product is not registered.");
 }
 export type KeyResolver = (issuer: string, kid: string) => Promise<JsonWebKey>;
 export class CognitoKeys {
@@ -67,5 +84,6 @@ export async function context(event: RestEvent, products: readonly ProductRegist
   const authenticated = caller(event,products);
   const headers = Object.fromEntries(Object.entries(event.headers ?? {}).map(([key,value])=>[key.toLowerCase(),value]));
   const identity = await human(headers["x-prospectus-human-token"],authenticated.registration,keys,now);
-  return {product:authenticated.registration.product,principal:authenticated.principal,human:identity,capabilities:authenticated.registration.capabilities};
+  const capabilities=authenticated.authority==="execution"?authenticated.registration.capabilities.filter(operation=>operation==="console:read" || operation==="console:write"):authenticated.registration.capabilities;
+  return {product:authenticated.registration.product,principal:authenticated.principal,human:identity,capabilities};
 }
