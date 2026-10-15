@@ -32,3 +32,32 @@ test("Accounts UI renders loading empty error and scoped list/detail without gra
   await page.goto(`${url}?mode=unconfigured`);await expect(page.getByRole("alert")).toContainText("not been configured");assert.deepEqual(errors,[]);
  } finally {await browser.close();await server.close();}
 });
+
+test("operator directory is separate from memberships and reacts to denied access",{skip:!process.env.PROSPECTUS_ACCOUNTS_UI},async()=>{
+ const server=await createServer({configFile:false,root:process.cwd(),server:{host:"127.0.0.1",port:0},resolve:{dedupe:["react","react-dom"]},logLevel:"error"});await server.listen();
+ const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH});
+ try {
+  const page=await browser.newPage();let mode="allowed",operatorReads=0;
+  const id="22222222-2222-4222-8222-222222222222",person={id:"synthetic-operator",createdAt:"2030-01-01"};
+  const account={id,name:"Synthetic customer organization",createdAt:"2030-01-01",revision:3,activeMembers:2,products:[{product:"papyrus",status:"active"}]};
+  await page.route("**/directory-fixture/**",async route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(path==="/directory-fixture/accounts"){await route.fulfill({json:{person,accounts:[],operatorAccess:mode!=="denied"}});return;}
+   operatorReads++;
+   if(mode==="error"){await route.fulfill({status:503,json:{}});return;}
+   if(mode==="denied"){await route.fulfill({status:403,json:{}});return;}
+   const detail=path.endsWith(id);
+   await route.fulfill({json:detail?{account:{...account,entitlements:[{accountId:id,product:"papyrus",status:"active",capabilities:["console:read"]}],memberships:[{accountId:id,personId:"synthetic-owner",role:"owner",status:"active"},{accountId:id,personId:"synthetic-revoked",role:"viewer",status:"revoked"}]}}:{person,accounts:mode==="empty"?[]:[account]}});
+  });
+  await page.goto(`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html`);
+  await expect(page.getByRole("button",{name:"Account administration",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.getByRole("button",{name:/Synthetic customer organization/}).click();
+  await expect(page.getByRole("heading",{name:"Organization memberships"})).toBeVisible();await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
+  await page.getByRole("button",{name:"My memberships",exact:true}).click();await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");await expect(page.getByText("Synthetic customer organization")).toHaveCount(0);
+  await page.getByRole("button",{name:"Account administration",exact:true}).click();await expect(page.getByRole("button",{name:/Synthetic customer organization/})).toBeVisible();
+  mode="error";await page.getByRole("button",{name:"Refresh directory"}).click();await expect(page.getByRole("alert")).toContainText("permission may have changed");
+  mode="empty";await page.getByRole("button",{name:"Refresh directory"}).click();await expect(page.getByRole("status")).toContainText("No organizations have been created");
+  mode="denied";const before=operatorReads;await page.getByRole("button",{name:"Refresh accounts"}).click();await expect(page.getByRole("status")).toContainText("explicitly assigned central Accounts administrator permission");assert.equal(operatorReads,before);
+  await expect(page.getByRole("button",{name:/Create|Delete|Invite|Save/})).toHaveCount(0);
+ }finally{await browser.close();await server.close();}
+});

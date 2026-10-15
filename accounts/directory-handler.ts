@@ -2,11 +2,12 @@ import {context,type ProductRegistration,type KeyResolver,type RestEvent} from "
 import {AccountsError,fail,roleOperations} from "./model";
 import {DurableAccountsService,type AccountDocument} from "./durable-accounts";
 import type {IdentityFiles} from "./identity-files";
-import type {DirectoryAccount,DirectoryDetail} from "../packages/accounts-client/src/directory";
-/** Registered read-only management surface; account membership is always required.
- * It may read across product entitlements, never create them or authorize app use.
+import {canReadOperatorDirectory,type OperatorGrant} from "./operator-policy";
+import type {OperatorAccount,OperatorDetail,DirectoryAccount,DirectoryDetail} from "../packages/accounts-client/src/directory";
+/** Personal reads require membership. Operator reads require a separate reviewed
+ * human permission and current canonical session proof; neither authorizes app use.
  */
-export function accountDirectoryHandler(service:DurableAccountsService,files:IdentityFiles,products:readonly ProductRegistration[],keys:KeyResolver,clock=()=>Date.now()/1000) {
+export function accountDirectoryHandler(service:DurableAccountsService,files:IdentityFiles,products:readonly ProductRegistration[],keys:KeyResolver,clock=()=>Date.now()/1000,grants:readonly OperatorGrant[]=[]) {
  const summary=(document:AccountDocument,personId:string):DirectoryAccount|null=>{
   const membership=document.memberships[personId];if(!membership || membership.status!=="active")return null;
   return {id:document.account.id,name:document.account.name,role:membership.role,products:Object.values(document.entitlements).map(({product,status})=>({product,status})).sort((a,b)=>a.product.localeCompare(b.product))};
@@ -18,10 +19,24 @@ export function accountDirectoryHandler(service:DurableAccountsService,files:Ide
    if(!products.some(product=>product.enabled && product.product===authenticated.product && product.roleArn===authenticated.principal && product.accountDirectory===true) || !authenticated.capabilities.includes("console:read"))fail(403,"directory_forbidden","Account directory access is not registered.");
    if(event.httpMethod!=="GET" || event.body && event.body!=="{}")fail(400,"read_only","Account directory supports read requests only.");
    let person;try{person=await service.person(authenticated);}catch(error){if(error instanceof AccountsError && error.code==="identity_enrollment_required" && event.path==="/v1/account-directory")return response(200,{person:null,accounts:[]});throw error;}
+   const operatorAccess=canReadOperatorDirectory(authenticated,grants);
+   if(event.path.startsWith("/v1/account-directory/operator/")) {
+    if(!operatorAccess)fail(403,"operator_forbidden","Explicit central Accounts administrator permission is required.");
+    const operatorSummary=(document:AccountDocument):OperatorAccount=>({id:document.account.id,name:document.account.name,createdAt:document.account.createdAt,revision:document.account.revision,products:Object.values(document.entitlements).map(({product,status})=>({product,status})).sort((a,b)=>a.product.localeCompare(b.product)),activeMembers:Object.values(document.memberships).filter(member=>member.status==="active").length});
+    if(event.path==="/v1/account-directory/operator/accounts") {
+     const paths=await files.list("accounts/");if(paths.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");const accounts:OperatorAccount[]=[];
+     for(const path of paths){const match=/^accounts\/([a-f0-9-]{36})\.json$/.exec(path);if(!match)fail(503,"account_inconsistent","Invalid account path.");const stored=await service.read(match[1]);if(!stored)fail(503,"account_inconsistent","Account unavailable during discovery.");accounts.push(operatorSummary(stored.value));}
+     return response(200,{person,accounts:accounts.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id))});
+    }
+    const match=/^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})$/.exec(event.path);if(!match)fail(404,"route","Operator directory route not found.");
+    const stored=await service.read(match[1]);if(!stored)fail(404,"account_missing","Account not found.");
+    const account:OperatorDetail={...operatorSummary(stored.value),entitlements:structuredClone(Object.values(stored.value.entitlements)),memberships:structuredClone(Object.values(stored.value.memberships))};
+    return response(200,{account});
+   }
    if(event.path==="/v1/account-directory") {
     const paths=await files.list("accounts/");if(paths.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");const accounts:DirectoryAccount[]=[];
     for(const path of paths) {const match=/^accounts\/([a-f0-9-]{36})\.json$/.exec(path);if(!match)fail(503,"account_inconsistent","Invalid account path.");const stored=await service.read(match[1]);if(!stored)fail(503,"account_inconsistent","Account unavailable during discovery.");const account=summary(stored.value,person.id);if(account)accounts.push(account);}
-    return response(200,{person,accounts:accounts.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id))});
+    return response(200,{person,operatorAccess,accounts:accounts.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id))});
    }
    const match=/^\/v1\/account-directory\/([a-f0-9-]{36})$/.exec(event.path);if(!match)fail(404,"route","Account directory route not found.");
    const stored=await service.read(match[1]),account=stored?summary(stored.value,person.id):null;if(!account || !stored)fail(403,"forbidden","Account details are not permitted.");

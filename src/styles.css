@@ -93,3 +93,6 @@ footer { padding: 16px 32px; color: #6e7c76; font-size: 12px; }
 .accounts-workspace :is(h2,h3,h4,p,dt,dd,li,span,strong) { user-select:text; -webkit-user-select:text; -webkit-touch-callout:default; }
 .accounts-action { min-height:44px; padding:10px 16px; border:2px solid var(--text-foreground); background:var(--text-foreground); color:var(--background); box-shadow:2px 2px 0 var(--organizer-shadow); cursor:pointer; white-space:nowrap; flex-shrink:0; user-select:none; -webkit-user-select:none; }
 .accounts-action.quiet { background:var(--card-muted); color:var(--text-foreground); }
+
+.accounts-scopes { display:flex; flex-wrap:wrap; gap:12px; margin:20px 0; }
+.accounts-scopes [aria-pressed=true] { background:var(--text-foreground); color:var(--background); }
