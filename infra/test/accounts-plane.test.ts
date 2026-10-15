@@ -24,6 +24,6 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
  assert.ok(!policies.some(value=>JSON.stringify(value.Action).includes("dynamodb") || JSON.stringify(value.Action).includes("cognito-idp") || JSON.stringify(value.Action).includes("s3:Delete")));
  assert.ok(!JSON.stringify(newResources).includes("test-invoke-stage"));
  const logWrites=policies.filter(value=>JSON.stringify(value.Action).includes("logs:PutLogEvents"));assert.equal(logWrites.length,2);assert.ok(logWrites.every(value=>value.Resource["Fn::GetAtt"]?.[1]==="Arn"));
- const invoke=policies.filter(value=>(Array.isArray(value.Action)?value.Action:[value.Action]).includes("execute-api:Invoke"));assert.equal(invoke.length,1);const invokeText=JSON.stringify(invoke);assert.ok(invokeText.includes("account-directory"));assert.ok(invokeText.includes("identities/google/resolve"));assert.ok(!invokeText.includes("/v1/accounts"));
+ const invoke=policies.filter(value=>(Array.isArray(value.Action)?value.Action:[value.Action]).includes("execute-api:Invoke"));assert.equal(invoke.length,1);const invokeText=JSON.stringify(invoke);assert.ok(invokeText.includes("account-directory"));assert.ok(!invokeText.includes("account-directory*"));assert.equal(invoke[0].Resource.length,4);assert.ok(invokeText.includes("identities/google/resolve"));assert.ok(!invokeText.includes("/v1/accounts"));
  assert.ok(JSON.stringify(newResources).includes("prospectus-central/identities/*"));assert.equal(resources.filter(value=>value.Type==="AWS::Cognito::UserPoolClient").length,1);
 });
