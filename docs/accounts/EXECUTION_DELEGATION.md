@@ -104,3 +104,14 @@ review ID, product capabilities, caller IAM route permissions and central API
 resource policy. Preserve existing directory grants. Neither principal needs
 direct central identity/account S3 access. No wildcard identity management or
 cross-product entitlement grant follows from this contract.
+
+## Deployment configuration
+
+The approved console rollout is represented in `accounts/console-deployment.json`.
+The dedicated client and role-pair flags are separate so the client can deploy before
+the external runtime roles exist. The pair is enabled only after the exact roles
+were independently verified with Lambda-only trust. Both review revisions are pinned
+and a pair requires its dedicated client. The source pipeline synthesizes this
+configuration through the actual Amplify factory and verifies that the API policy
+change publishes to the existing stage. Directory registration, runtime storage
+permissions and the CRM client remain unchanged.
