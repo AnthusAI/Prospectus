@@ -33,6 +33,10 @@ test("a signed-in identity without membership sees access pending and no CRM con
   await expect(page.getByRole("heading", { name: "Workspace access pending" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New prospect", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "View SaaS accounts", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Accounts", exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("The Accounts service has not been configured.");
+  await expect(page.getByRole("button", { name: "New prospect", exact: true })).toHaveCount(0);
   expect(issueRequests).toEqual([]);
 });
 
@@ -63,7 +67,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await expect(followups).toBeFocused();
   await expect(followups).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "My due follow-ups", exact: true })).toBeVisible();
-  await followups.press("End");
+  await followups.press("ArrowRight");
   await expect(customers).toBeFocused();
   await expect(customers).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "Customers", exact: true })).toBeVisible();

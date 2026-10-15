@@ -78,3 +78,14 @@ footer { padding: 16px 32px; color: #6e7c76; font-size: 12px; }
   .application.kb-theme-organizer header, .application.kb-theme-organizer .header-actions { flex-wrap: wrap; }
   .application.kb-theme-organizer [role="tablist"] { flex-wrap: wrap; height: auto; padding-block: 8px; }
 }
+
+.accounts-workspace { padding: 1.5rem; max-width: 78rem; width:100%; margin:0 auto; }
+.accounts-heading { display:flex; align-items:start; justify-content:space-between; gap:1rem; }
+.accounts-columns { display:grid; grid-template-columns:minmax(15rem,1fr) minmax(0,2fr); gap:2rem; margin-top:1rem; }
+.account-list { list-style:none; padding:0; margin:0; display:grid; gap:.75rem; }
+.account-choice { width:100%; text-align:left; display:grid; gap:.3rem; padding:1rem; background:var(--card); color:inherit; border:1px solid var(--border); border-radius:.5rem; }
+.account-choice[aria-pressed=true] { outline:2px solid currentColor; outline-offset:2px; }
+.account-id { overflow-wrap:anywhere; font-size:.85em; }
+.accounts-workspace dd { margin:0 0 .7rem; }
+.account-empty { padding:1rem 0; }
+@media(max-width:650px) { .accounts-columns { grid-template-columns:1fr; } .accounts-heading { flex-wrap:wrap; } }
