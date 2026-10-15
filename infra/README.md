@@ -1,6 +1,6 @@
 # Shared CRM migration source
 
-The replacement target is `prospectus.anth.us` in `papyrus-production` (712236451410), Amplify app `d15sc1sptohtqb`, branch `papyrus-proof`. The existing `proof` branch and deployment remain separate. This source preparation has not been deployed.
+The replacement target is `prospectus.anth.us` in `papyrus-production` (712236451410), Amplify app `d15sc1sptohtqb`, branch `main`. The existing `proof` branch and deployment remain separate. This source preparation has not been deployed.
 
 `hosting-settings.json` records the pinned build image and SPA rewrite verified against the working source app. `branch-settings.json` records the separate target branch settings. These files are review inputs only; nothing applies them automatically. Auto-build and previews remain disabled. The backend/frontend build contract remains `amplify.yml`.
 

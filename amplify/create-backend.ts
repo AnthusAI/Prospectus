@@ -7,7 +7,7 @@ import { ProspectusBackend } from "../infra/lib/prospectus-backend";
 import { TARGET_ACCOUNT, TARGET_REGION, AMPLIFY_APP_ID, DEPLOYMENT_BRANCH, SOURCE_REPOSITORY, SITE_DOMAIN, assertDeploymentScope } from "../infra/lib/scope";
 export function createProspectusBackend(code: (stack: Stack) => Code) {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
-  if (context["amplify-backend-namespace"] !== AMPLIFY_APP_ID || context["amplify-backend-name"] !== DEPLOYMENT_BRANCH || context["amplify-backend-type"] !== "branch") throw new Error("Prospectus deployment must target its approved Amplify app papyrus-proof branch");
+  if (context["amplify-backend-namespace"] !== AMPLIFY_APP_ID || context["amplify-backend-name"] !== DEPLOYMENT_BRANCH || context["amplify-backend-type"] !== "branch") throw new Error("Prospectus deployment must target its approved Amplify app main branch");
   // Let Amplify bind its normal CDK synthesizer and account bootstrap.
   const backend = defineBackend({});
   const stack = backend.createStack("prospectus");

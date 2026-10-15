@@ -1,6 +1,6 @@
 {
-  "branchName": "papyrus-proof",
-  "stage": "DEVELOPMENT",
+  "branchName": "main",
+  "stage": "PRODUCTION",
   "enableAutoBuild": false,
   "enablePullRequestPreview": false,
   "framework": "React"

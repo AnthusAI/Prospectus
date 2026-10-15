@@ -6,7 +6,7 @@ export const PROJECT_NAMESPACE = "cyclotron/prospectus";
 export const MEMBER_GROUP = "prospectus-members";
 export const SOURCE_REPOSITORY = "AnthusAI/Prospectus";
 export const AMPLIFY_APP_ID = "d15sc1sptohtqb";
-export const DEPLOYMENT_BRANCH = "papyrus-proof";
+export const DEPLOYMENT_BRANCH = "main";
 
 export function assertDeploymentScope(scope: {
   account: string;
