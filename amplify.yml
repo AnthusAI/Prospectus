@@ -13,7 +13,7 @@ backend:
         - npm run typecheck
         - npm test
         - bash infra/scripts/build-backend.sh
-        - if node -e 'process.exit(JSON.parse(require("fs").readFileSync("evaluation-deployment.json","utf8")).enabled ? 0 : 1)'; then bash infra/scripts/build-evaluation.sh; fi
+        - node infra/scripts/build-evaluation-if-enabled.mjs
         - npm ci --prefix infra
         - npm run check --prefix infra
         - npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"

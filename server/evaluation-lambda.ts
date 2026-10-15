@@ -17,7 +17,7 @@ const workspace = required("PROSPECTUS_EVALUATION_WORKSPACE");
 const bucket = required("PROSPECTUS_EVALUATION_BUCKET");
 const region = required("AWS_REGION");
 const functionName = required("PROSPECTUS_CANONICAL_FUNCTION");
-const client = new LambdaClient({ region });
+const client = new LambdaClient({ region, maxAttempts: 1 });
 const request = canonicalRequest(async (event) => {
   const result = await client.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "RequestResponse", Payload: Buffer.from(JSON.stringify(event)) }));
   if (result.FunctionError || !result.Payload) throw new Error("Private CRM invocation was not confirmed.");

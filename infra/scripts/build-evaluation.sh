@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 test "$(uname -s)" = Linux || { echo 'Package the evaluation bridge on the existing Linux build pipeline.' >&2; exit 1; }
+export PATH="$HOME/.cargo/bin:$PATH"
 node scripts/build-evaluation.mjs
 intake_toolchain=$(node -e 'const fs=require("fs");const m=fs.readFileSync("local-dependencies/intake-control/rust-toolchain.toml","utf8").match(/channel\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"/);if(!m)throw Error("Exact intake Rust toolchain required");process.stdout.write(m[1]);')
 rustup toolchain install "$intake_toolchain" --profile minimal
