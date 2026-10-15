@@ -15,7 +15,17 @@ test("Accounts UI renders loading empty error and scoped list/detail without gra
   const url=`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html`;
   await page.goto(url);await expect(page.getByRole("status")).toHaveText("Loading accounts…");mode="empty";release!();await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
   mode="error";await page.getByRole("button",{name:"Refresh accounts"}).click();await expect(page.getByRole("alert")).toContainText("could not be loaded");
-  mode="identity";await page.getByRole("button",{name:"Refresh accounts"}).click();await expect(page.getByRole("button",{name:"Connect Accounts with Google"})).toBeVisible();
+  mode="identity";await page.getByRole("button",{name:"Refresh accounts"}).click();await expect(page.getByRole("button",{name:"Continue with Google"})).toBeVisible();
+  const connect=page.getByRole("button",{name:"Continue with Google"});
+  await expect(page.getByRole("heading",{name:"Finish signing in to Accounts"})).toBeVisible();
+  const styles=await connect.evaluate(element=>{const style=getComputedStyle(element);return {border:style.borderTopWidth,padding:style.paddingLeft,minHeight:style.minHeight};});
+  assert.deepEqual(styles,{border:"2px",padding:"16px",minHeight:"44px"});
+  await expect(page.locator(".account-empty p")).toHaveCSS("user-select","text");
+  let connectCalls=0,releaseConnect:(()=>void)|undefined;
+  await page.route("**/connect-fixture",async route=>{connectCalls++;await new Promise<void>(resolve=>{releaseConnect=resolve;});await route.fulfill({status:503,body:"{}"});});
+  await connect.dblclick({force:true});await expect(page.getByRole("button",{name:"Opening Google…"})).toBeDisabled();
+  await expect(page.getByRole("button",{name:"Refresh accounts"})).toBeDisabled();
+  releaseConnect!();await expect(page.getByRole("alert")).toContainText("Google confirmation could not be completed");await expect(connect).toBeEnabled();assert.equal(connectCalls,1);
   for(const role of ["viewer","admin"]) {mode=role;await page.getByRole("button",{name:"Refresh accounts"}).click();await page.getByRole("button",{name:/Synthetic Alpha/}).click();await expect(page.getByRole("heading",{name:role==="admin"?"Memberships":"Your membership",exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:"Product entitlements"})).toBeVisible();}
   mode="loading";await page.getByRole("button",{name:/Synthetic Alpha/}).click();await expect(page.getByRole("status")).toHaveText("Loading account details…");
   mode="admin";await page.getByRole("button",{name:"Refresh accounts"}).click();await expect(page.getByText("Select an account to see details.")).toBeVisible();release!();await expect(page.getByText("Select an account to see details.")).toBeVisible();
