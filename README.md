@@ -1,28 +1,36 @@
 # Prospectus
 
-MIT-licensed Cyclotron CRM built from Kanbus's configured issue model, shared board/list components, and generic writable API. The deployed workspace is private to approved members. A prospect remains the same issue as it moves through sales stages into customer success. Owners, contact details and follow-up dates are ordinary issue fields and `custom` values.
+MIT-licensed Anthus CRM built with the same exported Kanbus board used by the standalone console and embedded hosts. Prospects retain one issue identity from sales through customer-success follow-up. The shared application is https://prospectus.anth.us/ in papyrus-production, deployed from `main` through Amplify app `d15sc1sptohtqb`.
 
-The canonical cloud project is an ordinary Kanbus folder in S3: the same relative paths and bytes for `.kanbus.yml`, issues, events and attachments. DynamoDB is a supplemental card catalog containing query metadata and references. It never contains canonical issue or history payloads. Copying a project into S3 requires an explicit catalog rebuild; exporting copies the canonical project prefix back to a folder. The filesystem adapter remains available locally and on EFS.
+The CRM includes configured sales stages, board/list search, owner and dated next actions, contact correction, conversation notes, due follow-ups and customer-success handoff. Google sign-in and explicit workspace membership protect private CRM requests. Signing in alone grants no staff access.
 
-## Local proof
+Canonical records remain ordinary Kanbus files in S3 under the existing `cyclotron/prospectus` namespace. DynamoDB contains only rebuildable query metadata. The namespace is retained data identity, not a second Cyclotron application. The old dedicated hosting endpoint is retired; Cyclotron and other products use the central Prospectus service.
 
-The current development checkout has the Kanbus repository alongside this one. Prepare its shared package, then start the app:
+## Development and verification
 
 ```sh
-mkdir -p .build
-ln -s ../../kanbus .build/kanbus
-npm ci --prefix .build/kanbus/packages/ui
-npm run build --prefix .build/kanbus/packages/ui
+node infra/scripts/checkout-kanbus.mjs
+npm ci --prefix .build/kanbus-ui/packages/ui
+npm run build --prefix .build/kanbus-ui/packages/ui
 npm ci
-npm run dev
+npm run build
+npm test
 ```
 
-Create a separate local data folder and copy `config/prospectus.kanbus.yml` into it as `.kanbus.yml`. Run the generic API from the pinned Kanbus checkout with `KANBUS_BACKEND=file`, `KANBUS_ROOT` set to that folder, `KANBUS_NAMESPACE=cyclotron/prospectus`, `KANBUS_PORT=5418` and a fresh `KANBUS_LOCAL_TOKEN`. The API binds loopback. Enter that token in the local sign-in form at http://127.0.0.1:5417. Local token sign-in is excluded from production builds.
+`source-lock.json` independently pins the shared Kanbus UI and Kanbus API, plus the API's Virtuus dependency. A UI-only release cannot silently replace the deployed API. The checkout helper refuses dirty or mismatched dependency checkouts. Do not substitute a moving branch or modify shared source inside this application.
 
-`npm test` exercises the client contract. `npm run build` checks types and produces the static app. For real backend browser verification, set `PROSPECTUS_TEST_TOKEN` to the same local token and run `npm run test:e2e`; the writable test deliberately skips when the real API credentials are absent. No fixture data is bundled into the app.
+Build `kanbus-api-local` from the API pin with its declared Rust toolchain. Set `KANBUS_API_BINARY` to that executable, then `npm run preview:local` for a loopback-only synthetic form and workspace. Local credentials and records remain in ignored `local-data/`; never publish them. For an explicitly selected private LAN review, set `PROSPECTUS_LAN_ADDRESS` and use `npm run preview:lan`. Use made-up names/messages and `.invalid` emails only.
 
-## Deployment and access
+`npm run test:intake:integration` uses the actual local API and disposable synthetic data. `npm run test:control-binding` verifies Virtuus conditional control writes and deterministic S3 transport fault cases. Browser acceptance exercises inquiry capture, retries, contact correction, follow-up, customer handoff and shared column collapse. See `features/` for behavior criteria.
 
-The authorized destination is a separate Amplify app at `prospectus.cyclotron.anth.us` in `cyclotron-production`, AWS account `682849160744`, region `us-east-1`. The new deployment is separate from Cyclotron marketing. Amplify owns backend resources through custom CDK configuration; the application transport remains generic REST. See [infra/README.md](infra/README.md) for the Gen2 build and deployment contract. Source revisions must be pinned before a release build; build success is not deployment verification. Final acceptance requires creating and moving a prospect in the deployed private UI.
+## Synthetic inquiry evaluation
 
-Deployment uses the standard Amplify Gen2 service role and CDK account bootstrap. The Cyclotron proof deployment is live at https://prospectus.cyclotron.anth.us/. Google sign-in creates a federated Cognito identity first; an operator assigns workspace membership afterward. Application administrators receive both `admin` and `prospectus-members` groups in this app's dedicated pool. No invitation or password account is required. See [infra/DEPLOYMENT_REVIEW.md](infra/DEPLOYMENT_REVIEW.md) for the current resource and access contract.
+The inquiry implementation accepts only `.invalid` contacts. It preserves normalized-email identity, independent receipt IDs, trusted source, separate simulated marketing preference and prior sales state. Repeated deliveries recover the original operation; distinct inquiries append without replacing notes, owner or stage.
+
+Hosted evaluation is additive and disabled until the concrete scope in [the runtime review](infra/EVALUATION_INTAKE_REVIEW.md) is approved. No real-contact intake, outbound email, booking, invitation, account creation, billing or new customer permission follows from submitting a synthetic inquiry. Private records remain accessible only to authorized CRM members.
+
+Shared conditional claims must survive rollback/catalog rebuild. Manual create/import/email-edit paths do not acquire intake claims; this evaluation is not a global uniqueness guarantee across every writer. Real-contact capture requires reviewed privacy/retention, abuse controls, operating ownership and real-cloud failure acceptance.
+
+## Deployment and rollback
+
+Use the existing Amplify main pipeline and standard account bootstrap. No manual content sync or separate branch deployment is needed. Shared-board parity and CRM checks must pass before merging. Prior central checkpoint `13155d7` is a frontend rollback reference; preserve accepted data and intake-control objects when rolling back application code. Retiring old hosting does not authorize deleting its retained backend, records, identities or secrets.

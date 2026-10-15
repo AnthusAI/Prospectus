@@ -12,7 +12,12 @@ cargo "+$rust_toolchain" build --locked --release --manifest-path .build/kanbus/
 npm exec -- playwright install --with-deps chromium
 proof_fixture=$(mktemp -d "${TMPDIR:-/tmp}/prospectus-e2e.XXXXXX")
 proof_api_pid=''
+proof_intake_pid=''
 cleanup() {
+  if [ -n "$proof_intake_pid" ]; then
+    kill "$proof_intake_pid" >/dev/null 2>&1 || true
+    wait "$proof_intake_pid" >/dev/null 2>&1 || true
+  fi
   if [ -n "$proof_api_pid" ]; then
     kill "$proof_api_pid" >/dev/null 2>&1 || true
     wait "$proof_api_pid" >/dev/null 2>&1 || true
@@ -40,6 +45,22 @@ for attempt in $(seq 1 120); do
   sleep 0.25
 done
 [ "$proof_ready" = true ] || { echo 'The owned loopback API was not ready.' >&2; exit 1; }
+export KANBUS_API_BINARY="$PWD/.build/target/release/kanbus-api-local"
+npm run test:intake:integration
+export PROSPECTUS_LOCAL_API_URL=http://127.0.0.1:5418/api
+export PROSPECTUS_INTAKE_LEDGER="$proof_fixture/intake"
+export PROSPECTUS_IDENTITY_DIRECTORY="$proof_fixture/identity-claims"
+export PROSPECTUS_INTAKE_ORIGIN=http://127.0.0.1:5417 PROSPECTUS_INTAKE_TEST=1
+node --import tsx server/local.ts >"$proof_fixture/intake.log" 2>&1 &
+proof_intake_pid=$!
+proof_intake_ready=false
+for attempt in $(seq 1 80); do
+  kill -0 "$proof_intake_pid" 2>/dev/null || { echo 'The owned synthetic intake failed to start.' >&2; exit 1; }
+  proof_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5491/ || true)
+  if [ "$proof_status" = 404 ]; then proof_intake_ready=true; break; fi
+  sleep 0.1
+done
+[ "$proof_intake_ready" = true ] || { echo 'The owned synthetic intake was not ready.' >&2; exit 1; }
 # Disable traces and HTML reports so authorization headers and form input never
 # become published test artifacts. Fixture/log/output directories are removed.
 if npm run test:e2e -- --trace=off --reporter=line --output="$proof_fixture/playwright" >"$proof_fixture/playwright.log" 2>&1; then

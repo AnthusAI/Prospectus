@@ -10,12 +10,13 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
+import { EvaluationIntake } from "./evaluation-intake";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 /** Separate private CRM data plane; public static assets contain no CRM records. */
 export class ProspectusBackend extends Construct {
   readonly outputs: Record<string, string>;
-  constructor(scope: Construct, id: string, code: lambda.Code) {
+  constructor(scope: Construct, id: string, code: lambda.Code, evaluationCode?: lambda.Code) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
     cdk.Tags.of(this).add("anthus:surface", "crm");
@@ -169,7 +170,7 @@ export class ProspectusBackend extends Construct {
       defaultAuthorizationScopes: ["openid"],
       corsPreflight: {
         allowOrigins: [appUrl],
-        allowHeaders: ["authorization", "content-type", "if-match", "idempotency-key"],
+        allowHeaders: ["authorization", "content-type", "if-match", "x-operation-id"],
         allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PATCH, apigw.CorsHttpMethod.DELETE, apigw.CorsHttpMethod.OPTIONS],
         exposeHeaders: ["etag"],
         maxAge: cdk.Duration.hours(1),
@@ -195,6 +196,7 @@ export class ProspectusBackend extends Construct {
       ObjectBucketName: objects.bucketName,
       CatalogTableName: catalog.tableName,
     };
+    if (evaluationCode) outputs.EvaluationIntakeUrl = new EvaluationIntake(this, "EvaluationIntake", evaluationCode).url;
     this.outputs = outputs;
   }
 }

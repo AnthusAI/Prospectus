@@ -1,25 +1,9 @@
-# Setup status
+# Prospectus setup status
 
-## Prepared
+The central application is https://prospectus.anth.us/ in papyrus-production account `712236451410`, us-east-1. Amplify app `d15sc1sptohtqb` deploys `main`. Google sign-in and approved staff workspace access are verified, including user-confirmed board access. The previous deployed checkpoint is `13155d7`.
 
-- Public MIT-licensed repository: https://github.com/AnthusAI/Prospectus.
-- Separate Amplify app `dnfou6dg4d6x2` in account `682849160744`, region `us-east-1`.
-- `proof` development branch, with automatic builds disabled.
-- Only `prospectus.cyclotron.anth.us` associated with this app.
-- The existing `anth.us` hosted zone is in Legacy account `335163751677`, zone `Z02552332GG6AM25SFP73`. Legacy is used only for DNS.
-- Two CREATE-only DNS records were added from `infra/prospectus-dns-change.json`; Route 53 change `C0694425RZ6YOT33OZSK` is INSYNC. Amplify verified the hostname and is pending deployment.
-- Cyclotron marketing A/AAAA records retain their existing target `d3huumeyty33dy.cloudfront.net`.
+The dedicated Cyclotron hosting surface is retired: its default URL redirects to the central application and its obsolete custom DNS record is removed. Old backend, storage, identity and secret resources remain retained for recovery. No replacement credentials or invitation flow is needed for existing staff access.
 
-## Pending
+The local inquiry MVP is being reconciled for evaluation. Its public form accepts only synthetic `.invalid` addresses and creates no email, account, invitation or permission. Hosted intake remains disabled until its specific additive runtime/access scope is approved. Shared UI and API source revisions are pinned independently.
 
-The user will create a Google Cloud project and OAuth client. Register this exact redirect in that client:
-
-```text
-https://prospectus-cyclotron-682849160744.auth.us-east-1.amazoncognito.com/oauth2/idpresponse
-```
-
-Provider credentials belong in the approved account's Secrets Manager, using the secret name and JSON fields documented in `infra/README.md`. Do not place them in this public repository, Vite configuration, browser storage or chat.
-
-The reviewed deployment roles and Google provider resources still need concrete action-time approval. The Amplify app needs its source connection, source pins, backend deployment, frontend build and explicit invited-member admission. No persistent access grant has been provisioned by the source scaffold.
-
-Local browser and real AWS storage/API proofs pass. Final hosted acceptance still requires real Google sign-in followed by create, stage update, customer-success handoff, note and reload at the requested hostname. The hostname is not yet a working deployed CRM.
+Accounts list/detail is a separately owned integration. It must use real authorized canonical service data or an honest unavailable/empty state; this CRM release must not claim local central-account prototypes as deployed functionality. Appointment booking, onboarding invitations, notifications and billing are not implemented by this inquiry release.

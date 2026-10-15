@@ -1,0 +1,25 @@
+[package]
+name = "prospectus-intake-control-binding"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+aws = ["virtuus-store/aws", "dep:aws-config", "dep:aws-sdk-s3"]
+
+[dependencies]
+virtuus-store = { git = "https://github.com/AnthusAI/Virtuus.git", rev = "639f873a73ebf1f68add2ae4b93f5fd117a539dc", package = "virtuus-store", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "net"] }
+aws-config = { version = "1", optional = true }
+aws-sdk-s3 = { version = "1", optional = true, default-features = false, features = ["rt-tokio", "rustls", "default-https-client"] }
+
+[dev-dependencies]
+tempfile = "3"
+axum = "0.7"
+
+[[bin]]
+name = "prospectus-s3-controls"
+path = "src/bin/s3-controls.rs"
+required-features = ["aws"]

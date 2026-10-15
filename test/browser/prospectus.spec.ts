@@ -2,6 +2,26 @@ import { expect, test } from "@playwright/test";
 
 const token = process.env.PROSPECTUS_TEST_TOKEN;
 
+test("shared column collapse survives layout switching and reload", async ({ page }) => {
+  test.skip(!token, "Run with the isolated local proof fixture.");
+  await page.goto("/");
+  await page.getByLabel("Local access token").fill(token!);
+  await page.getByRole("button", { name: "Open local workspace" }).click();
+  const collapse = page.getByRole("button", { name: "Collapse New", exact: true });
+  await collapse.click();
+  await expect(page.getByRole("button", { name: "Expand New", exact: true })).toBeVisible();
+  await page.getByLabel("Layout", { exact: true }).selectOption("list");
+  await page.getByLabel("Layout", { exact: true }).selectOption("board");
+  await expect(page.getByRole("button", { name: "Expand New", exact: true })).toBeVisible();
+  await page.reload();
+  const expand = page.getByRole("button", { name: "Expand New", exact: true });
+  await expect(expand).toBeVisible();
+  await expand.focus();
+  await expand.press("Enter");
+  await expect(collapse).toBeVisible();
+});
+const apiOrigin = process.env.PROSPECTUS_LOCAL_API_ORIGIN ?? "http://127.0.0.1:5418";
+
 test("a signed-in identity without membership sees access pending and no CRM controls", async ({ page }) => {
   test.skip(!token, "Run with the isolated local proof fixture.");
   const issueRequests: string[] = [];
@@ -27,7 +47,7 @@ test("anonymous visitors see sign-in without requesting CRM records", async ({ p
 
 test("real backend retains a prospect through sales, handoff, notes and reload", async ({ page, request }) => {
   test.skip(!token, "Set PROSPECTUS_TEST_TOKEN and run the real Kanbus API on port 5418.");
-  const unauthorized = await request.get("http://127.0.0.1:5418/api/issues");
+  const unauthorized = await request.get(`${apiOrigin}/api/issues`);
   expect(unauthorized.status()).toBe(401);
   await page.goto("/");
   await page.getByLabel("Local access token").fill(token!);
@@ -61,11 +81,11 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await page.getByLabel("Conversation", { exact: true }).fill("Asked for a demonstration. Synthetic local test record.");
   await page.getByRole("button", { name: "Create prospect", exact: true }).click();
   await expect(page.locator("aside").getByRole("heading", { name: title, exact: true })).toBeVisible();
-  const identifier = await page.locator("aside .eyebrow").textContent();
+  const identifier = await page.locator("aside .kb-detail-id").textContent();
   await page.getByRole("tab", { name: "My due follow-ups", exact: true }).click();
   await page.getByRole("combobox", { name: "Layout", exact: true }).selectOption("list");
   await page.getByText(title, { exact: true }).click();
-  await expect(page.locator("aside .eyebrow")).toHaveText(identifier!);
+  await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
   for (const stage of ["contacted", "qualified", "proposal", "customer"]) {
     await page.getByRole("combobox", { name: "Stage", exact: true }).selectOption(stage);
     const response = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"));
@@ -84,11 +104,11 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await page.getByRole("tab", { name: "Customers", exact: true }).click();
   await page.getByRole("combobox", { name: "Layout", exact: true }).selectOption("list");
   await page.getByText(title, { exact: true }).click();
-  await expect(page.locator("aside .eyebrow")).toHaveText(identifier!);
+  await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
   await expect(page.getByLabel("Owner", { exact: true })).toHaveValue("customer-success");
   await expect(page.getByText("proof@example.invalid", { exact: true })).toBeVisible();
   await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();
-  const persisted = await request.get(`http://127.0.0.1:5418/api/issues/${identifier}`, { headers: { Authorization: `Bearer ${token}` } });
+  const persisted = await request.get(`${apiOrigin}/api/issues/${identifier}`, { headers: { Authorization: `Bearer ${token}` } });
   expect(persisted.ok()).toBe(true);
   const record = (await persisted.json()).issue;
   expect(record.id).toBe(identifier);

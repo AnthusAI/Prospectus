@@ -9,5 +9,6 @@ const values = {
  VITE_COGNITO_DOMAIN_URL: custom.CognitoDomainUrl,
  VITE_COGNITO_REDIRECT_URI: "https://prospectus.anth.us/auth/callback",
  VITE_COGNITO_LOGOUT_URI: "https://prospectus.anth.us/",
+ VITE_INTAKE_EVALUATION_URL: custom.EvaluationIntakeUrl ?? "",
 };
 writeFileSync(".env.production.local", Object.entries(values).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join("\n") + "\n");

@@ -98,6 +98,16 @@ test("every application API route requires verified JWT and access-token scope",
   template.resourceCountIs("AWS::Lambda::Url", 0);
 });
 
+test("member write preflight allows the client's revision and operation headers", () => {
+  const template = appTemplate();
+  template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+    CorsConfiguration: {
+      AllowOrigins: [`https://${SITE_DOMAIN}`],
+      AllowHeaders: ["authorization", "content-type", "if-match", "x-operation-id"],
+    },
+  });
+});
+
 test("runtime policies permit only scoped object access and catalog operations", () => {
   const template = appTemplate();
   template.hasResourceProperties("AWS::IAM::Policy", {
