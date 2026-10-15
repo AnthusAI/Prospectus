@@ -2,7 +2,8 @@
   "enableBranchAutoBuild": false,
   "enableAutoBranchCreation": false,
   "environmentVariables": {
-    "_CUSTOM_IMAGE": "public.ecr.aws/docker/library/node@sha256:c4d5523090a817b7aa86d2111241fdd4f66d1e27782b44160e6aa63b357ecb2d"
+    "_CUSTOM_IMAGE": "public.ecr.aws/docker/library/node@sha256:c4d5523090a817b7aa86d2111241fdd4f66d1e27782b44160e6aa63b357ecb2d",
+    "_LIVE_UPDATES": "[]"
   },
   "customRules": [
     {

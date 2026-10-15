@@ -2,7 +2,7 @@
 
 The replacement target is `prospectus.anth.us` in `papyrus-production` (712236451410), Amplify app `d15sc1sptohtqb`, branch `main`. The existing `proof` branch and deployment remain separate. This source preparation has not been deployed.
 
-`hosting-settings.json` records the pinned build image and SPA rewrite verified against the working source app. `branch-settings.json` records the separate target branch settings. These files are review inputs only; nothing applies them automatically. Auto-build and previews remain disabled. The backend/frontend build contract remains `amplify.yml`.
+`hosting-settings.json` records the pinned build image and SPA rewrite verified against the working source app. `_LIVE_UPDATES` is empty because the repository pins its Gen2 CLI; the console's legacy global CLI override fails in this image. `branch-settings.json` records the separate target branch settings. These files are review inputs only; nothing applies them automatically. Auto-build and previews remain disabled. The backend/frontend build contract remains `amplify.yml`.
 
 Canonical namespace `cyclotron/prospectus` is retained to preserve data paths through the account migration. The replacement Google provider callback is `https://prospectus-712236451410.auth.us-east-1.amazoncognito.com/oauth2/idpresponse`; browser callback/logout use `https://prospectus.anth.us/auth/callback` and `https://prospectus.anth.us/`. Owner-managed credentials are required in destination Secrets Manager `prospectus/proof/oauth/google`, with `client_id` and `client_secret` fields. Never commit credentials.
 
