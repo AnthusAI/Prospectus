@@ -9,6 +9,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import {AccountsPlane,type AccountsPlaneOptions} from "./accounts-plane";
 import { Construct } from "constructs";
 import { EvaluationIntake } from "./evaluation-intake";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
@@ -16,7 +17,7 @@ import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./
 /** Separate private CRM data plane; public static assets contain no CRM records. */
 export class ProspectusBackend extends Construct {
   readonly outputs: Record<string, string>;
-  constructor(scope: Construct, id: string, code: lambda.Code, evaluationCode?: lambda.Code) {
+  constructor(scope: Construct, id: string, code: lambda.Code, evaluationCode?: lambda.Code, accounts?:AccountsPlaneOptions) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
     cdk.Tags.of(this).add("anthus:surface", "crm");
@@ -182,6 +183,8 @@ export class ProspectusBackend extends Construct {
       integration: new HttpLambdaIntegration("Kanbus", backend),
     });
 
+    const accountsPlane=accounts?new AccountsPlane(this,"SaasAccounts",objects,pool,client,accounts):null;
+    if(accountsPlane)api.addRoutes({path:"/api/saas/{proxy+}",methods:[apigw.HttpMethod.GET,apigw.HttpMethod.POST],integration:new HttpLambdaIntegration("AccountsDirectory",accountsPlane.bff)});
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
       ApiUrl: api.apiEndpoint,
@@ -197,6 +200,7 @@ export class ProspectusBackend extends Construct {
       CatalogTableName: catalog.tableName,
     };
     if (evaluationCode) outputs.EvaluationIntakeUrl = new EvaluationIntake(this, "EvaluationIntake", evaluationCode).url;
+    if(accountsPlane){outputs.AccountsBffUrl=`${api.apiEndpoint}/api/saas`;outputs.AccountsApiUrl=accountsPlane.endpoint;}
     this.outputs = outputs;
   }
 }

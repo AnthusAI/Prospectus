@@ -10,10 +10,12 @@ backend:
         - npm ci --prefix .build/kanbus-ui/packages/ui
         - npm run build --prefix .build/kanbus-ui/packages/ui
         - npm ci
+        - npm ci --prefix packages/accounts-client
         - npm run typecheck
         - npm test
         - bash infra/scripts/build-backend.sh
         - node infra/scripts/build-evaluation-if-enabled.mjs
+        - node --import tsx accounts/build-deployment.ts
         - npm ci --prefix infra
         - npm run check --prefix infra
         - npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"
@@ -32,5 +34,6 @@ frontend:
   cache:
     paths:
       - .build/target/**/*
+      - .build/accounts-linux-target/**/*
       - amplify/node_modules/**/*
       - node_modules/**/*

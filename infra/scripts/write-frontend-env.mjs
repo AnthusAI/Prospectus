@@ -3,6 +3,7 @@ const { custom } = JSON.parse(readFileSync("amplify_outputs.json", "utf8"));
 const required = ["ApiUrl", "UserPoolId", "ClientId", "CognitoDomainUrl"];
 for (const key of required) if (typeof custom?.[key] !== "string" || !custom[key]) throw new Error(`Missing Amplify output ${key}`);
 const values = {
+ ...(custom.AccountsBffUrl?{VITE_ACCOUNTS_BFF_URL:custom.AccountsBffUrl}:{}),
  VITE_KANBUS_API_URL: custom.ApiUrl,
  VITE_COGNITO_USER_POOL_ID: custom.UserPoolId,
  VITE_COGNITO_CLIENT_ID: custom.ClientId,

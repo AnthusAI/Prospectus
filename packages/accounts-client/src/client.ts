@@ -11,7 +11,7 @@ export async function decode(response: Response): Promise<any> {
   if(!response.ok) throw new AccountsClientError(response.status,body.error ?? "request_failed",body.message ?? "Account request failed.");
   return body;
 }
-import type {DirectoryList,DirectoryDetail} from "./directory";
+import type {DirectoryList,DirectoryDetail} from "./directory.js";
 export class AccountsClient {
   constructor(private transport: Transport) {}
   directoryList():Promise<DirectoryList>{return this.transport("/v1/account-directory","GET") as Promise<DirectoryList>;}
