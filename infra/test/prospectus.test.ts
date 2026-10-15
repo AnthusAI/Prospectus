@@ -57,7 +57,7 @@ test("Google-first identity creation has no pre-enrollment gate and CRM roles ar
   });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "prospectus-members" });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "admin" });
-  template.hasResourceProperties("AWS::Cognito::UserPoolDomain", { Domain: `prospectus-cyclotron-${TARGET_ACCOUNT}` });
+  template.hasResourceProperties("AWS::Cognito::UserPoolDomain", { Domain: `prospectus-${TARGET_ACCOUNT}` });
   template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
     GenerateSecret: false,
     AllowedOAuthFlows: ["code"],
@@ -92,7 +92,7 @@ test("every application API route requires verified JWT and access-token scope",
       KANBUS_REQUIRED_GROUP: "prospectus-members",
       KANBUS_OBJECT_BUCKET: Match.anyValue(), KANBUS_CATALOG_TABLE: Match.anyValue(),
     } },
-    FunctionName: "prospectus-cyclotron-api",
+    FunctionName: "prospectus-api",
     VpcConfig: Match.absent(),
   });
   template.resourceCountIs("AWS::Lambda::Url", 0);

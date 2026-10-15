@@ -1,11 +1,12 @@
-export const TARGET_ACCOUNT = "682849160744";
+export const TARGET_ACCOUNT = "712236451410";
 export const TARGET_REGION = "us-east-1";
-export const SITE_DOMAIN = "prospectus.cyclotron.anth.us";
+export const SITE_DOMAIN = "prospectus.anth.us";
+// Preserve canonical paths during the account move; this is a data namespace, not hosting ownership.
 export const PROJECT_NAMESPACE = "cyclotron/prospectus";
 export const MEMBER_GROUP = "prospectus-members";
 export const SOURCE_REPOSITORY = "AnthusAI/Prospectus";
-export const AMPLIFY_APP_ID = "dnfou6dg4d6x2";
-export const DEPLOYMENT_BRANCH = "proof";
+export const AMPLIFY_APP_ID = "d15sc1sptohtqb";
+export const DEPLOYMENT_BRANCH = "papyrus-proof";
 
 export function assertDeploymentScope(scope: {
   account: string;

@@ -18,10 +18,10 @@ export class ProspectusBackend extends Construct {
   constructor(scope: Construct, id: string, code: lambda.Code) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
-    cdk.Tags.of(this).add("anthus:brand", "Cyclotron");
+    cdk.Tags.of(this).add("anthus:surface", "crm");
 
     const objects = new s3.Bucket(this, "CanonicalObjects", {
-      bucketName: `prospectus-cyclotron-records-${TARGET_ACCOUNT}`,
+      bucketName: `prospectus-records-${TARGET_ACCOUNT}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
@@ -30,7 +30,7 @@ export class ProspectusBackend extends Construct {
       autoDeleteObjects: false,
     });
     const catalog = new dynamodb.Table(this, "Catalog", {
-      tableName: "prospectus-cyclotron-catalog",
+      tableName: "prospectus-catalog",
       partitionKey: { name: "scope", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "path", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -57,7 +57,7 @@ export class ProspectusBackend extends Construct {
       projectionType: dynamodb.ProjectionType.ALL,
     });
     const pool = new cognito.UserPool(this, "Members", {
-      userPoolName: "prospectus-cyclotron-members",
+      userPoolName: "prospectus-members",
       selfSignUpEnabled: false,
       signInCaseSensitive: false,
       signInAliases: { email: true },
@@ -106,15 +106,15 @@ export class ProspectusBackend extends Construct {
     });
     client.node.addDependency(google);
     const domain = pool.addDomain("Login", {
-      cognitoDomain: { domainPrefix: `prospectus-cyclotron-${TARGET_ACCOUNT}` },
+      cognitoDomain: { domainPrefix: `prospectus-${TARGET_ACCOUNT}` },
     });
     const logGroup = new logs.LogGroup(this, "ApiLogs", {
-      logGroupName: "/aws/lambda/prospectus-cyclotron-api",
+      logGroupName: "/aws/lambda/prospectus-api",
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     const runtimeRole = new iam.Role(this, "RuntimeRole", {
-      roleName: "prospectus-cyclotron-runtime",
+      roleName: "prospectus-runtime",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
     });
     runtimeRole.addToPolicy(new iam.PolicyStatement({
@@ -122,7 +122,7 @@ export class ProspectusBackend extends Construct {
       resources: [logGroup.logGroupArn],
     }));
     const backend = new lambda.Function(this, "Backend", {
-      functionName: "prospectus-cyclotron-api",
+      functionName: "prospectus-api",
       description: "Generic Kanbus API: private canonical S3 files and supplemental catalog only.",
       runtime: lambda.Runtime.PROVIDED_AL2023,
       architecture: lambda.Architecture.X86_64,
@@ -164,7 +164,7 @@ export class ProspectusBackend extends Construct {
       jwtAudience: [client.userPoolClientId],
     });
     const api = new apigw.HttpApi(this, "Api", {
-      apiName: "prospectus-cyclotron",
+      apiName: "prospectus",
       defaultAuthorizer: jwt,
       defaultAuthorizationScopes: ["openid"],
       corsPreflight: {

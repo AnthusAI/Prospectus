@@ -1,0 +1,7 @@
+{
+  "branchName": "papyrus-proof",
+  "stage": "DEVELOPMENT",
+  "enableAutoBuild": false,
+  "enablePullRequestPreview": false,
+  "framework": "React"
+}
