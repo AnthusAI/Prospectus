@@ -33,4 +33,4 @@ Shared conditional claims must survive rollback/catalog rebuild. Manual create/i
 
 ## Deployment and rollback
 
-Use the existing Amplify main pipeline and standard account bootstrap. No manual content sync or separate branch deployment is needed. Shared-board parity and CRM checks must pass before merging. Prior central checkpoint `13155d7` is a frontend rollback reference; preserve accepted data and intake-control objects when rolling back application code. Retiring old hosting does not authorize deleting its retained backend, records, identities or secrets.
+Use the existing Amplify main pipeline and standard account bootstrap. No manual content sync or separate branch deployment is needed. Shared-board parity and CRM checks must pass before merging. Prior central checkpoint `13155d7` is a frontend rollback reference; preserve accepted data and intake-control objects when rolling back application code. Full cleanup of the obsolete dedicated deployment is separately scoped to verified old resources; central/shared resources must remain intact.

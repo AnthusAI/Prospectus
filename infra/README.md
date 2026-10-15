@@ -8,4 +8,4 @@ The Kanbus API remains pinned independently from the shared UI package. Canonica
 
 `npm run check --prefix infra` and `npm run check:amplify --prefix infra` validate templates and the actual standard Gen2 assembly. Tests protect JWT/member authorization, Google-first federation, CORS write headers, private storage and existing runtime access. [Synthetic evaluation](EVALUATION_INTAKE_REVIEW.md) is an additive disabled proposal until its exact new role/runtime scope is approved.
 
-The old dedicated Cyclotron app is retired through reversible hosting/DNS operations. Its old backend resources remain intact, with private rollback evidence maintained outside this public repository. Do not use old proof-branch or DNS setup artifacts to recreate a second CRM.
+The old dedicated Cyclotron app is retired through reversible hosting/DNS operations. Its exact old backend cleanup inventory is verified, with deletion pending action-time target confirmation; private evidence stays outside this repository. Do not use old proof-branch or DNS setup artifacts to recreate a second CRM.

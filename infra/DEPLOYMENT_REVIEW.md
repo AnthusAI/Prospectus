@@ -6,4 +6,4 @@ The current release reconciles the inquiry MVP, contact/next-action improvements
 
 Hosted synthetic intake has its own exact additive proposal in [EVALUATION_INTAKE_REVIEW.md](EVALUATION_INTAKE_REVIEW.md). Its flag is disabled pending that approval. This is normal repository-owned IaC; it does not require a new account bootstrap or manual role setup in the console.
 
-The old Cyclotron custom hostname is retired and default hosting redirects to central Prospectus. Its data, backend, user pool and secrets are retained. No permanent cleanup is implied by publication or deployment of this release.
+The old Cyclotron custom hostname is retired and default hosting redirects to central Prospectus. Full removal of its verified exclusive resources is requested separately. Exact deletion targets await action-time confirmation; central/shared resources and credentials are excluded.

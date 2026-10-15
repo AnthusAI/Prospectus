@@ -8,4 +8,4 @@ rustup toolchain install "$intake_toolchain" --profile minimal
 rustup target add x86_64-unknown-linux-musl --toolchain "$intake_toolchain"
 export CARGO_TARGET_DIR="$PWD/.build/target"
 cargo "+$intake_toolchain" build --locked --release --target x86_64-unknown-linux-musl --features aws --manifest-path local-dependencies/intake-control/Cargo.toml --bin prospectus-s3-controls
-install -m 755 .build/intake-control-target/x86_64-unknown-linux-musl/release/prospectus-s3-controls .artifacts/intake-evaluation/prospectus-s3-controls
+install -m 755 "$CARGO_TARGET_DIR/x86_64-unknown-linux-musl/release/prospectus-s3-controls" .artifacts/intake-evaluation/prospectus-s3-controls

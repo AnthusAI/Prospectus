@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [develop, main, proof, papyrus-proof]
+    branches: [develop, main]
   pull_request:
 permissions:
   contents: read
@@ -27,5 +27,5 @@ jobs:
       - run: npm run check:amplify --prefix infra
       - run: npm run synth:amplify-review --prefix infra
       - run: bash infra/scripts/build-backend.sh
-      - run: bash infra/scripts/build-evaluation.sh
+      - run: node infra/scripts/build-evaluation-if-enabled.mjs
       - run: bash infra/scripts/test-browser-ci.sh
