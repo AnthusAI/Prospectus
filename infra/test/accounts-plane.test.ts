@@ -15,6 +15,8 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
  for(const [id,resource] of Object.entries(before.Resources))assert.deepEqual(after.Resources[id],resource,`Existing CRM resource changed: ${id}`);
  const resources=Object.values(after.Resources) as any[],newResources=Object.entries(after.Resources).filter(([id])=>!before.Resources[id]).map(([,value])=>value as any);
  assert.equal(newResources.filter(value=>value.Type==="AWS::Lambda::Function").length,2);
+ assert.equal(newResources.filter(value=>value.Type==="AWS::IAM::Role").length,2);
+ assert.equal(newResources.filter(value=>value.Type==="AWS::ApiGateway::Account").length,0);
  assert.equal(newResources.filter(value=>value.Type==="AWS::ApiGateway::RestApi").length,1);
  assert.equal(newResources.filter(value=>value.Type==="AWS::DynamoDB::Table" || value.Type==="AWS::S3::Bucket" || value.Type==="AWS::Cognito::UserPool" || value.Type==="AWS::Cognito::UserPoolClient").length,0);
  const routes=newResources.filter(value=>value.Type==="AWS::ApiGatewayV2::Route");assert.equal(routes.length,2);assert.ok(routes.every(route=>route.Properties.AuthorizationType==="JWT" && route.Properties.RouteKey.includes("/api/saas/")));

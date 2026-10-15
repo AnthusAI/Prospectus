@@ -30,7 +30,7 @@ The existing CRM Google client and callback are reused with fresh challenge nonc
 
 ## Activation and deployment handoff
 
-Only the designated CRM deployment owner integrates and deploys, through the parent. Do not deploy this branch directly or edit that owner's checkout. The code is additive to the existing Gen2 custom backend: two Node24 x86_64 Lambdas, a regional IAM REST API and two JWT-protected GET/POST `/api/saas/{proxy+}` routes on the existing HTTP API. Existing CRM resource definitions are regression-tested as identical before and after enabling Accounts.
+Only the designated CRM deployment owner integrates and deploys, through the parent. Do not deploy this branch directly or edit that owner's checkout. The code is additive to the existing Gen2 custom backend: two Node24 x86_64 Lambdas, a regional IAM REST API (no account-wide API Gateway logging-role configuration) and two JWT-protected GET/POST `/api/saas/{proxy+}` routes on the existing HTTP API. Existing CRM resource definitions are regression-tested as identical before and after enabling Accounts.
 
 Before changing `enabled:false`, obtain action-time approval for the exact synthesized changes, Google policy review ID and new runtime roles. The central role can GetObject/PutObject only in these existing-bucket scopes:
 
