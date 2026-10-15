@@ -1,0 +1,33 @@
+{
+  "name": "prospectus",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5417 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "test:e2e": "playwright test",
+    "preview": "vite preview --host 127.0.0.1 --port 5417 --strictPort"
+  },
+  "dependencies": {
+    "@kanbus/ui": "file:.build/kanbus/packages/ui",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.1"
+  }
+}

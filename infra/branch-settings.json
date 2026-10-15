@@ -1,0 +1,7 @@
+{
+  "branchName": "main",
+  "stage": "PRODUCTION",
+  "enableAutoBuild": false,
+  "enablePullRequestPreview": false,
+  "framework": "React"
+}

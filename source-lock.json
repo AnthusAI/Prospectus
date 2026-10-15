@@ -1,0 +1,10 @@
+{
+  "kanbus": {
+    "repository": "AnthusAI/Kanbus",
+    "revision": "2541091158c6a8fd7eac50153524948a5d603c62"
+  },
+  "virtuus": {
+    "repository": "AnthusAI/Virtuus",
+    "revision": "639f873a73ebf1f68add2ae4b93f5fd117a539dc"
+  }
+}

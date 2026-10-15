@@ -1,0 +1,41 @@
+project_directory: project
+project_key: prsp
+name: Prospectus
+console_port: 5419
+hierarchy: [initiative, epic, task, sub-task]
+types: [prospect]
+workflows:
+  default:
+    new: [contacted, lost]
+    contacted: [qualified, lost]
+    qualified: [proposal, lost]
+    proposal: [customer, qualified, lost]
+    customer: [lost]
+    lost: [new]
+transition_labels:
+  default:
+    new: { contacted: Contact, lost: Close }
+    contacted: { qualified: Qualify, lost: Close }
+    qualified: { proposal: Prepare proposal, lost: Close }
+    proposal: { customer: Welcome customer, qualified: Revisit qualification, lost: Close }
+    customer: { lost: Close }
+    lost: { new: Reopen }
+initial_status: new
+statuses:
+  - { key: new, name: New, category: To do, semantic_category: todo }
+  - { key: contacted, name: Contacted, category: In progress, semantic_category: in_progress }
+  - { key: qualified, name: Qualified, category: In progress, semantic_category: in_progress }
+  - { key: proposal, name: Proposal, category: In progress, semantic_category: in_progress }
+  - { key: customer, name: Customer success, category: In progress, semantic_category: in_progress }
+  - { key: lost, name: Closed, category: Done, semantic_category: done }
+categories:
+  - { name: To do, color: grey }
+  - { name: In progress, color: blue }
+  - { name: Done, color: green }
+priorities:
+  1: { name: High, color: red }
+  2: { name: Normal, color: blue }
+  3: { name: Low, color: grey }
+default_priority: 2
+type_colors: { prospect: green }
+beads_compatibility: false
