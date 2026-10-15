@@ -15,13 +15,15 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
  for(const [id,resource] of Object.entries(before.Resources))assert.deepEqual(after.Resources[id],resource,`Existing CRM resource changed: ${id}`);
  const resources=Object.values(after.Resources) as any[],newResources=Object.entries(after.Resources).filter(([id])=>!before.Resources[id]).map(([,value])=>value as any);
  assert.equal(newResources.filter(value=>value.Type==="AWS::Lambda::Function").length,2);
- assert.equal(newResources.filter(value=>value.Type==="AWS::IAM::Role").length,2);
+ assert.deepEqual(newResources.filter(value=>value.Type==="AWS::IAM::Role").map(value=>value.Properties.RoleName).sort(),["prospectus-accounts-directory-runtime","prospectus-central-accounts-runtime"]);
  assert.equal(newResources.filter(value=>value.Type==="AWS::ApiGateway::Account").length,0);
  assert.equal(newResources.filter(value=>value.Type==="AWS::ApiGateway::RestApi").length,1);
  assert.equal(newResources.filter(value=>value.Type==="AWS::DynamoDB::Table" || value.Type==="AWS::S3::Bucket" || value.Type==="AWS::Cognito::UserPool" || value.Type==="AWS::Cognito::UserPoolClient").length,0);
  const routes=newResources.filter(value=>value.Type==="AWS::ApiGatewayV2::Route");assert.equal(routes.length,2);assert.ok(routes.every(route=>route.Properties.AuthorizationType==="JWT" && route.Properties.RouteKey.includes("/api/saas/")));
  const policies=newResources.filter(value=>value.Type==="AWS::IAM::Policy").flatMap(value=>value.Properties.PolicyDocument.Statement);
  assert.ok(!policies.some(value=>JSON.stringify(value.Action).includes("dynamodb") || JSON.stringify(value.Action).includes("cognito-idp") || JSON.stringify(value.Action).includes("s3:Delete")));
+ assert.ok(!JSON.stringify(newResources).includes("test-invoke-stage"));
+ const logWrites=policies.filter(value=>JSON.stringify(value.Action).includes("logs:PutLogEvents"));assert.equal(logWrites.length,2);assert.ok(logWrites.every(value=>value.Resource["Fn::GetAtt"]?.[1]==="Arn"));
  const invoke=policies.filter(value=>(Array.isArray(value.Action)?value.Action:[value.Action]).includes("execute-api:Invoke"));assert.equal(invoke.length,1);const invokeText=JSON.stringify(invoke);assert.ok(invokeText.includes("account-directory"));assert.ok(invokeText.includes("identities/google/resolve"));assert.ok(!invokeText.includes("/v1/accounts"));
  assert.ok(JSON.stringify(newResources).includes("prospectus-central/identities/*"));assert.equal(resources.filter(value=>value.Type==="AWS::Cognito::UserPoolClient").length,1);
 });
