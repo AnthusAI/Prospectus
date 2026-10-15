@@ -29,3 +29,4 @@ jobs:
       - run: bash infra/scripts/build-backend.sh
       - run: node infra/scripts/build-evaluation-if-enabled.mjs
       - run: bash infra/scripts/test-browser-ci.sh
+      - run: PROSPECTUS_ACCOUNTS_UI=1 node --import tsx --test test/accounts-directory-ui.test.ts
