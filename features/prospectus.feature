@@ -1,4 +1,10 @@
 Feature: A private sales workspace built from Kanbus
+  Scenario: The shared Anthus workspace displays its brand consistently
+    Given a visitor opens the shared Prospectus application
+    When they view sign-in, pending access, or the authorized workspace
+    Then the application identifies the brand as Anthus
+    And the browser title identifies Prospectus and Anthus
+
   Scenario: A role change can refresh an already signed-in session
     Given an authenticated identity whose token does not yet include workspace membership
     When the configuration request is denied
