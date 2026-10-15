@@ -46,9 +46,12 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
   })});
   const event={rawPath:"/api/saas/identity/challenge",requestContext:{http:{method:"POST"}},headers:{authorization:`Bearer ${x.ownerDirectory.proof.access}`,origin:"https://prospectus.anth.us","content-type":"application/json"},body:"{}"};
   const challengeResponse=await bff(event);assert.equal(challengeResponse.statusCode,200);const challenge=JSON.parse(challengeResponse.body);
-  const fresh=x.f.pair(0,challenge.nonce,"synthetic-google-owner",{sub:"synthetic-owner-0"},{sub:"synthetic-owner-0"});
+  const fresh=x.f.pair(0,challenge.nonce,"synthetic-google-owner",{sub:"synthetic-owner-0",origin_jti:"synthetic-new-family"},{sub:"synthetic-owner-0",origin_jti:"synthetic-new-family"});
+  const directoryRead={rawPath:"/api/saas/accounts",requestContext:{http:{method:"GET"}},headers:{authorization:`Bearer ${fresh.access}`}};
+  const beforeEnrollment=await bff(directoryRead);assert.equal(beforeEnrollment.statusCode,200);assert.deepEqual(JSON.parse(beforeEnrollment.body),{person:null,accounts:[]});
   const resolve={...event,rawPath:"/api/saas/identity/resolve",headers:{...event.headers,authorization:`Bearer ${fresh.access}`},body:JSON.stringify({challengeId:challenge.challengeId,idToken:fresh.id})};
   const confirmed=await bff(resolve);assert.equal(confirmed.statusCode,200);assert.equal(JSON.parse(confirmed.body).person.id,x.owner.person.id);
+  const afterEnrollment=await bff(directoryRead);assert.equal(afterEnrollment.statusCode,200);assert.equal(JSON.parse(afterEnrollment.body).accounts[0].id,x.account.id);
   assert.equal((await bff({...resolve,body:JSON.stringify({challengeId:challenge.challengeId,idToken:"forged"})})).statusCode,401);
  }finally{await rm(x.root,{recursive:true,force:true});}
 });

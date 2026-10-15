@@ -8,3 +8,5 @@
 - `npm run synth:accounts:review --prefix infra`: enabled Accounts actual Gen2 offline synthesis. Infra tests compare all pre-existing CRM resources before/after and require them to remain identical.
 
 The old transactional DynamoDB deployment prototype is not carried into this main-based change. Accounts use canonical JSON and Virtuus native revision conditions; DDB remains index-only. `AccountsService`/TransactionStore remain memory-fixture compatibility helpers for regressions, not hosted authority. No tests require real customers, provider secrets or deployment permissions.
+
+`accounts/package-smoke.mjs` validates completed Linux x86_64 assets with disposable files and no credentials: static ELF architecture, native persistence/replay/conflict/scope checks, and both compiled Node handler denial paths. The enabled deployment build runs it after native packaging. It accepts the existing Node22+ build image; set `PROSPECTUS_PACKAGE_NODE_MAJOR=24` for exact Lambda-major verification.
