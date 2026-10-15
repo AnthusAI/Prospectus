@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "product": "prospectus-directory",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hlSyajw9S",
+    "subjectHash": "3354c9f139ef4d2e872245b1af080140816a95954c4e54aa596f2106c86cf95c",
+    "permission": "accounts:admin:read",
+    "reviewedGrantId": "accounts-admin-read-approved-20261015"
+  }
+]

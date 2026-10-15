@@ -1,3 +1,4 @@
+import {operatorSubjectHash} from "../accounts/operator-policy";
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {rm} from "node:fs/promises";
@@ -20,7 +21,7 @@ test("browser list and owner/member detail come from real persisted canonical ac
   const page=await browser.newPage(),errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
   for(const name of ["owner","member"]) {await page.goto(`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html?person=${name}`);await page.getByRole("button",{name:/Persisted Papyrus organization/}).click();await expect(page.getByRole("heading",{name:name==="owner"?"Memberships":"Your membership",exact:true})).toBeVisible();await expect(page.getByText(x.account.id,{exact:true})).toBeVisible();}
   await page.goto(`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html?person=outsider`);await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");await page.getByRole("button",{name:"Account administration",exact:true}).click();await expect(page.getByRole("status")).toContainText("explicitly assigned central Accounts administrator permission");
-  activeCentral=canonicalAccountsHandler(new VirtuusIdentityFiles(x.root),new VirtuusAccountFiles(x.root),x.products,x.f.keys,()=>x.f.now,[{product:x.outsider.context.product,issuer:x.outsider.context.human.issuer,subject:x.outsider.context.human.subject,permission:"accounts:admin:read",reviewedGrantId:"synthetic-browser-approval"}]);
+  activeCentral=canonicalAccountsHandler(new VirtuusIdentityFiles(x.root),new VirtuusAccountFiles(x.root),x.products,x.f.keys,()=>x.f.now,[{product:x.outsider.context.product,issuer:x.outsider.context.human.issuer,subjectHash:operatorSubjectHash(x.outsider.context.human.subject),permission:"accounts:admin:read",reviewedGrantId:"synthetic-browser-approval"}]);
   await page.reload();await page.getByRole("button",{name:/Persisted Papyrus organization/}).click();await expect(page.getByRole("heading",{name:"Organization memberships"})).toBeVisible();await expect(page.getByText(x.account.id,{exact:true})).toBeVisible();
   await page.getByRole("button",{name:"My memberships",exact:true}).click();await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
   await page.getByRole("button",{name:"Account administration",exact:true}).click();await expect(page.getByRole("button",{name:/Persisted Papyrus organization/})).toBeVisible();

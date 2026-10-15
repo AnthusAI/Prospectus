@@ -6,7 +6,7 @@ import * as gateway from "aws-cdk-lib/aws-apigateway";
 import type * as cognito from "aws-cdk-lib/aws-cognito";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import {Construct} from "constructs";
-export interface AccountsPlaneOptions {code:lambda.Code;bffCode:lambda.Code;googlePolicyReviewId:string}
+export interface AccountsPlaneOptions {code:lambda.Code;bffCode:lambda.Code;googlePolicyReviewId:string;consoleClientEnabled?:boolean}
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
  readonly bff:lambda.Function;readonly endpoint:string;

@@ -2,7 +2,7 @@
 
 Accounts has two independent read surfaces. **My memberships** lists only the signed-in person's active organization memberships. **Account administration** lists central organizations, their product entitlements and memberships for an explicitly approved operator. Operator access does not create a membership, enable a product, authorize CRM use, or allow any mutation.
 
-The deployment-owned `accounts/operator-grants.json` policy ships as an empty array. No operator access is activated by this implementation. A grant must name exactly one registered product, Cognito issuer and verified subject, the permission `accounts:admin:read`, and a reviewed approval ID. Email addresses and generic CRM `admin` groups are never permission sources. Grant records are validated at runtime startup and copied to prevent later mutation. The canonical Person and current nonce-confirmed Google session must still resolve before any operator read.
+The deployment-owned `accounts/operator-grants.json` policy contains the one explicitly approved operator read mapping. Public source stores a SHA-256 subject digest, never the raw subject or email. A grant must name exactly one registered product, Cognito issuer and SHA-256 digest of the verified subject, the permission `accounts:admin:read`, and a reviewed approval ID. Email addresses and generic CRM `admin` groups are never permission sources. Grant records are validated at runtime startup and copied to prevent later mutation. The canonical Person and current nonce-confirmed Google session must still resolve before any operator read.
 
 A synthetic policy entry is:
 
@@ -10,7 +10,7 @@ A synthetic policy entry is:
 {
   "product": "prospectus-directory",
   "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Synthetic",
-  "subject": "synthetic-operator-subject",
+  "subjectHash": "<SHA-256 of the exact verified Cognito subject>",
   "permission": "accounts:admin:read",
   "reviewedGrantId": "synthetic-approval-v1"
 }

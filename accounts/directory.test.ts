@@ -1,3 +1,4 @@
+import {operatorSubjectHash} from "./operator-policy";
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {rm} from "node:fs/promises";
@@ -58,7 +59,7 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
 
 test("explicit central operator reads cross-organization records without membership or CRM-admin inheritance",async()=>{
  const x=await directoryFixture();try{
-  const grants=[{product:x.outsider.context.product,issuer:x.outsider.context.human.issuer,subject:x.outsider.context.human.subject,permission:"accounts:admin:read" as const,reviewedGrantId:"synthetic-approval-v1"}];
+  const grants=[{product:x.outsider.context.product,issuer:x.outsider.context.human.issuer,subjectHash:operatorSubjectHash(x.outsider.context.human.subject),permission:"accounts:admin:read" as const,reviewedGrantId:"synthetic-approval-v1"}];
   const operator=canonicalAccountsHandler(new VirtuusIdentityFiles(x.root),new VirtuusAccountFiles(x.root),x.products,x.f.keys,()=>x.f.now,grants);
   const event=(path:string,proof=x.outsider.proof)=>x.f.event(0,path,{},proof,"GET");
   const listPath="/v1/account-directory/operator/accounts",detailPath=`${listPath}/${x.account.id}`;

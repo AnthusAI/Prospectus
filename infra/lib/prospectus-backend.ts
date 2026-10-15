@@ -183,6 +183,24 @@ export class ProspectusBackend extends Construct {
       integration: new HttpLambdaIntegration("Kanbus", backend),
     });
 
+    const consoleClient = accounts?.consoleClientEnabled ? pool.addClient("CyclotronConsoleBrowser", {
+      userPoolClientName: "cyclotron-console-public",
+      generateSecret: false,
+      supportedIdentityProviders: [cognito.UserPoolClientIdentityProvider.GOOGLE],
+      preventUserExistenceErrors: true,
+      authFlows: { userSrp: false, userPassword: false, adminUserPassword: false, custom: false },
+      oAuth: {
+        flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false },
+        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+        callbackUrls: ["https://lab.cyclotron.anth.us/auth/callback"],
+        logoutUrls: ["https://lab.cyclotron.anth.us/"],
+      },
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+      enableTokenRevocation: true,
+    }) : undefined;
+    consoleClient?.node.addDependency(google);
     const accountsPlane=accounts?new AccountsPlane(this,"SaasAccounts",objects,pool,client,accounts):null;
     if(accountsPlane)api.addRoutes({path:"/api/saas/{proxy+}",methods:[apigw.HttpMethod.GET,apigw.HttpMethod.POST],integration:new HttpLambdaIntegration("AccountsDirectory",accountsPlane.bff)});
     const outputs: Record<string, string> = {
@@ -201,6 +219,7 @@ export class ProspectusBackend extends Construct {
     };
     if (evaluationCode) outputs.EvaluationIntakeUrl = new EvaluationIntake(this, "EvaluationIntake", evaluationCode).url;
     if(accountsPlane){outputs.AccountsBffUrl=`${api.apiEndpoint}/api/saas`;outputs.AccountsApiUrl=accountsPlane.endpoint;}
+    if(consoleClient){outputs.ConsoleClientId=consoleClient.userPoolClientId;outputs.ConsoleCognitoDomainUrl=domain.baseUrl();}
     this.outputs = outputs;
   }
 }
