@@ -43,6 +43,10 @@ claim or a token field. Replacing a worker or removing the pair denies subsequen
 requests under the newly loaded configuration. Changing the enrollment revision
 requires fresh BFF enrollment. Merely changing a delegation review label while
 retaining the same approved relation does not expire that original enrollment.
+Enabling a pair permits continuation of already enrolled sessions that match
+that exact BFF binding; it does not require a new login solely to introduce the
+worker. That effect must be included in the activation review. Requiring fresh
+login instead needs a new enrollment policy revision and explicit BFF enrollment.
 Runtime configuration changes require normal deployment; an in-flight invocation
 or an older deployed version is not instantly revoked by editing source.
 
