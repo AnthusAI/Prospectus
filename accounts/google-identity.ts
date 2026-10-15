@@ -32,10 +32,12 @@ export interface GoogleIdentityRepository {
   find(issuer: string, subject: string, session?: IdentitySession): Promise<{person: Person; alias: GoogleAlias} | null>;
   getPerson(id: string): Promise<Person | null>;
 }
-function binding(registration: ProductRegistration, principal: string): IdentityBinding {
+export function enrollmentBinding(registration: ProductRegistration, principal: string): IdentityBinding {
   const policy=registration.googleFederation;
   if(!policy || policy.policy !== "google-only-unlinked-v1" || !policy.reviewedPolicyId || !registration.clientIds.includes(policy.clientId)) fail(403,"federation_policy","Reviewed Google-only unlinked federation is required.");
-  return {product:registration.product,principal,issuer:registration.issuer,clientId:policy.clientId,policyRevision:policy.reviewedPolicyId};
+  // Continuation reads the original binding without rewriting provenance.
+  if(principal!==registration.roleArn && principal!==registration.executionDelegation?.roleArn)fail(403,"caller_forbidden","Principal is not bound to this product.");
+  return {product:registration.product,principal:registration.roleArn,issuer:registration.issuer,clientId:policy.clientId,policyRevision:policy.reviewedPolicyId};
 }
 export const sameBinding = (a: IdentityBinding, b: IdentityBinding) => a.product === b.product && a.principal === b.principal && a.issuer === b.issuer && a.clientId === b.clientId && a.policyRevision === b.policyRevision;
 /** Fixed central transport: caller is IAM verified, JWTs stay in signed headers.
@@ -48,7 +50,7 @@ export function googleIdentityHandler(repository: GoogleIdentityRepository, prod
     const response=(statusCode:number,body:unknown)=>({statusCode,headers:{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"},body:JSON.stringify(body)});
     try {
       const authenticated=caller(event,trustedProducts);
-      const scope=binding(authenticated.registration,authenticated.principal);
+      const scope=enrollmentBinding(authenticated.registration,authenticated.principal);
       const now=nowSeconds();
       const headers: Record<string,string|undefined>={};
       for(const [name,value] of Object.entries(event.headers ?? {})) {

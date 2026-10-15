@@ -29,7 +29,7 @@ export function accountHandler(service: AccountsApi, products: readonly ProductR
       const route = /^\/v1\/accounts\/([a-f0-9-]{36})(?:\/(authorize|memberships))?$/.exec(event.path);
       if(!route) fail(404,"route","Account route not found.");
       if(!route[2] && event.httpMethod === "GET") { fields([]);return response(200,{account:await service.get(authenticated,route[1])}); }
-      if(route[2] === "authorize" && event.httpMethod === "POST") { fields(["operation"]);return response(200,await service.authorize(authenticated,route[1],body.operation as Operation)); }
+      if(route[2] === "authorize" && event.httpMethod === "POST") { fields(["operation"]);if(!authenticated.capabilities.includes(body.operation))fail(403,"operation_forbidden","Caller operation is not registered.");return response(200,await service.authorize(authenticated,route[1],body.operation as Operation)); }
       if(route[2] === "memberships" && event.httpMethod === "POST") {
         fields(["personId","role","status"]);
         if(typeof body.personId !== "string" || !UUID_PATTERN.test(body.personId)) fail(400,"person","Known person ID required.");
