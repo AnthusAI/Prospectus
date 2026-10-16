@@ -2,7 +2,12 @@
 //! Filesystem by default; explicit AWS feature/configuration enables S3. No HTTP route.
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, io::Read, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    io::{BufRead, Read, Write},
+    sync::Arc,
+    time::Instant,
+};
 use virtuus_store::{
     FileStore, JournaledStore, MemoryCatalog, Mutation, ObjectPage, ObjectStore, Scope, StoreError,
     StoredObject, WriteCondition,
@@ -25,6 +30,87 @@ struct Request {
     cursor: Option<String>,
     #[serde(default)]
     fault: Option<String>,
+}
+
+fn timing(phase: &str, operation: &str, started: Instant, success: bool) {
+    if std::env::var("PROSPECTUS_IDENTITY_TIMINGS").as_deref() == Ok("1") {
+        eprintln!(
+            "{}",
+            json!({"phase":phase,"operation":operation,"durationMs":started.elapsed().as_millis(),"success":success})
+        );
+    }
+}
+
+struct ObservedObjects(Arc<dyn ObjectStore>);
+#[async_trait::async_trait]
+impl ObjectStore for ObservedObjects {
+    async fn get(&self, s: &Scope, p: &str) -> virtuus_store::Result<Option<StoredObject>> {
+        let t = Instant::now();
+        let r = self.0.get(s, p).await;
+        timing("storage", "get", t, r.is_ok());
+        r
+    }
+    async fn get_bounded(
+        &self,
+        s: &Scope,
+        p: &str,
+        n: usize,
+    ) -> virtuus_store::Result<Option<StoredObject>> {
+        let t = Instant::now();
+        let r = self.0.get_bounded(s, p, n).await;
+        timing("storage", "get_bounded", t, r.is_ok());
+        r
+    }
+    async fn list(
+        &self,
+        s: &Scope,
+        p: &str,
+        c: Option<&str>,
+        n: usize,
+    ) -> virtuus_store::Result<ObjectPage> {
+        let t = Instant::now();
+        let r = self.0.list(s, p, c, n).await;
+        timing("storage", "list", t, r.is_ok());
+        r
+    }
+    async fn put(
+        &self,
+        s: &Scope,
+        p: &str,
+        b: &[u8],
+        t: &str,
+        c: WriteCondition,
+        o: Option<&str>,
+    ) -> virtuus_store::Result<StoredObject> {
+        let started = Instant::now();
+        let r = self.0.put(s, p, b, t, c, o).await;
+        timing("storage", "put", started, r.is_ok());
+        r
+    }
+    async fn delete(&self, s: &Scope, p: &str, r: &str) -> virtuus_store::Result<()> {
+        let t = Instant::now();
+        let result = self.0.delete(s, p, r).await;
+        timing("storage", "delete", t, result.is_ok());
+        result
+    }
+    async fn get_control(&self, s: &Scope, p: &str) -> virtuus_store::Result<Option<StoredObject>> {
+        let t = Instant::now();
+        let r = self.0.get_control(s, p).await;
+        timing("storage", "get_control", t, r.is_ok());
+        r
+    }
+    async fn put_control(
+        &self,
+        s: &Scope,
+        p: &str,
+        b: &[u8],
+        c: WriteCondition,
+    ) -> virtuus_store::Result<StoredObject> {
+        let t = Instant::now();
+        let r = self.0.put_control(s, p, b, c).await;
+        timing("storage", "put_control", t, r.is_ok());
+        r
+    }
 }
 
 /// Test-only interruption inside the real journal's canonical publication call.
@@ -112,7 +198,7 @@ fn valid_path(path: &str, prefix: bool, project: &str) -> bool {
         && (prefix || rest.ends_with(".json"))
 }
 
-async fn dispatch(request: Request) -> Result<Value, StoreError> {
+fn validate_request(request: &Request) -> Result<(), StoreError> {
     let project =
         std::env::var("PROSPECTUS_IDENTITY_PROJECT").unwrap_or_else(|_| "identities".into());
     if !["identities", "accounts"].contains(&project.as_str())
@@ -120,7 +206,20 @@ async fn dispatch(request: Request) -> Result<Value, StoreError> {
     {
         return Err(StoreError::Invalid("identity path required".into()));
     }
-    let (objects, scope) = configured_store(&request).await?;
+    Ok(())
+}
+
+async fn observed_store(request: &Request) -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
+    let started = Instant::now();
+    let result = configured_store(request).await;
+    timing("initialize", "configure", started, result.is_ok());
+    let (objects, scope) = result?;
+    Ok((Arc::new(ObservedObjects(objects)), scope))
+}
+
+async fn dispatch(request: Request) -> Result<Value, StoreError> {
+    validate_request(&request)?;
+    let (objects, scope) = observed_store(&request).await?;
     dispatch_with_store(request, objects, scope).await
 }
 
@@ -274,13 +373,15 @@ async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
             .endpoint_url("https://s3.us-east-1.amazonaws.com")
             .build(),
     );
-    client
+    let started = Instant::now();
+    let check = client
         .head_bucket()
         .bucket(&bucket)
         .expected_bucket_owner(owner)
         .send()
-        .await
-        .map_err(|_| StoreError::Unavailable("expected private bucket unavailable".into()))?;
+        .await;
+    timing("storage", "head_bucket", started, check.is_ok());
+    check.map_err(|_| StoreError::Unavailable("expected private bucket unavailable".into()))?;
     Ok((
         Arc::new(virtuus_store::aws::S3Store::new(client, bucket)),
         scope,
@@ -289,6 +390,49 @@ async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
 
 #[tokio::main]
 async fn main() {
+    if std::env::var("PROSPECTUS_IDENTITY_STREAM").as_deref() == Ok("1") {
+        let mut reader = std::io::BufReader::new(std::io::stdin());
+        let mut configured: Option<(Arc<dyn ObjectStore>, Scope)> = None;
+        for _ in 0..2048 {
+            let mut bytes = Vec::new();
+            if (&mut reader)
+                .take(131074)
+                .read_until(b'\n', &mut bytes)
+                .is_err()
+                || bytes.len() > 131073
+            {
+                println!("{}", json!({"error":"invalid"}));
+                break;
+            }
+            if bytes.is_empty() {
+                break;
+            }
+            let result = async {
+                let request: Request = serde_json::from_slice(&bytes)?;
+                validate_request(&request)?;
+                if request.fault.is_some() {
+                    return Err(StoreError::Invalid(
+                        "fault not supported in request session".into(),
+                    ));
+                }
+                if configured.is_none() {
+                    configured = Some(observed_store(&request).await?);
+                }
+                let (objects, scope) = configured.as_ref().unwrap();
+                dispatch_with_store(request, objects.clone(), scope.clone()).await
+            }
+            .await;
+            let output = match result {
+                Ok(value) => json!({"result":value}),
+                Err(error) => error_response(error),
+            };
+            println!("{output}");
+            if std::io::stdout().flush().is_err() {
+                break;
+            }
+        }
+        return;
+    }
     let mut bytes = Vec::new();
     let output = if std::io::stdin()
         .take(131073)
@@ -301,14 +445,16 @@ async fn main() {
         match serde_json::from_slice::<Request>(&bytes) {
             Ok(request) => match dispatch(request).await {
                 Ok(value) => json!({"result":value}),
-                Err(error) => {
-                    json!({"error":match error {StoreError::Conflict=>"conflict",StoreError::OperationMismatch=>"operation_mismatch",StoreError::Uncertain(_)=>"uncertain",StoreError::Invalid(_)=>"invalid",_=>"unavailable"}})
-                }
+                Err(error) => error_response(error),
             },
             Err(_) => json!({"error":"invalid"}),
         }
     };
     println!("{output}");
+}
+
+fn error_response(error: StoreError) -> Value {
+    json!({"error":match error {StoreError::Conflict=>"conflict",StoreError::OperationMismatch=>"operation_mismatch",StoreError::Uncertain(_)=>"uncertain",StoreError::Invalid(_)=>"invalid",_=>"unavailable"}})
 }
 
 #[cfg(all(test, feature = "aws"))]

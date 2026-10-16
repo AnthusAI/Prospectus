@@ -61,3 +61,10 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     And only currently authorized accounts are returned
     When a viewer membership is revoked
     Then the next list excludes that account
+  Scenario: Reuse native storage transport within one request without caching authority
+    Given one Accounts request reads several canonical records in the same namespace
+    When the native Virtuus transport processes those reads and conditional writes
+    Then it initializes its fixed storage client once for that request namespace
+    And each read observes canonical changes made by another request
+    And the transport closes when its request finishes
+    And a later request performs fresh canonical authorization
