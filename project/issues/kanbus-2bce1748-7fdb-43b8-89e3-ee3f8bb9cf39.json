@@ -1,0 +1,47 @@
+{
+  "id": "kanbus-2bce1748-7fdb-43b8-89e3-ee3f8bb9cf39",
+  "title": "Fail explicitly at documented capacity while quota policy is unresolved",
+  "description": "As an operator, I want capacity and product quota limits to be explicit.\n\nFeature: Fail explicitly at documented capacity while quota policy is unresolved\n  Scenario: Observable acceptance\n    Given documented local capacity limits and no approved strict cross-account quota protocol\n    When an operation would exceed capacity or product quota policy is requested\n    Then capacity fails explicitly and the unresolved quota and audit-rollover decisions remain visible\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "e74ef925-71ca-47dc-a767-50d5022eb7ac",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.751215Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.722698Z",
+  "updated_at": "2026-10-16T20:46:53.751236Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

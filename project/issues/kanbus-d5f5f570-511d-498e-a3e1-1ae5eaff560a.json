@@ -1,0 +1,47 @@
+{
+  "id": "kanbus-d5f5f570-511d-498e-a3e1-1ae5eaff560a",
+  "title": "Review unwanted account closure while preserving all data",
+  "description": "As an account owner, I want a reviewable closure design.\n\nFeature: Review unwanted account closure while preserving all data\n  Scenario: Observable acceptance\n    Given an unwanted account and existing canonical data\n    When closure is proposed\n    Then the design awaits explicit user approval and preserves data without deleting or revoking anything during design\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.",
+  "type": "story",
+  "status": "backlog",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "e45c4b88-42b6-4795-8857-68eeb6b5b27c",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.895672Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.851328Z",
+  "updated_at": "2026-10-16T20:46:53.895691Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}
