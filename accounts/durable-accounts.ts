@@ -72,10 +72,15 @@ export class DurableAccountsService implements AccountsApi {
   let person:Person;try {person=await this.person(context);}catch(error){if(error instanceof AccountsError && error.code==="identity_enrollment_required")return {person:null,accounts:[]};throw error;}
   const candidates=await this.files.list("accounts/");if(candidates.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");
   const accounts:AccountSummary[]=[];
-  for(const candidate of candidates) {
+  for(let offset=0;offset<candidates.length;offset+=4) {
+   const batch=await Promise.all(candidates.slice(offset,offset+4).map(async candidate=>{
    const match=/^accounts\/([a-f0-9-]{36})\.json$/.exec(candidate);if(!match)fail(503,"account_inconsistent","Unexpected canonical account path.");
    const stored=await this.read(match[1]);if(!stored)fail(503,"account_inconsistent","Account disappeared during discovery.");
+   return stored;
+   }));
+   for(const stored of batch) {
    try {accounts.push(this.summary(context,person.id,stored.value,"console:read"));}catch(error){if(!(error instanceof AccountsError && error.status===403))throw error;}
+   }
   }
   return {person,accounts:accounts.sort((a,b)=>a.id.localeCompare(b.id))};
  }

@@ -82,28 +82,36 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     if(record.state!=="committed")await this.step("complete",()=>this.write(`logins/${id}.json`,`identity:${id}:complete`,{...record,state:"committed",person:google.person} satisfies LoginRecord,stored.revision));
     return google.person;
   }
-  private async committed(pointer:SessionPointer,google:GoogleRecord,aliasKey?:string):Promise<LoginRecord|null> {
+  private async committed(pointer:SessionPointer,google:GoogleRecord,aliasKey?:string,read:IdentityFiles["get"]=this.files.get.bind(this.files)):Promise<LoginRecord|null> {
     if(pointer?.version!==1 || pointer.kind!=="session" || pointer.personId!==google.person.id || pointer.googleKey!==googleIdentityKey(google.subject) || aliasKey && pointer.aliasKey!==aliasKey)return null;
-    const login=(await this.files.get<LoginRecord>(`logins/${pointer.challengeId}.json`))?.value;
+    const login=(await read<LoginRecord>(`logins/${pointer.challengeId}.json`))?.value;
     if(!login || login.state!=="committed")return null;
     this.loginValid(login,pointer.challengeId);
     if(!login.proof || login.proof.googleSubject!==google.subject || cognitoAliasKey(login.proof.binding.issuer,login.proof.cognitoSubject)!==pointer.aliasKey || !sameBinding(login.proof.binding,login.challenge.binding) || hash(login.person)!==hash(google.person))fail(503,"identity_inconsistent","Committed enrollment links are inconsistent.");
-    const alias=(await this.files.get<AliasRecord>(`aliases/${pointer.aliasKey}.json`))?.value;
+    const alias=(await read<AliasRecord>(`aliases/${pointer.aliasKey}.json`))?.value;
     if(!alias || alias.googleKey!==pointer.googleKey || alias.personId!==pointer.personId || alias.issuer!==login.proof.binding.issuer || alias.subject!==login.proof.cognitoSubject)fail(503,"identity_inconsistent","Committed alias is inconsistent.");
-    const person=(await this.files.get<{version:number;kind:string;googleKey:string;person:Person}>(`people/${google.person.id}.json`))?.value;
+    const person=(await read<{version:number;kind:string;googleKey:string;person:Person}>(`people/${google.person.id}.json`))?.value;
     if(!person || person.version!==1 || person.kind!=="person" || person.googleKey!==pointer.googleKey || hash(person.person)!==hash(google.person))fail(503,"identity_inconsistent","Committed Person lookup is incomplete.");
     return login;
   }
   async find(issuer:string,subject:string,_session?:IdentitySession) {
-    const aliasKey=cognitoAliasKey(issuer,subject);const alias=(await this.files.get<AliasRecord>(`aliases/${aliasKey}.json`))?.value;if(!alias)return null;
+    // Immutable identity links are shared only within this lookup. Every later
+    // request rereads canonical authority; no mutable account permissions cache.
+    const reads=new Map<string,Promise<IdentityObject|null>>();
+    const read:IdentityFiles["get"]=path=>{let pending=reads.get(path);if(!pending){pending=this.files.get(path);reads.set(path,pending);}return pending;};
+    const aliasKey=cognitoAliasKey(issuer,subject);const alias=(await read<AliasRecord>(`aliases/${aliasKey}.json`))?.value;if(!alias)return null;
     if(alias.version!==1 || alias.kind!=="alias" || alias.issuer!==issuer || alias.subject!==subject)fail(503,"identity_inconsistent","Invalid canonical alias.");
-    const google=(await this.files.get<GoogleRecord>(`google/${alias.googleKey}.json`))?.value;if(!google)fail(503,"identity_inconsistent","Missing Google identity.");
+    const google=(await read<GoogleRecord>(`google/${alias.googleKey}.json`))?.value;if(!google)fail(503,"identity_inconsistent","Missing Google identity.");
     this.checkGoogle(google,google.subject);
     if(alias.googleKey!==googleIdentityKey(google.subject) || alias.personId!==google.person.id)fail(503,"identity_inconsistent","Canonical alias conflicts.");
     const logins:LoginRecord[]=[];
-    for(const path of await this.files.list(`sessions/${alias.googleKey}/${aliasKey}/`)) {
-      const pointer=(await this.files.get<SessionPointer>(path))?.value;if(!pointer)continue;
-      const login=await this.committed(pointer,google,aliasKey);if(login)logins.push(login);
+    const paths=await this.files.list(`sessions/${alias.googleKey}/${aliasKey}/`);
+    for(let offset=0;offset<paths.length;offset+=4) {
+      const batch=await Promise.all(paths.slice(offset,offset+4).map(async path=>{
+        const pointer=(await read<SessionPointer>(path))?.value;
+        return pointer?this.committed(pointer,google,aliasKey,read):null;
+      }));
+      for(const login of batch)if(login)logins.push(login);
     }
     if(!logins.length)return null;
     return {person:google.person,alias:{issuer,subject,personId:google.person.id,googleIssuer:GOOGLE_ISSUER,googleSubject:google.subject,createdAt:alias.createdAt,provenance:logins.map(login=>login.proof!.binding),sessions:logins.map(login=>({binding:login.proof!.binding,authTime:login.proof!.authTime,lineageHash:login.proof!.lineageHash}))} satisfies GoogleAlias};

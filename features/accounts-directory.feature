@@ -44,3 +44,20 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     And no organizations or memberships are disclosed
     When an operator's grant is removed or their current identity proof is absent
     Then operator reads are denied
+
+  Scenario: Repeated sign-ins do not serialize duplicate canonical identity reads
+    Given one canonical Person has eight committed Google login receipts
+    When the current identity is resolved
+    Then every required canonical record is checked once within that lookup
+    And at most four independent reads run concurrently
+    And all committed session provenance remains available
+    When a required canonical Person record is unavailable on the next lookup
+    Then access is denied using fresh canonical reads
+
+  Scenario: Account discovery overlaps reads without caching permissions
+    Given several canonical accounts have current owner and viewer memberships
+    When the account list is requested
+    Then account reads run concurrently with a maximum of four
+    And only currently authorized accounts are returned
+    When a viewer membership is revoked
+    Then the next list excludes that account
