@@ -27,6 +27,19 @@ async function worker(message:any):Promise<any> {
  return new Promise((resolve,reject)=>{const child=spawn(process.execPath,["--import","tsx","accounts/testing/durable-account-worker.ts"],{stdio:["pipe","pipe","ignore"]});let output="";child.stdout.on("data",chunk=>output+=chunk);child.on("error",reject);child.on("close",code=>{try{assert.equal(code,0);resolve(JSON.parse(output));}catch(error){reject(error);}});child.stdin.end(JSON.stringify(message));});
 }
 const code=(expected:string)=>(error:any)=>error.code===expected;
+
+test("account discovery overlaps at most four canonical reads and observes membership revocation",async()=>{
+ const x=await fixture(),accounts=[];
+ for(let index=0;index<7;index++)accounts.push(await x.service().create(x.contexts.alice,`Synthetic ${index}`,randomUUID()));
+ await x.service().setMembership(x.contexts.alice,accounts[0].id,x.people.bob.id,"viewer","active");
+ let active=0,maximum=0;
+ const files:IdentityFiles={get:async path=>{active++;maximum=Math.max(maximum,active);try{await new Promise(resolve=>setTimeout(resolve,2));return await x.files.get(path);}finally{active--;}},list:x.files.list.bind(x.files),commit:async()=>{throw new Error("Discovery must never write");}};
+ const service=x.service(files),listed=await service.list(x.contexts.bob);
+ assert.deepEqual(listed.accounts.map(account=>account.id),[accounts[0].id]);
+ assert.ok(maximum>1 && maximum<=4,`Expected bounded overlap, observed ${maximum}`);
+ await x.service().setMembership(x.contexts.alice,accounts[0].id,x.people.bob.id,"viewer","revoked");
+ assert.deepEqual((await service.list(x.contexts.bob)).accounts,[]);
+});
 test("actual Virtuus account creation and authorization survive independent process restart",async()=>{
  const x=await fixture(),requestId=randomUUID();
  const first=await worker({root:x.root,people:x.people,context:x.contexts.alice,op:"create",name:"Synthetic account",requestId});assert.ok(first.value.id);

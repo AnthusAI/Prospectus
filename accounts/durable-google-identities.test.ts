@@ -205,3 +205,25 @@ test("a committed receipt cannot authorize when any required canonical link is m
   const known=await new DurableGoogleIdentities(missing).getPerson(person.id).catch(()=>null);assert.equal(known,null);
  }
 });
+
+test("repeated committed sessions share bounded reads only within one canonical lookup",async()=>{
+ const x=await fixture();await x.repository().issue(x.challenge);const person=await x.repository().associate(x.proof);
+ for(let index=1;index<8;index++) {
+  const challenge={...x.challenge,challengeId:randomUUID(),nonce:randomUUID()};
+  await x.repository().issue(challenge);
+  await x.repository().associate({...x.proof,challengeId:challenge.challengeId,nonce:challenge.nonce,authTime:x.f.now+index,lineageHash:hash(["family",index]),fingerprint:hash(["proof",index])});
+ }
+ const counts=new Map<string,number>();let active=0,maximum=0,missingPerson=false;
+ const files:IdentityFiles={
+  get:async path=>{counts.set(path,(counts.get(path)??0)+1);active++;maximum=Math.max(maximum,active);try{await new Promise(resolve=>setTimeout(resolve,2));return missingPerson && path.startsWith("people/")?null:await x.files.get(path);}finally{active--;}},
+  list:x.files.list.bind(x.files),commit:async()=>{throw new Error("Lookup must never write");},
+ };
+ const repository=new DurableGoogleIdentities(files);
+ const result=await repository.find(x.proof.binding.issuer,x.proof.cognitoSubject);
+ assert.ok(result);assert.equal(result.person.id,person.id);assert.equal(result.alias.sessions.length,8);
+ assert.ok([...counts.values()].every(count=>count===1),"Each canonical record must be read once per lookup");
+ assert.ok(maximum>1 && maximum<=4,`Expected bounded overlap, observed ${maximum}`);
+ counts.clear();missingPerson=true;
+ await assert.rejects(repository.find(x.proof.binding.issuer,x.proof.cognitoSubject),error=>(error as any).code==="identity_inconsistent");
+ assert.ok([...counts.keys()].some(path=>path.startsWith("people/")),"A later lookup must reread canonical authority");
+});
