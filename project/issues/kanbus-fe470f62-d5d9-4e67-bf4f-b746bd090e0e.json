@@ -1,0 +1,47 @@
+{
+  "id": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "title": "Central SaaS accounts and lab integration",
+  "description": "Reconcile central prospectus.anth.us in papyrus-production (712236451410), consumed by lab.cyclotron.anth.us through roles and temporary credentials. Main94f6d4a contains accounts source and PR7/8/9/10/11 integrations; supplied handoff confirms account selection shipped. Preserve distinctions among canonical Person, account membership, product permission and CRM staff access. No long-lived keys, customer-data deletion or AWS changes. Cross-project: Papyrus PPY-58f107; Cyclotron decision-flywheel-a73f05cc. Existing cross-project CRM work remains Kanbus kbs-3df9cc93; this is the repository-local account/MVP record.",
+  "type": "initiative",
+  "status": "in_progress",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "bf6c061b-e467-447b-955f-6f45071bad3c",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.312062Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.271053Z",
+  "updated_at": "2026-10-16T20:46:53.312086Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

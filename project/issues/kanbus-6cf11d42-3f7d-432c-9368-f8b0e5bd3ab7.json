@@ -1,0 +1,47 @@
+{
+  "id": "kanbus-6cf11d42-3f7d-432c-9368-f8b0e5bd3ab7",
+  "title": "Prove hosted CRM and lab account integration end to end",
+  "description": "As an operator, I want acceptance evidence separated from source completion.\n\nFeature: Prove hosted CRM and lab account integration end to end\n  Scenario: Observable acceptance\n    Given the shipped central service and authorized lab runtime roles\n    When the reviewed hosted flow is accepted\n    Then account selection permission denial persistence conflict and customer-success handoff are demonstrated while unapproved intake and onboarding remain disabled\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "5adb8f86-6dbb-4223-a001-191e10930f89",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.949894Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.921241Z",
+  "updated_at": "2026-10-16T20:46:53.949911Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

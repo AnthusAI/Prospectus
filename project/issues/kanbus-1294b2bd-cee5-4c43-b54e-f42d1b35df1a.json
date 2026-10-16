@@ -1,0 +1,62 @@
+{
+  "id": "kanbus-1294b2bd-cee5-4c43-b54e-f42d1b35df1a",
+  "title": "Select authorized central accounts and inspect memberships",
+  "description": "As an authorized user, I want account selection to reflect the central service.\n\nFeature: Select authorized central accounts and inspect memberships\n  Scenario: Observable acceptance\n    Given a current enrolled identity and authorized account memberships\n    When I select an account or inspect permitted account detail\n    Then central membership and product permissions constrain the result without granting CRM access from sign-in alone\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.",
+  "type": "story",
+  "status": "closed",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "41ef7896-1ba2-4d45-b7b7-1aa222afcad2",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.379148Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "c4d507d7-07d2-4d83-b6dc-a3eb9fe56d47",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Shipped per supplied handoff; current main94f6d4a includes PR7 operator directory, PR8 approved central pairing, PR9 integer challenge expiry and PR10/11 authorization read/native request-client corrections. No fresh hosted session exercised during this documentation task.",
+      "created_at": "2026-10-16T20:46:53.407240Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.335057Z",
+  "updated_at": "2026-10-16T20:46:53.407273Z",
+  "closed_at": "2026-10-16T20:46:53.363898Z",
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

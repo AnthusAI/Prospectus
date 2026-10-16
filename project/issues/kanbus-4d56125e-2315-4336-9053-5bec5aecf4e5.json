@@ -1,0 +1,47 @@
+{
+  "id": "kanbus-4d56125e-2315-4336-9053-5bec5aecf4e5",
+  "title": "Review expense credit and billing policy before any financial effect",
+  "description": "As an account owner, I want expenses credits and billing to follow approved rules.\n\nFeature: Review expense credit and billing policy before any financial effect\n  Scenario: Observable acceptance\n    Given expense credit and billing requirements have not been accepted\n    When a financial MVP is proposed\n    Then currency pricing metering reconciliation credit behavior and approval ownership are specified before any charge or financial claim\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.",
+  "type": "story",
+  "status": "backlog",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "42b181d3-8931-4c90-afc9-be3c38d81547",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.823668Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.777333Z",
+  "updated_at": "2026-10-16T20:46:53.823692Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}
