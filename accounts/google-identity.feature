@@ -41,6 +41,13 @@ Feature: Verified Google identities across independently branded pools
     And an unknown alias returns null
     And a changed federation policy requires fresh enrollment
 
+  Scenario: Production composition returns whole Unix seconds for a challenge
+    Given the production composition uses a wall clock with fractional seconds
+    When the enrolled product requests a login challenge
+    Then issuedAt and expiresAt are whole Unix seconds
+    And expiry is in the future and no more than 300 seconds from the current time
+    And matching fresh signed login evidence still resolves that challenge
+
   Scenario: Recoverable canonical files never authorize a partial enrollment
     Given enrollment writes ordinary canonical files through Virtuus conditional journals
     When a worker crashes before or after any publication phase

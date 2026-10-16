@@ -46,6 +46,24 @@ test("paired execution survives canonical restart without changing original prov
  assert.equal(before!.alias.sessions[0].binding.principal,x.products[0].roleArn);
  assert.ok(!before!.alias.provenance.some(binding=>binding.principal===worker));
 });
+test("production composition fractional wall clock emits integer challenge expiry",async t=>{
+ const x=await fixture(),now=x.f.now+0.625;
+ t.mock.method(Date,"now",()=>now*1000);
+ // Omit the fixture clock: exercise the production factory's actual default,
+ // which passes fractional seconds into the identity handler.
+ const production=canonicalAccountsHandler(x.identities,x.accounts,x.products,x.f.keys);
+ const issued=await x.run(x.f.event(0,"/v1/identities/google/challenge"),production);
+ assert.equal(issued.status,200);const challenge=issued.body;
+ assert.ok(Number.isSafeInteger(challenge.expiresAt));
+ assert.equal(challenge.expiresAt,Math.floor(now)+300);
+ assert.ok(now<challenge.expiresAt && challenge.expiresAt<=now+300);
+ const stored=(await x.identities.get(`logins/${challenge.challengeId}.json`))!;
+ assert.equal(stored.value.challenge.issuedAt,Math.floor(now));
+ assert.equal(stored.value.challenge.expiresAt,challenge.expiresAt);
+ const proof=x.f.pair(0,challenge.nonce);
+ const resolved=await x.run(x.f.event(0,"/v1/identities/google/resolve",{challengeId:challenge.challengeId},proof),production);
+ assert.equal(resolved.status,200);assert.equal(resolved.body.person.id,x.person.id);
+});
 test("worker route/method/operation negative matrix denies before canonical writes",async t=>{
  const x=await fixture(),before=await x.accounts.get(`accounts/${x.id}.json`);let writes=0;
  const observe=(files:IdentityFiles):IdentityFiles=>({get:path=>files.get(path),list:prefix=>files.list(prefix),commit:async(...args)=>{writes++;return files.commit(...args);}});

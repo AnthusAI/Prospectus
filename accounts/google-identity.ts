@@ -67,7 +67,10 @@ export function googleIdentityHandler(repository: GoogleIdentityRepository, prod
       }
       if(event.path === "/v1/identities/google/challenge" && event.httpMethod === "POST") {
         if(Object.keys(body).length) fail(400,"fields","No authority fields are accepted.");
-        const challenge: LoginChallenge={challengeId:randomUUID(),nonce:randomBytes(32).toString("base64url"),issuedAt:now,expiresAt:now+GOOGLE_CHALLENGE_SECONDS,binding:scope};
+        // Public challenge timestamps are integer Unix seconds even when the
+        // production composition supplies a subsecond freshness clock.
+        const issuedAt=Math.floor(now);
+        const challenge: LoginChallenge={challengeId:randomUUID(),nonce:randomBytes(32).toString("base64url"),issuedAt,expiresAt:issuedAt+GOOGLE_CHALLENGE_SECONDS,binding:scope};
         await repository.issue(challenge);
         return response(200,{challengeId:challenge.challengeId,nonce:challenge.nonce,expiresAt:challenge.expiresAt});
       }
