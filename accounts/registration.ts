@@ -4,7 +4,7 @@ const rolePattern=/^arn:aws:iam::(\d{12}):role\/(?:[A-Za-z0-9+=,.@_-]+\/)*([A-Za
 const reviewPattern=/^[A-Za-z0-9._:-]{1,128}$/;
 /** Invalid/ambiguous deployment registries never become a permissive runtime. */
 export function registrations(value: unknown): ProductRegistration[] {
-  if(!Array.isArray(value) || value.length === 0 || value.length > 20) throw new Error("Exact product runtime registrations are required.");
+  if(!Array.isArray(value) || value.length === 0 || value.length > 100) throw new Error("Exact product runtime registrations are required.");
   const products=new Set<string>(),roles=new Set<string>();
   for(const item of value) {
     if(!item || Object.keys(item).some(key=>!["product","roleArn","issuer","clientIds","capabilities","enabled","googleFederation","accountDirectory","executionDelegation"].includes(key)) || !/^[a-z][a-z0-9-]{0,39}$/.test(item.product) || typeof item.roleArn!=="string" || !rolePattern.test(item.roleArn)

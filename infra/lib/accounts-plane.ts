@@ -6,7 +6,9 @@ import * as gateway from "aws-cdk-lib/aws-apigateway";
 import type * as cognito from "aws-cdk-lib/aws-cognito";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import {Construct} from "constructs";
-export interface AccountsPlaneOptions {code:lambda.Code;bffCode:lambda.Code;googlePolicyReviewId:string;consoleClientEnabled?:boolean;consolePairEnabled?:boolean;consoleClient?:cognito.IUserPoolClient;consoleFederationReviewId?:string;consolePairReviewId?:string}
+import type {ProductRegistration} from "../../accounts/auth";
+import {papyrusSiteRoutes} from "../../accounts/papyrus-sites";
+export interface AccountsPlaneOptions {code:lambda.Code;bffCode:lambda.Code;googlePolicyReviewId:string;consoleClientEnabled?:boolean;consolePairEnabled?:boolean;consoleClient?:cognito.IUserPoolClient;consoleFederationReviewId?:string;consolePairReviewId?:string;papyrusSites?:readonly ProductRegistration[]}
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
  readonly bff:lambda.Function;readonly endpoint:string;
@@ -42,7 +44,13 @@ export class AccountsPlane extends Construct {
    // Resource policy changes must publish to the existing API stage as well.
    api.latestDeployment?.addToLogicalId({consolePairReviewId:options.consolePairReviewId,consoleBff,consoleWorker});
   }
-  api.addToResourcePolicy(new iam.PolicyStatement({effect:iam.Effect.DENY,principals:[new iam.AnyPrincipal()],actions:["execute-api:Invoke"],resources:["execute-api:/*"],conditions:{ArnNotEquals:{"aws:PrincipalArn":options.consolePairEnabled?[bffRole.roleArn,consoleBff,consoleWorker]:bffRole.roleArn}}}));
+  const papyrusSiteRoles=(options.papyrusSites??[]).map(site=>site.roleArn);
+  if(papyrusSiteRoles.length) {
+   api.addToResourcePolicy(new iam.PolicyStatement({principals:papyrusSiteRoles.map(role=>new iam.ArnPrincipal(role)),actions:["execute-api:Invoke"],resources:papyrusSiteRoutes.map(route=>`execute-api:/api/${route}`)}));
+   api.latestDeployment?.addToLogicalId({papyrusSiteRoles});
+  }
+  const permittedPrincipals=[bffRole.roleArn,...(options.consolePairEnabled?[consoleBff,consoleWorker]:[]),...papyrusSiteRoles];
+  api.addToResourcePolicy(new iam.PolicyStatement({effect:iam.Effect.DENY,principals:[new iam.AnyPrincipal()],actions:["execute-api:Invoke"],resources:["execute-api:/*"],conditions:{ArnNotEquals:{"aws:PrincipalArn":permittedPrincipals.length>1?permittedPrincipals:bffRole.roleArn}}}));
   this.bff=new lambda.Function(this,"Bff",{functionName:"prospectus-accounts-directory-bff",runtime:lambda.Runtime.NODEJS_24_X,architecture:lambda.Architecture.X86_64,handler:"index.handler",code:options.bffCode,role:bffRole,logGroup:bffLogs,memorySize:256,timeout:cdk.Duration.seconds(29),environment:{PROSPECTUS_CENTRAL_ENDPOINT:api.url,PROSPECTUS_DIRECTORY_REGISTRATION:keys.toJsonString(registration)}});
   this.endpoint=api.url;
  }
