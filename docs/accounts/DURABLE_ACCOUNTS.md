@@ -1,6 +1,6 @@
 # Durable account and membership slice — local contract
 
-Central identity already has recoverable canonical files. The previous account proof uses MemoryAccountStore (and an older disabled transactional DynamoDB prototype); neither is production membership authority. This slice persists account authorization locally through pinned Virtuus without simulating an atomic multi-file transaction.
+Central identity already has recoverable canonical files. The earlier memory-backed account proof and an older disabled transactional DynamoDB prototype were not production membership authority; the memory service has been removed. This slice persists account authorization locally through pinned Virtuus without simulating an atomic multi-file transaction.
 
 ## Behavior specifications written before implementation
 
@@ -42,7 +42,7 @@ Verified:16 durable account tests and29 durable identity tests passed together (
 
 ## Console integration handoff through parent
 
-The synthetic JSON-lines harness keeps existing memory fixture semantics unchanged. To opt into durable identity **and accounts**, configure:
+The synthetic JSON-lines harness serves identity only unless durable accounts are enabled. To opt into durable identity **and accounts**, configure:
 
 ```json
 {
@@ -55,9 +55,9 @@ The synthetic JSON-lines harness keeps existing memory fixture semantics unchang
 }
 ```
 
-The strings for products/keys above are explanatory placeholders, not executable fixture values; supply the same actual arrays/mappings used by the existing console proof. Do **not** set `accountsFixture:true` in this mode; mixed modes are rejected. Tokens remain synthetic, only public RSA keys enter configuration, and the harness opens no HTTP listener or AWS credential chain.
+The strings for products/keys above are explanatory placeholders, not executable fixture values; supply the same actual arrays/mappings used by the existing console proof. Tokens remain synthetic, only public RSA keys enter configuration, and the harness opens no HTTP listener or AWS credential chain.
 
-The earlier console proof at7a8abe2 uses MemoryAccountStore and deliberately expects accounts to disappear on restart; it remains valid for that fixture. On 2026-10-15 the console owner independently reported PASS for `--filesystem --durable-accounts` against central commit `bf655d5e4ac6c3775fdecbc9aa07bb79af9072f5`. Its configuration sends `durableAccounts:true` without `accountsFixture`.
+The earlier console proof at7a8abe2 used a memory account store, since removed. On 2026-10-15 the console owner independently reported PASS for `--filesystem --durable-accounts` against central commit `bf655d5e4ac6c3775fdecbc9aa07bb79af9072f5`. Its configuration sends `durableAccounts:true`.
 
 The actual Python BFF -> canonicalAccountsHandler -> Virtuus identity/accounts chain retains account lists, names, roles, entitlements, selected account and GraphQL authorization across central restart. Two Persons with the same email but different Google subjects remain separate. Two Cyclotron accounts prove many-to-many owner/viewer/member behavior: viewer writes denied; member writes reach only the selected store; nonmembers and random accounts denied. Revocation removes selected access and remains effective after a second central restart. Product1 still cannot access product0 accounts. Exact account-create retry across restart keeps the ID; changed input is refused; identical membership update leaves the revision unchanged. Existing JWT/proof/session-family checks remain.
 

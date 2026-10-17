@@ -1,4 +1,6 @@
-import { context, type ProductRegistration, type KeyResolver, type RestEvent } from "./auth";
+import { context, type KeyResolver, type RestEvent } from "./auth";
+import type { ValidatedRegistrations } from "./registration";
+import { jsonResponse } from "./request";
 import { AccountsError, fail, roleOperations } from "./model";
 import { DurableAccountsService, type AccountDocument } from "./durable-accounts";
 import type { IdentityFiles } from "./identity-files";
@@ -15,7 +17,7 @@ import type {
 export function accountDirectoryHandler(
   service: DurableAccountsService,
   files: IdentityFiles,
-  products: readonly ProductRegistration[],
+  products: ValidatedRegistrations,
   keys: KeyResolver,
   clock = () => Date.now() / 1000,
   grants: readonly OperatorGrant[] = [],
@@ -33,15 +35,6 @@ export function accountDirectoryHandler(
     };
   };
   return async (event: RestEvent) => {
-    const response = (statusCode: number, value: unknown) => ({
-      statusCode,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-      body: JSON.stringify(value),
-    });
     try {
       const authenticated = await context(event, products, keys, clock());
       if (
@@ -66,7 +59,7 @@ export function accountDirectoryHandler(
           error.code === "identity_enrollment_required" &&
           event.path === "/v1/account-directory"
         )
-          return response(200, { person: null, accounts: [] });
+          return jsonResponse(200, { person: null, accounts: [] });
         throw error;
       }
       const operatorAccess = canReadOperatorDirectory(authenticated, grants);
@@ -95,7 +88,7 @@ export function accountDirectoryHandler(
             if (!stored) fail(503, "account_inconsistent", "Account unavailable during discovery.");
             accounts.push(operatorSummary(stored.value));
           }
-          return response(200, {
+          return jsonResponse(200, {
             person,
             accounts: accounts.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
           });
@@ -109,7 +102,7 @@ export function accountDirectoryHandler(
           entitlements: structuredClone(Object.values(stored.value.entitlements)),
           memberships: structuredClone(Object.values(stored.value.memberships)),
         };
-        return response(200, { account });
+        return jsonResponse(200, { account });
       }
       if (event.path === "/v1/account-directory") {
         const paths = await files.list("accounts/");
@@ -123,7 +116,7 @@ export function accountDirectoryHandler(
           const account = summary(stored.value, person.id);
           if (account) accounts.push(account);
         }
-        return response(200, {
+        return jsonResponse(200, {
           person,
           operatorAccess,
           accounts: accounts.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
@@ -149,11 +142,11 @@ export function accountDirectoryHandler(
         ),
         membershipsVisible,
       };
-      return response(200, { account: detail });
+      return jsonResponse(200, { account: detail });
     } catch (error) {
       if (error instanceof AccountsError)
-        return response(error.status, { error: error.code, message: error.message });
-      return response(503, {
+        return jsonResponse(error.status, { error: error.code, message: error.message });
+      return jsonResponse(503, {
         error: "accounts_unavailable",
         message: "Accounts are unavailable. Try again.",
       });
