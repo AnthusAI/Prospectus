@@ -1,7 +1,7 @@
 {
   "id": "kanbus-f1ffd74d-e2b4-44bb-b24e-d57f41f28796",
   "title": "Format the TypeScript sources with Prettier and check formatting in CI",
-  "description": "The repository has no formatter or linter for TypeScript. `accounts/` uses one-space indentation, several statements per line and 900-character boolean chains; `src/` and `server/` use two-space indentation. Reviews cannot read the accounts code line by line.\n\nScope:\n- Add a Prettier configuration (`printWidth` 110) and format every `.ts`, `.tsx`, `.mjs`, `.js` source. No behavior change.\n- Add `npm run lint` (Prettier check) and `npm run format`, and run lint in CI before typecheck.\n- Every later review fix branches from this change so its diff shows only its own edits.\n\nAcceptance: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` and `npm run check --prefix infra` pass on the formatted tree. PR #18 should merge before this lands, then the formatting is re-run on the merged `main`.",
+  "description": "The repository has no formatter or linter for TypeScript. `accounts/` uses one-space indentation, several statements per line and 900-character boolean chains; `src/` and `server/` use two-space indentation. Reviews cannot read the accounts code line by line.\n\nScope:\n- Add a Prettier configuration (`printWidth` 110) and format every `.ts`, `.tsx`, `.mjs`, `.js` source. No behavior change.\n- Add `npm run lint` (Prettier check) and `npm run format`, and run lint in CI before typecheck.\n- Every later review fix branches from this change so its diff shows only its own edits.\n\nAcceptance: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` and `npm run check --prefix infra` pass on the formatted tree. PR #18 should merge before this lands, then the formatting is re-run on the merged `main`.\n\nStatus 2026-10-17: draft PR #20 (https://github.com/AnthusAI/Prospectus/pull/20) carries the formatting commit on branch `claude/project-thread-3r1x8t`. Remaining: merge PR #18, rerun `npm run format` on the merged main, push, mark ready, merge.",
   "type": "chore",
   "status": "in_progress",
   "priority": 1,
@@ -12,7 +12,7 @@
   "dependencies": [],
   "comments": [],
   "created_at": "2026-10-17T14:49:25.048209160Z",
-  "updated_at": "2026-10-17T14:50:12.270412974Z",
+  "updated_at": "2026-10-17T16:34:44.374342386Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
