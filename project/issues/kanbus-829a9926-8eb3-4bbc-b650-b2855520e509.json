@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-829a9926-8eb3-4bbc-b650-b2855520e509",
+  "title": "Consolidate documentation into README, ARCHITECTURE, SECURITY and OPERATIONS",
+  "description": "About 20 Markdown files describe the project, many as historical proof narratives. Several are stale: ACCOUNTS_UI.md and GOOGLE_IDENTITY.md say Accounts activation remains disabled while `deployment.json` has `enabled: true`; TRACKING.md references another board's issue IDs; DURABLE_ACCOUNTS.md names a nonexistent script; many files have stripped spaces around numbers and hashes.\n\nScope: consolidate into `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` and `docs/OPERATIONS.md` with facts taken from the code; keep `.feature` files and `docs/accounts/PAPYRUS_SITES.md`; move proof history into one dated appendix; delete the superseded files after fixing every link to them.\n\nAcceptance: no dangling links; every claim checkable against the code; the account model decision (one account, per-product entitlements, operators grant products) is written down.",
+  "type": "chore",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-f1ffd74d-e2b4-44bb-b24e-d57f41f28796",
+      "type": "blocked-by"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-17T14:50:13.450015639Z",
+  "updated_at": "2026-10-17T16:32:37.087732692Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

@@ -1,0 +1,33 @@
+{
+  "id": "kanbus-dc58ab26-95bb-464b-88ed-b9a3d5b3ab6e",
+  "title": "Replace validation chains with named predicates and rename single-letter identifiers",
+  "description": "After formatting, the accounts code still has validation written as single `if` statements with 15 to 30 conditions joined by `||`, all failing with one message (`durable-accounts.ts` `validate()`, `registration.ts`, `papyrus-sites.ts`, `operator-policy.ts`, the session-binding check in `google-identity.ts`). Identifiers such as `x`, `f`, `keys` (a CDK Stack) and Rust parameters `s`, `p`, `b`, `t`, `c`, `o` hide meaning, and comments explain what a name should.\n\nScope: each validation chain becomes named predicate functions with distinct failure messages; single-letter and abbreviated identifiers get descriptive names in TypeScript and in the Rust bridge; comments that explain a line are removed, comments that state a design rule stay. Tests become one assertion per line. No behavior change beyond more specific error messages.\n\nThis is the second wave: it touches the same files as the dead-code, bridge and read-amplification fixes and waits for them.",
+  "type": "chore",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-70e9e5b6-5ca1-44ab-a7e8-96f7d930963f",
+      "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-62b03ea3-97f9-42de-8ea8-900ae4bc6fb9",
+      "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-2c3ea821-6d1a-4e40-838c-fd3b50d52f3e",
+      "type": "blocked-by"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-17T14:50:13.690480536Z",
+  "updated_at": "2026-10-17T14:50:15.021943241Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
