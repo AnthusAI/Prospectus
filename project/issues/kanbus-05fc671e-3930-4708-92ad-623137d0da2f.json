@@ -1,0 +1,47 @@
+{
+  "id": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
+  "title": "Define quota expense credit and billing MVP boundaries",
+  "description": "Design/discovery only. Existing DURABLE_ACCOUNTS.md documents 256-account scan, 100 membership entries, 128 retained audit entries, 64KiB documents, no strict cross-account quota and no audit rollover. README and setup status explicitly exclude billing. The supplied user scope requires quota/expense/credit/billing reconciliation, but no completed financial implementation or approved commercial rules were found. Capture decisions before implementation; no charges or paid calls.\n\n## Current next-step plan — 2026-10-17\n\nPriority later/design: quota expense credit and billing policy work remains independent of basic Google login, account selection, permissions and Lab access. Existing capacity safety still fails explicitly; a missing commercial billing/credit design must not block account acceptancekanbus-6cf11d42. Recommendations requiring direction include pricing/meters, expense attribution/reconciliation, credit rules, and financial approval ownership. No implemented billing, charges or credits are claimed.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
+  "type": "epic",
+  "status": "open",
+  "priority": 3,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "50c7bd98-ed59-4159-a5fa-166c4b48f6d8",
+      "author": "home",
+      "text": "2026-10-17 next-step plan recorded in the description. Priority later/design: quota expense credit and billing policy work remains independent of basic Google login, account selection, permissions and Lab access. Existing capacity safety still fails explicitly; a missing commercial billing/credit design must not block account acceptancekanbus-6cf11d42. Recommendations requiring direction include pricing/meters, expense attribution/reconciliation, credit rules, and financial approval ownership. No implemented billing, charges or credits are claimed.",
+      "created_at": "2026-10-17T06:22:48.085840Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "next-step-plan-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.696975Z",
+  "updated_at": "2026-10-17T06:22:48.085862Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

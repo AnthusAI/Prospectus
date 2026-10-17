@@ -1,0 +1,62 @@
+{
+  "id": "kanbus-6cf11d42-3f7d-432c-9368-f8b0e5bd3ab7",
+  "title": "Prove hosted CRM and lab account integration end to end",
+  "description": "As an operator, I want acceptance evidence separated from source completion.\n\nFeature: Prove hosted CRM and lab account integration end to end\n  Scenario: Observable acceptance\n    Given the shipped central service and authorized lab runtime roles\n    When the reviewed hosted flow is accepted\n    Then account selection permission denial persistence conflict and customer-success handoff are demonstrated while unapproved intake and onboarding remain disabled\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan — 2026-10-17\n\nPriority 2 in parallel with priming: prove Google login, account selection and fresh account-scoped permissions in Cyclotron Lab using central Prospectus, then invitations and basic contact/demo inquiry. Billing/credits design is not a dependency of the basic account path.\n\nFeature: Hosted central account access in Cyclotron Lab\n  Scenario: Login select and reload\n    Given an approved Google identity and account/product membership\n    When the user signs in to Cyclotron Lab, selects an account and reloads\n    Then the selected authorized account and its permitted lab data remain available through the central service\n  Scenario: Denied and revoked access\n    Given an unenrolled user, wrong account/product or revoked membership\n    When the user opens or reloads the lab or submits a pending operation\n    Then the request is denied without account creation grant inference or cross-account data\n    And stale selection/cache does not retain access\n\nUse centralprospectus.anth.us in papyrus-production; lab.cyclotron.anth.us consumes it through reviewed roles/temporary credentials. Account administration, membership, product permission and CRM staff access remain distinct. Shipped account-selection source is not reopened; remaining hosted denial/revocation/reload acceptance is recorded here. Dependencies: PapyrusPPY-58f107; Cyclotron shared account/runtime adapter. Existing runtime/permission owners preserve exact approval scope; no new long-lived keys or persistent grants follow from this plan.\n\nDo not close solely on source CI: retain browser/API evidence of login, account selection, reload, wrong-scope denial and post-revocation denial. Test shared central account policy and both trusted Lab runtime paths without granting access through generic admin roles.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
+  "type": "story",
+  "status": "in_progress",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "5adb8f86-6dbb-4223-a001-191e10930f89",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.949894Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "558df2d4-3e20-4f35-b61e-2bbd13e64952",
+      "author": "home",
+      "text": "2026-10-17 next-step plan recorded in the description. Priority 2 in parallel with priming: prove Google login, account selection and fresh account-scoped permissions in Cyclotron Lab using central Prospectus, then invitations and basic contact/demo inquiry. Billing/credits design is not a dependency of the basic account path.\n\nFeature: Hosted central account access in Cyclotron Lab\n  Scenario: Login select and reload\n    Given an approved Google identity and account/product membership\n    When the user signs in to Cyclotron Lab, selects an account and reloads\n    Then the selected authorized account and its permitted lab data remain available through the central service\n  Scenario: Denied and revoked access\n    Given an unenrolled user, wrong account/product or revoked membership\n    When the user opens or reloads the lab or submits a pending operation\n    Then the request is denied without account creation grant inference or cross-account data\n    And stale selection/cache does not retain access\n\nUse centralprospectus.anth.us in papyrus-production; lab.cyclotron.anth.us consumes it through reviewed roles/temporary credentials. Account administration, membership, product permission and CRM staff access remain distinct. Shipped account-selection source is not reopened; remaining hosted denial/revocation/reload acceptance is recorded here. Dependencies: PapyrusPPY-58f107; Cyclotron shared account/runtime adapter. Existing runtime/permission owners preserve exact approval scope; no new long-lived keys or persistent grants follow from this plan.\n\nDo not close solely on source CI: retain browser/API evidence of login, account selection, reload, wrong-scope denial and post-revocation denial. Test shared central account policy and both trusted Lab runtime paths without granting access through generic admin roles.",
+      "created_at": "2026-10-17T06:22:40.228117Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "next-step-plan-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.921241Z",
+  "updated_at": "2026-10-17T06:22:40.228142Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

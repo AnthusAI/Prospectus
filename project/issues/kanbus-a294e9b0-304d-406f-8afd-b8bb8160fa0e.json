@@ -1,0 +1,62 @@
+{
+  "id": "kanbus-a294e9b0-304d-406f-8afd-b8bb8160fa0e",
+  "title": "Distinguish a demo request from confirmed appointment booking",
+  "description": "As a prospect, I want an honest demo follow-up state.\n\nFeature: Distinguish a demo request from confirmed appointment booking\n  Scenario: Observable acceptance\n    Given a submitted demo inquiry\n    When I view its result\n    Then it is described as a follow-up request unless an approved scheduling flow actually confirms an appointment\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan — 2026-10-17\n\nVerified https://github.com/AnthusAI/Prospectus/pull/13 OPEN, non-draft, head86d2471e407f7948c71041f08ec704a25df03bec; application check SUCCESS. It changes src/IntakeForm.tsx plus Gherkin and browser coverage so the receipt explicitly says a follow-up request is not a booked appointment and no meeting is scheduled. The linked story lives in still-open documentation PR12.\n\nFeature: Inquiry is not an appointment\n  Scenario: Saved demo inquiry\n    Given a demo inquiry accepted within approved intake scope\n    When its receipt is shown\n    Then it says this is a follow-up request and no appointment is booked\n\nKeep source work in PR13 with its owner. Remaining acceptance: reviewed merge and owner-scoped hosted receipt verification; no close or production claim while PR13 remains unmerged. Actual appointment booking is a separate recommendation requiring scheduling/delivery/conflict rules and direction. Do not invent a booking implementation.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
+  "type": "story",
+  "status": "in_progress",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-ae9b7ee0-79ab-4f30-9eaf-87b5f4f6f9df",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "5b910bd4-3770-42cd-91ab-940ab2588d99",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.594708Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "ab4bae55-b857-4e42-863b-f6aacffb6f3b",
+      "author": "home",
+      "text": "2026-10-17 next-step plan recorded in the description. Verified https://github.com/AnthusAI/Prospectus/pull/13 OPEN, non-draft, head86d2471e407f7948c71041f08ec704a25df03bec; application check SUCCESS. It changes src/IntakeForm.tsx plus Gherkin and browser coverage so the receipt explicitly says a follow-up request is not a booked appointment and no meeting is scheduled. The linked story lives in still-open documentation PR12.\n\nFeature: Inquiry is not an appointment\n  Scenario: Saved demo inquiry\n    Given a demo inquiry accepted within approved intake scope\n    When its receipt is shown\n    Then it says this is a follow-up request and no appointment is booked\n\nKeep source work in PR13 with its owner. Remaining acceptance: reviewed merge and owner-scoped hosted receipt verification; no close or production claim while PR13 remains unmerged. Actual appointment booking is a separate recommendation requiring scheduling/delivery/conflict rules and direction. Do not invent a booking implementation.",
+      "created_at": "2026-10-17T06:22:48.040467Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "next-step-plan-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.548108Z",
+  "updated_at": "2026-10-17T06:22:48.040488Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}

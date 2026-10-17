@@ -1,0 +1,62 @@
+{
+  "id": "kanbus-d5f5f570-511d-498e-a3e1-1ae5eaff560a",
+  "title": "Review unwanted account closure while preserving all data",
+  "description": "As an account owner, I want a reviewable closure design.\n\nFeature: Review unwanted account closure while preserving all data\n  Scenario: Observable acceptance\n    Given an unwanted account and existing canonical data\n    When closure is proposed\n    Then the design awaits explicit user approval and preserves data without deleting or revoking anything during design\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan — 2026-10-17\n\nAccount closure remains design-only. Preserve all canonical account membership data and audit history; propose a reviewable reversible closure/deactivation model and data/access consequences, then await separate explicit approval. No deletion, automatic revocation, closure execution or implied approval follows from the account/onboarding plan. Not a prerequisite for basic account acceptance.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
+  "type": "story",
+  "status": "backlog",
+  "priority": 3,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "e45c4b88-42b6-4795-8857-68eeb6b5b27c",
+      "author": "home",
+      "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
+      "created_at": "2026-10-16T20:46:53.895672Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "unfinished-work-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "d3772e41-bbe3-4580-9ab3-21a1425e0f2c",
+      "author": "home",
+      "text": "2026-10-17 next-step plan recorded in the description. Account closure remains design-only. Preserve all canonical account membership data and audit history; propose a reviewable reversible closure/deactivation model and data/access consequences, then await separate explicit approval. No deletion, automatic revocation, closure execution or implied approval follows from the account/onboarding plan. Not a prerequisite for basic account acceptance.",
+      "created_at": "2026-10-17T06:22:48.175237Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "next-step-plan-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
+  "created_at": "2026-10-16T20:46:53.851328Z",
+  "updated_at": "2026-10-17T06:22:48.175267Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "codex",
+    "model": "gpt-6.1-sol",
+    "name": "unfinished-work-reconciliation",
+    "settings": {
+      "reasoning_effort": "medium"
+    }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}
