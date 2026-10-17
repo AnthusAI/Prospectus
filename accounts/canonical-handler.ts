@@ -1,5 +1,6 @@
 import type { IdentityFiles } from "./identity-files";
-import type { KeyResolver, ProductRegistration, RestEvent } from "./auth";
+import type { KeyResolver, RestEvent } from "./auth";
+import type { ValidatedRegistrations } from "./registration";
 import { DurableGoogleIdentities } from "./durable-google-identities";
 import { DurableAccountsService } from "./durable-accounts";
 import { googlePersonDirectory } from "./person-directory";
@@ -13,7 +14,7 @@ import { accountHandler } from "./handler";
 export function canonicalAccountsHandler(
   identityFiles: IdentityFiles,
   accountFiles: IdentityFiles,
-  products: readonly ProductRegistration[],
+  products: ValidatedRegistrations,
   keys: KeyResolver,
   nowSeconds = () => Date.now() / 1000,
   grants: readonly OperatorGrant[] = [],
@@ -37,8 +38,7 @@ export function canonicalAccountsHandler(
   return (event: RestEvent) =>
     event.path.startsWith("/v1/account-directory")
       ? directoryHandler(event)
-      : event.path.startsWith("/v1/accounts") ||
-          ["/v1/identities/resolve", "/v1/identities/link"].includes(event.path)
+      : event.path.startsWith("/v1/accounts") || event.path === "/v1/identities/resolve"
         ? accounts(event)
         : identity(event);
 }

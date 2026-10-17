@@ -147,14 +147,14 @@ test("wrong caller, cross-product challenge, unreviewed policy and expired chall
   assert.equal((await f.resolve(1, c.challengeId, f.pair(1, c.nonce))).status, 403);
   const disabled = googleIdentityHandler(
     f.repository,
-    f.products.map((p) => ({ ...p, enabled: false })),
+    registrations(f.products.map((p) => ({ ...p, enabled: false }))),
     f.keys,
     () => f.now,
   );
   assert.equal((await disabled(f.event(0, "/v1/identities/google/challenge"))).statusCode, 403);
   const noPolicy = googleIdentityHandler(
     f.repository,
-    f.products.map((p) => ({ ...p, googleFederation: undefined })),
+    registrations(f.products.map((p) => ({ ...p, googleFederation: undefined }))),
     f.keys,
     () => f.now,
   );
@@ -185,10 +185,12 @@ test("me continues only an enrolled refresh family, unknown remains null and pol
   );
   const updated = googleIdentityHandler(
     f.repository,
-    f.products.map((p) => ({
-      ...p,
-      googleFederation: { ...p.googleFederation!, reviewedPolicyId: "new-review" },
-    })),
+    registrations(
+      f.products.map((p) => ({
+        ...p,
+        googleFederation: { ...p.googleFederation!, reviewedPolicyId: "new-review" },
+      })),
+    ),
     f.keys,
     () => f.now,
   );

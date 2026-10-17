@@ -4,10 +4,10 @@ import {
   fail,
   roleOperations,
   UUID_PATTERN,
+  type AccountAuthorization,
   type AccountSummary,
   type Context,
   type Entitlement,
-  type Human,
   type Membership,
   type Operation,
   type Person,
@@ -216,9 +216,6 @@ export class DurableAccountsService implements AccountsApi {
   async resolve(context: Context) {
     return this.person(context);
   }
-  async link(_context: Context, _proof: Human): Promise<Person> {
-    fail(409, "explicit_link_required", "Canonical linking requires separately verified reconciliation.");
-  }
   async list(context: Context): Promise<{ person: Person | null; accounts: AccountSummary[] }> {
     // Same current directory check as resolve; no automatic identity enrollment.
     let person: Person;
@@ -328,12 +325,12 @@ export class DurableAccountsService implements AccountsApi {
   async get(context: Context, id: string) {
     return (await this.allowed(context, id, "console:read")).summary;
   }
-  async authorize(context: Context, id: string, operation: Operation) {
+  async authorize(context: Context, id: string, operation: Operation): Promise<AccountAuthorization> {
     if (!roleOperations.owner.includes(operation))
       fail(400, "invalid_operation", "Unknown account operation.");
     const state = await this.allowed(context, id, operation);
     return {
-      allowed: true as const,
+      allowed: true,
       accountId: id,
       personId: state.person.id,
       product: context.product,

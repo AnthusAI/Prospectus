@@ -10,12 +10,17 @@ import {
   googleIdentityKey,
   type EnrollmentPhase,
 } from "./durable-google-identities";
-import { VirtuusIdentityFiles, IdentityFileError, type IdentityFiles } from "./identity-files";
+import {
+  VirtuusAccountFiles,
+  VirtuusIdentityFiles,
+  IdentityFileError,
+  type IdentityFiles,
+} from "./identity-files";
 import { googleIdentityHandler, type GoogleAssociation, type LoginChallenge } from "./google-identity";
 import { googleFixture } from "./testing/google-fixture";
-import { MemoryAccountStore } from "./testing/memory-account-store";
 import { googlePersonDirectory } from "./person-directory";
-import { AccountsService } from "./service";
+import { DurableAccountsService } from "./durable-accounts";
+import { registrations } from "./registration";
 import { context } from "./auth";
 import { accountHandler } from "./handler";
 
@@ -292,7 +297,9 @@ test("a crashed pre-publication execution claim stays fail-closed without unsafe
 test("account services consume the same committed Person, preserving roles revocation and last owner", async () => {
   const x = await fixture();
   const operations = ["console:read", "console:write", "members:read", "members:write"] as const;
-  const products = x.f.products.map((product) => ({ ...product, capabilities: [...operations] }));
+  const products = registrations(
+    x.f.products.map((product) => ({ ...product, capabilities: [...operations] })),
+  );
   const handler = googleIdentityHandler(x.repository(), products, x.f.keys, () => x.f.now);
   const enroll = async (index: number, google: string) => {
     const c = JSON.parse((await handler(x.f.event(index, "/v1/identities/google/challenge"))).body);
@@ -310,11 +317,11 @@ test("account services consume the same committed Person, preserving roles revoc
   const alice = await enroll(0, "google-alice"),
     sameAlice = await enroll(1, "google-alice");
   assert.equal(alice.person.id, sameAlice.person.id);
-  const store = new MemoryAccountStore();
-  const accounts = new AccountsService(store, undefined, googlePersonDirectory(x.repository(), products));
+  const accountFiles = new VirtuusAccountFiles(x.root);
+  const accounts = new DurableAccountsService(accountFiles, googlePersonDirectory(x.repository(), products));
   assert.deepEqual(await accounts.resolve(alice.context), alice.person);
   assert.deepEqual(await accounts.list(alice.context), { person: alice.person, accounts: [] });
-  assert.equal(store.count, 0);
+  assert.deepEqual(await accountFiles.list("accounts/"), []);
   const transport = accountHandler(accounts, products, x.f.keys, () => x.f.now);
   const createEvent = x.f.event(0, "/v1/accounts", { name: "Synthetic continuity" }, alice.pair);
   createEvent.headers!["idempotency-key"] = randomUUID();
@@ -367,42 +374,26 @@ test("account services consume the same committed Person, preserving roles revoc
     (error) => (error as any).code === "forbidden",
   );
 });
-test("pending canonical Person/alias and conflicting legacy Person cannot trigger account side effects", async () => {
+test("pending canonical Person/alias cannot trigger account side effects", async () => {
   const x = await fixture();
   await x.repository().issue(x.challenge);
   await worker(x.root, "associate", x.proof, { phase: "session", point: "after" });
-  const store = new MemoryAccountStore();
-  const accounts = new AccountsService(store, undefined, googlePersonDirectory(x.repository(), x.f.products));
+  const accountFiles = new VirtuusAccountFiles(x.root);
+  const accounts = new DurableAccountsService(
+    accountFiles,
+    googlePersonDirectory(x.repository(), x.f.products),
+  );
   const proof = x.f.pair(0, x.challenge.nonce);
   const ctx = await context(x.f.event(0, "/v1/accounts", {}, proof), x.f.products, x.f.keys, x.f.now);
   await assert.rejects(
     accounts.create(ctx, "Must not create", randomUUID()),
     (error) => (error as any).code === "identity_enrollment_required",
   );
-  assert.equal(store.count, 0);
+  assert.deepEqual(await accountFiles.list("accounts/"), []);
   const pending = (await x.files.get(`google/${googleIdentityKey(x.proof.googleSubject)}.json`))!.value
     .person;
   assert.equal(await x.repository().getPerson(pending.id), null);
   await x.repository().recover(x.challenge.challengeId);
-  await store.transact([
-    {
-      pk: `IDENTITY#${hash([ctx.human.issuer, ctx.human.subject])}`,
-      sk: "META",
-      version: null,
-      value: {
-        issuer: ctx.human.issuer,
-        subject: ctx.human.subject,
-        personId: randomUUID(),
-        createdAt: pending.createdAt,
-      },
-    },
-  ]);
-  const before = store.count;
-  await assert.rejects(
-    accounts.create(ctx, "Conflicting Person", randomUUID()),
-    (error) => (error as any).code === "person_conflict",
-  );
-  assert.equal(store.count, before);
 });
 test("a pending new pool alias cannot borrow another pool's committed Person access", async () => {
   const x = await fixture();
@@ -433,13 +424,16 @@ test("a pending new pool alias cannot borrow another pool's committed Person acc
   assert.equal(await x.repository().find(proof.binding.issuer, proof.cognitoSubject), null);
   const token = x.f.pair(1, c.nonce);
   const ctx = await context(x.f.event(1, "/v1/accounts", {}, token), x.f.products, x.f.keys, x.f.now);
-  const store = new MemoryAccountStore();
-  const accounts = new AccountsService(store, undefined, googlePersonDirectory(x.repository(), x.f.products));
+  const accountFiles = new VirtuusAccountFiles(x.root);
+  const accounts = new DurableAccountsService(
+    accountFiles,
+    googlePersonDirectory(x.repository(), x.f.products),
+  );
   await assert.rejects(
     accounts.create(ctx, "Pending second pool", randomUUID()),
     (error) => (error as any).code === "identity_enrollment_required",
   );
-  assert.equal(store.count, 0);
+  assert.deepEqual(await accountFiles.list("accounts/"), []);
   await x.repository().recover(c.challengeId);
   assert.equal((await accounts.resolve(ctx)).id, person.id);
 });
@@ -480,13 +474,16 @@ test("a conflicted new login family cannot use an older alias to cause account w
     { origin_jti: "conflicted-family" },
   );
   const ctx = await context(x.f.event(0, "/v1/accounts", {}, pair), x.f.products, x.f.keys, x.f.now);
-  const store = new MemoryAccountStore();
-  const service = new AccountsService(store, undefined, googlePersonDirectory(x.repository(), x.f.products));
+  const accountFiles = new VirtuusAccountFiles(x.root);
+  const service = new DurableAccountsService(
+    accountFiles,
+    googlePersonDirectory(x.repository(), x.f.products),
+  );
   await assert.rejects(
     service.create(ctx, "Must not write", randomUUID()),
     (error) => (error as any).code === "identity_enrollment_required",
   );
-  assert.equal(store.count, 0);
+  assert.deepEqual(await accountFiles.list("accounts/"), []);
 });
 test("independent conflicting Google sign-ins cannot overwrite one pool alias", async () => {
   const x = await fixture();

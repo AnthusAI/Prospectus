@@ -6,10 +6,6 @@ import { createInterface } from "node:readline";
 import type { JsonWebKey } from "node:crypto";
 import { googleIdentityHandler } from "../google-identity";
 import { canonicalAccountsHandler } from "../canonical-handler";
-import { AccountsService } from "../service";
-import { accountHandler } from "../handler";
-import { googlePersonDirectory } from "../person-directory";
-import { MemoryAccountStore } from "./memory-account-store";
 import { registrations } from "../registration";
 import { DurableGoogleIdentities } from "../durable-google-identities";
 import { VirtuusIdentityFiles, VirtuusAccountFiles } from "../identity-files";
@@ -55,8 +51,8 @@ for await (const line of lines) {
         return key;
       };
       const identities = googleIdentityHandler(repository, products, keys, () => now);
-      if (message.durableAccounts === true && (!message.filesystemRoot || message.accountsFixture === true))
-        throw new Error("Durable accounts require an isolated filesystem root, not memory accounts fixture");
+      if (message.durableAccounts === true && !message.filesystemRoot)
+        throw new Error("Durable accounts require an isolated filesystem root");
       if (message.durableAccounts === true) {
         handler = canonicalAccountsHandler(
           new VirtuusIdentityFiles(message.filesystemRoot),
@@ -65,12 +61,6 @@ for await (const line of lines) {
           keys,
           () => now,
         );
-      } else if (message.accountsFixture === true) {
-        const directory = googlePersonDirectory(repository, products),
-          clock = () => new Date(now * 1000).toISOString();
-        const service = new AccountsService(new MemoryAccountStore(), clock, directory);
-        const accounts = accountHandler(service, products, keys, () => now);
-        handler = (event) => (event.path.startsWith("/v1/accounts") ? accounts(event) : identities(event));
       } else handler = identities;
       process.stdout.write(JSON.stringify({ configured: true }) + "\n");
     } else if (message.op === "request" && handler) {
