@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-2eda9ddb-59d4-46d7-bd0d-50e13c97f5d8",
+  "title": "Accounts BFF: issue an identity challenge before Google sign-in so one login serves the CRM and Accounts",
+  "description": "Today POST /identity/challenge requires a Cognito access token, so the nonce can only be requested after the CRM login and the Accounts confirmation needs a second Google login with prompt=login. Add a BFF route that issues a challenge before sign-in (rate limited, bound to the browser by the stored login state) so signIn can always carry the nonce and the CRM login resolves the Accounts identity in the same redirect. The 300-second freshness requirement of the central resolve must stay. Follow-up to kanbus-d44d5a, which makes the first Accounts visit start the confirmation automatically.",
+  "type": "task",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-17T16:41:15.066034848Z",
+  "updated_at": "2026-10-17T16:41:15.066094086Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
