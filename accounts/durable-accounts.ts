@@ -77,7 +77,16 @@ export class DurableAccountsService implements AccountsApi {
         await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt));
       }
   }
-  async person(context: Context): Promise<Person> {
+  private personResolutionsByRequestContext = new WeakMap<Context, Promise<Person>>();
+  person(context: Context): Promise<Person> {
+    let resolution = this.personResolutionsByRequestContext.get(context);
+    if (!resolution) {
+      resolution = this.resolvePerson(context);
+      this.personResolutionsByRequestContext.set(context, resolution);
+    }
+    return resolution;
+  }
+  private async resolvePerson(context: Context): Promise<Person> {
     if (!context.product || !context.principal || !context.human?.issuer || !context.human.subject)
       fail(401, "unverified", "Verified caller and human required.");
     const person = await this.directory.resolve(context);
@@ -355,10 +364,14 @@ export class DurableAccountsService implements AccountsApi {
       !["active", "revoked"].includes(status)
     )
       fail(400, "invalid_membership", "Known Person and valid membership required.");
+    let targetPersonVerified = false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const state = await this.allowed(context, id, "members:write");
-      if (!(await this.directory.get(personId)))
-        fail(404, "unknown_person", "Committed canonical Person required; no invitation is sent.");
+      if (!targetPersonVerified) {
+        if (!(await this.directory.get(personId)))
+          fail(404, "unknown_person", "Committed canonical Person required; no invitation is sent.");
+        targetPersonVerified = true;
+      }
       const document = structuredClone(state.stored.value),
         prior = Object.hasOwn(document.memberships, personId) ? document.memberships[personId] : null;
       if (prior?.role === role && prior.status === status) return structuredClone(prior);
