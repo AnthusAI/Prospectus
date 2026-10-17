@@ -320,6 +320,42 @@ async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
     Err(StoreError::Invalid("AWS build required".into()))
 }
 #[cfg(feature = "aws")]
+const EXPECTED_BUCKET_OWNER_HEADER: &str = "x-amz-expected-bucket-owner";
+
+#[cfg(feature = "aws")]
+#[derive(Debug)]
+struct ExpectedBucketOwnerInterceptor {
+    owner: String,
+}
+
+#[cfg(feature = "aws")]
+impl ExpectedBucketOwnerInterceptor {
+    fn new(owner: String) -> Self {
+        Self { owner }
+    }
+}
+
+#[cfg(feature = "aws")]
+impl aws_sdk_s3::config::Intercept for ExpectedBucketOwnerInterceptor {
+    fn name(&self) -> &'static str {
+        "ExpectedBucketOwnerInterceptor"
+    }
+
+    fn modify_before_signing(
+        &self,
+        context: &mut aws_sdk_s3::config::interceptors::BeforeTransmitInterceptorContextMut<'_>,
+        _runtime_components: &aws_sdk_s3::config::RuntimeComponents,
+        _config_bag: &mut aws_sdk_s3::config::ConfigBag,
+    ) -> Result<(), aws_sdk_s3::error::BoxError> {
+        context
+            .request_mut()
+            .headers_mut()
+            .insert(EXPECTED_BUCKET_OWNER_HEADER, self.owner.clone());
+        Ok(())
+    }
+}
+
+#[cfg(feature = "aws")]
 async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
     use aws_sdk_s3::config::ProvideCredentials;
     let setting = |name: &str| {
@@ -371,17 +407,9 @@ async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
     let client = aws_sdk_s3::Client::from_conf(
         aws_sdk_s3::config::Builder::from(&config)
             .endpoint_url("https://s3.us-east-1.amazonaws.com")
+            .interceptor(ExpectedBucketOwnerInterceptor::new(owner))
             .build(),
     );
-    let started = Instant::now();
-    let check = client
-        .head_bucket()
-        .bucket(&bucket)
-        .expected_bucket_owner(owner)
-        .send()
-        .await;
-    timing("storage", "head_bucket", started, check.is_ok());
-    check.map_err(|_| StoreError::Unavailable("expected private bucket unavailable".into()))?;
     Ok((
         Arc::new(virtuus_store::aws::S3Store::new(client, bucket)),
         scope,

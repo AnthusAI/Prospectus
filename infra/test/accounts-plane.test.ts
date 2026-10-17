@@ -99,6 +99,20 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
   assert.ok(invokeText.includes("identities/google/resolve"));
   assert.ok(!invokeText.includes("/v1/accounts"));
   assert.ok(JSON.stringify(newResources).includes("prospectus-central/identities/*"));
+  const bucketListStatements = policies.filter((value) =>
+    (Array.isArray(value.Action) ? value.Action : [value.Action]).includes("s3:ListBucket"),
+  );
+  assert.equal(bucketListStatements.length, 1);
+  assert.deepEqual(bucketListStatements[0].Condition, {
+    StringLike: {
+      "s3:prefix": [
+        "prospectus-central/identities/*",
+        "prospectus-central/accounts/*",
+        "_virtuus/prospectus-central/identities/*",
+        "_virtuus/prospectus-central/accounts/*",
+      ],
+    },
+  });
   assert.equal(resources.filter((value) => value.Type === "AWS::Cognito::UserPoolClient").length, 1);
 });
 

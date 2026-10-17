@@ -52,6 +52,9 @@ class StdioIdentityFiles implements IdentityFiles {
         ...(timing ? { PROSPECTUS_IDENTITY_TIMINGS: "1" } : {}),
       };
   }
+  get isClosed() {
+    return this.closed;
+  }
   close() {
     this.closed = true;
     const pending = this.pending;
@@ -163,7 +166,6 @@ class StdioIdentityFiles implements IdentityFiles {
               ["storage", "initialize"].includes(value.phase) &&
               [
                 "configure",
-                "head_bucket",
                 "get",
                 "get_bounded",
                 "list",
