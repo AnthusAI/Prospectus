@@ -20,6 +20,9 @@ export function accountDirectoryHandler(service:DurableAccountsService,products:
    if(entitlementRoute && event.httpMethod==="POST") {
     const operator=await service.person(authenticated);
     if(!hasOperatorPermission(authenticated,grants,"accounts:admin:entitlements"))fail(403,"operator_forbidden","Explicit central entitlements permission is required.");
+    const contentType=Object.entries(event.headers??{}).find(([name])=>name.toLowerCase()==="content-type")?.[1];
+    if(event.isBase64Encoded || Buffer.byteLength(event.body??"")>12000)fail(400,"body","Unsupported entitlement payload.");
+    if(contentType?.split(";")[0]!=="application/json")fail(415,"json_required","JSON required.");
     let requested:unknown;try{requested=JSON.parse(event.body??"");}catch{fail(400,"invalid_entitlement","JSON body with status required.");}
     if(!requested || typeof requested!=="object" || Object.keys(requested).join(",")!=="status")fail(400,"invalid_entitlement","Body must contain only status.");
     const registeredProduct=products.find(product=>product.enabled && product.product===entitlementRoute[2]);if(!registeredProduct)fail(404,"unknown_product","Product is not registered.");

@@ -61,6 +61,10 @@ test("the operator entitlement route requires the reviewed entitlements permissi
   assert.equal((await post(operator,entitlementPath("cyclotron"),{status:"active"},x.ownerDirectory.proof)).statusCode,403,"account owners cannot grant products");
   assert.equal((await post(operator,entitlementPath("unregistered"),{status:"active"})).statusCode,404);
   assert.equal((await post(operator,entitlementPath("cyclotron"),{status:"active",capabilities:["members:write"]})).statusCode,400);
+  const withoutJsonContentType=x.f.event(0,entitlementPath("cyclotron"),{status:"active"},x.outsider.proof,"POST");withoutJsonContentType.headers!["content-type"]="text/plain";
+  assert.equal((await operator(withoutJsonContentType)).statusCode,415);
+  assert.equal((await operator({...x.f.event(0,entitlementPath("cyclotron"),{status:"active"},x.outsider.proof,"POST"),isBase64Encoded:true})).statusCode,400);
+  assert.equal((await post(operator,entitlementPath("cyclotron"),{status:"active",padding:"x".repeat(12001)})).statusCode,400);
   const granted=await post(operator,entitlementPath("cyclotron"),{status:"active"});
   assert.equal(granted.statusCode,200);assert.deepEqual(JSON.parse(granted.body).entitlement,{accountId:x.account.id,product:"cyclotron",status:"active",capabilities:["console:read","console:write"]});
   const memberProducts=async()=>JSON.parse((await operator(x.f.event(0,"/v1/account-directory",{},x.memberDirectory.proof,"GET"))).body).accounts[0].products;
