@@ -1,12 +1,27 @@
 import React from "react";
-import {createRoot} from "react-dom/client";
-import {AccountsView} from "../../src/AccountsView";
-import {accountsBrowser} from "../../src/accounts-client";
+import { createRoot } from "react-dom/client";
+import { AccountsView } from "../../src/AccountsView";
+import { accountsBrowser } from "../../src/accounts-client";
 import "@kanbus/ui/styles/index.css";
 import "@kanbus/ui/styles/kanban.css";
 import "@kanbus/ui/styles/organizer.css";
 import "../../src/fonts.css";
 import "../../src/styles.css";
-const mode=new URLSearchParams(location.search).get("mode");
-const client=accountsBrowser(mode==="unconfigured"?undefined:"/directory-fixture",fetch,()=>new URLSearchParams(location.search).get("person")??"synthetic");
-createRoot(document.getElementById("root")!).render(<div className="application kb-theme-organizer"><AccountsView client={client} onConnect={async()=>{await fetch("/connect-fixture").then(response=>{if(!response.ok)throw new Error("Synthetic connection failure");});}}/></div>);
+const mode = new URLSearchParams(location.search).get("mode");
+const client = accountsBrowser(
+  mode === "unconfigured" ? undefined : "/directory-fixture",
+  fetch,
+  () => new URLSearchParams(location.search).get("person") ?? "synthetic",
+);
+createRoot(document.getElementById("root")!).render(
+  <div className="application kb-theme-organizer">
+    <AccountsView
+      client={client}
+      onConnect={async () => {
+        await fetch("/connect-fixture").then((response) => {
+          if (!response.ok) throw new Error("Synthetic connection failure");
+        });
+      }}
+    />
+  </div>,
+);

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.build/
+.artifacts/
+local-data/
+project/
+package-lock.json
+**/package-lock.json
+amplify_outputs.json
+public/
+local-dependencies/

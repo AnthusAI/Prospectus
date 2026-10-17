@@ -31,7 +31,8 @@ export const REAL_CONTACT_POLICY: IntakeContactPolicy = {
 };
 
 export function intakeContactPolicyForMode(mode: string | undefined): IntakeContactPolicy {
-  if (mode === undefined || mode === "" || mode === SYNTHETIC_CONTACT_POLICY.mode) return SYNTHETIC_CONTACT_POLICY;
+  if (mode === undefined || mode === "" || mode === SYNTHETIC_CONTACT_POLICY.mode)
+    return SYNTHETIC_CONTACT_POLICY;
   if (mode === REAL_CONTACT_POLICY.mode) return REAL_CONTACT_POLICY;
   throw new Error(`Unknown intake contact mode ${mode}`);
 }

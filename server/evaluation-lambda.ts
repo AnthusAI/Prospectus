@@ -13,7 +13,10 @@ const required = (name: string) => {
   if (!value) throw new Error(`Missing evaluation configuration ${name}`);
   return value;
 };
-const allowedOrigins = required("PROSPECTUS_INTAKE_ALLOWED_ORIGINS").split(",").map((origin) => origin.trim()).filter(Boolean);
+const allowedOrigins = required("PROSPECTUS_INTAKE_ALLOWED_ORIGINS")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const contactPolicy = intakeContactPolicyForMode(process.env.PROSPECTUS_INTAKE_CONTACT_MODE);
 const workspace = required("PROSPECTUS_EVALUATION_WORKSPACE");
 const bucket = required("PROSPECTUS_EVALUATION_BUCKET");
@@ -21,18 +24,52 @@ const region = required("AWS_REGION");
 const functionName = required("PROSPECTUS_CANONICAL_FUNCTION");
 const client = new LambdaClient({ region, maxAttempts: 1 });
 const request = canonicalRequest(async (event) => {
-  const result = await client.send(new InvokeCommand({ FunctionName: functionName, InvocationType: "RequestResponse", Payload: Buffer.from(JSON.stringify(event)) }));
+  const result = await client.send(
+    new InvokeCommand({
+      FunctionName: functionName,
+      InvocationType: "RequestResponse",
+      Payload: Buffer.from(JSON.stringify(event)),
+    }),
+  );
   if (result.FunctionError || !result.Payload) throw new Error("Private CRM invocation was not confirmed.");
   return JSON.parse(Buffer.from(result.Payload).toString("utf8"));
 });
-const identityStore = createScopedS3ControlStore({ enabled: true, executable: "/var/task/prospectus-s3-controls", workspace, bucket, region, timeoutMs: 8000 });
+const identityStore = createScopedS3ControlStore({
+  enabled: true,
+  executable: "/var/task/prospectus-s3-controls",
+  workspace,
+  bucket,
+  region,
+  timeoutMs: 8000,
+});
 
-export const handler = createEvaluationHandler({ allowedOrigins, open: async () => {
-  // Per-invocation files are a disposable cache. Shared S3 claims and canonical
-  // inquiry fingerprints remain authoritative across invocations and retries.
-  const directory = await mkdtemp(join(tmpdir(), "prospectus-intake-"));
-  try {
-    const service = await IntakeService.open({ directory, workspace, owner: "intake-queue", siteId: contactPolicy.siteId, formId: contactPolicy.formId, contactPolicy, identityStore, request });
-    return { submit: service.submit.bind(service), close: async () => { await service.close(); await rm(directory, { recursive: true, force: true }); } };
-  } catch (cause) { await rm(directory, { recursive: true, force: true }); throw cause; }
-} });
+export const handler = createEvaluationHandler({
+  allowedOrigins,
+  open: async () => {
+    // Per-invocation files are a disposable cache. Shared S3 claims and canonical
+    // inquiry fingerprints remain authoritative across invocations and retries.
+    const directory = await mkdtemp(join(tmpdir(), "prospectus-intake-"));
+    try {
+      const service = await IntakeService.open({
+        directory,
+        workspace,
+        owner: "intake-queue",
+        siteId: contactPolicy.siteId,
+        formId: contactPolicy.formId,
+        contactPolicy,
+        identityStore,
+        request,
+      });
+      return {
+        submit: service.submit.bind(service),
+        close: async () => {
+          await service.close();
+          await rm(directory, { recursive: true, force: true });
+        },
+      };
+    } catch (cause) {
+      await rm(directory, { recursive: true, force: true });
+      throw cause;
+    }
+  },
+});

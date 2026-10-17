@@ -19,6 +19,7 @@ jobs:
       - run: npm run build --prefix .build/kanbus-ui/packages/ui
       - run: npm ci
       - run: npm ci --prefix packages/accounts-client
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

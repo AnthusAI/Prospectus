@@ -17,13 +17,18 @@ export function assertDeploymentScope(scope: {
   branch: string;
 }): void {
   const expected = {
-    account: TARGET_ACCOUNT, region: TARGET_REGION,
-    siteDomain: SITE_DOMAIN, repository: SOURCE_REPOSITORY,
-    appId: AMPLIFY_APP_ID, branch: DEPLOYMENT_BRANCH,
+    account: TARGET_ACCOUNT,
+    region: TARGET_REGION,
+    siteDomain: SITE_DOMAIN,
+    repository: SOURCE_REPOSITORY,
+    appId: AMPLIFY_APP_ID,
+    branch: DEPLOYMENT_BRANCH,
   };
   for (const [key, value] of Object.entries(expected)) {
     if (scope[key as keyof typeof scope] !== value) {
-      throw new Error(`Prospectus ${key} must be ${value}; review a source change to change deployment scope.`);
+      throw new Error(
+        `Prospectus ${key} must be ${value}; review a source change to change deployment scope.`,
+      );
     }
   }
 }
