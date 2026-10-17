@@ -19,3 +19,16 @@ The Rust sidecar uses the existing pinned Virtuus conditional control-object bin
 Approval of this scope enables synthetic evaluation, not real-contact acquisition. Real capture still needs an operating owner, privacy/retention and abuse policy, writer reconciliation, and real-cloud failure acceptance. No booking, notifications, account provisioning or financial service is implied.
 
 Rollback disables this additive intake route/output and restores the prior frontend. Accepted records and shared controls are preserved; they are not purged automatically.
+
+## Real-contact mode (anth.us engage page)
+
+`evaluation-deployment.json` takes `"mode": "real-contacts"` in place of `"synthetic-only"`. Real-contact mode changes only what the same runtime accepts:
+
+- Allowed form origins become `https://prospectus.anth.us`, `https://anth.us` and `https://www.anth.us`, in both the HTTP API CORS rule and the handler's origin check.
+- Ordinary email addresses are accepted, and the form must send privacy notice version `contact-v1`. Synthetic `.invalid` submissions and the old demo notice are rejected.
+- The synthetic demo form on prospectus.anth.us is not served in this mode, because it sends the demo notice. The anth.us engage page is the real-contact form.
+- Inquiries are recorded with source site `anthus-website` and form `engage-contact-v1`, so CRM staff can tell them from synthetic evaluation records.
+
+Routes, throttling, concurrency, IAM actions and resources, log retention and the `intake-queue` owner are unchanged. The mode is inert while `enabled` is `false`.
+
+Ryan approved real-contact mode on 2026-10-17. The privacy notice says details are used only to reply and to keep a record of the conversation, are never sold or added to a mailing list, and are kept until the person asks for deletion. Deployment goes through the normal Amplify main pipeline, started from Ryan's Mac.

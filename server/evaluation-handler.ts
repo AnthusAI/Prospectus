@@ -10,9 +10,9 @@ export interface EvaluationEvent {
 
 type SubmissionService = Pick<IntakeService, "submit" | "close">;
 
-/** A fixed synthetic-only submission boundary; no record-reading capability. */
+/** A fixed submission boundary for configured form origins; no record-reading capability. */
 export function createEvaluationHandler(options: {
-  allowedOrigin: string;
+  allowedOrigins: readonly string[];
   open: () => Promise<SubmissionService>;
 }) {
   return async (event: EvaluationEvent) => {
@@ -21,7 +21,7 @@ export function createEvaluationHandler(options: {
     }, body: JSON.stringify(body) });
     if (event.requestContext?.http?.method !== "POST" || event.rawPath !== "/intake/demo") return response(404, { message: "Not found." });
     const headers = Object.fromEntries(Object.entries(event.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]));
-    if (headers.origin !== options.allowedOrigin) return response(403, { message: "This form origin is not allowed." });
+    if (!headers.origin || !options.allowedOrigins.includes(headers.origin)) return response(403, { message: "This form origin is not allowed." });
     if (!/^application\/json(?:\s*;|$)/i.test(headers["content-type"] ?? "")) return response(415, { message: "A JSON submission is required." });
     if (event.isBase64Encoded || !event.body || Buffer.byteLength(event.body) > 16384) return response(400, { message: "Invalid submission size or encoding." });
     let body: unknown;
@@ -33,7 +33,7 @@ export function createEvaluationHandler(options: {
       return response(200, receipt);
     } catch (cause) {
       if (cause instanceof IntakeError) return response(cause.status, { message: cause.message });
-      return response(503, { message: "The evaluation inquiry could not be confirmed. Retry the same receipt." });
+      return response(503, { message: "The inquiry could not be confirmed. Retry the same receipt." });
     } finally { await service?.close().catch(() => undefined); }
   };
 }

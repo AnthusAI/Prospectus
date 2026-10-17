@@ -11,13 +11,13 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import {AccountsPlane,type AccountsPlaneOptions} from "./accounts-plane";
 import { Construct } from "constructs";
-import { EvaluationIntake } from "./evaluation-intake";
+import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 /** Separate private CRM data plane; public static assets contain no CRM records. */
 export class ProspectusBackend extends Construct {
   readonly outputs: Record<string, string>;
-  constructor(scope: Construct, id: string, code: lambda.Code, evaluationCode?: lambda.Code, accounts?:AccountsPlaneOptions) {
+  constructor(scope: Construct, id: string, code: lambda.Code, evaluationCode?: lambda.Code, accounts?:AccountsPlaneOptions, intakeContactMode: IntakeContactMode = "synthetic-only") {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
     cdk.Tags.of(this).add("anthus:surface", "crm");
@@ -217,7 +217,7 @@ export class ProspectusBackend extends Construct {
       ObjectBucketName: objects.bucketName,
       CatalogTableName: catalog.tableName,
     };
-    if (evaluationCode) outputs.EvaluationIntakeUrl = new EvaluationIntake(this, "EvaluationIntake", evaluationCode).url;
+    if (evaluationCode) outputs.EvaluationIntakeUrl = new EvaluationIntake(this, "EvaluationIntake", evaluationCode, intakeContactMode).url;
     if(accountsPlane){outputs.AccountsBffUrl=`${api.apiEndpoint}/api/saas`;outputs.AccountsApiUrl=accountsPlane.endpoint;}
     if(consoleClient){outputs.ConsoleClientId=consoleClient.userPoolClientId;outputs.ConsoleCognitoDomainUrl=domain.baseUrl();}
     this.outputs = outputs;

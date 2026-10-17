@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { IntakeError, IntakeService, nextBusinessDay, validateSubmission, type IntakeOptions } from "../server/intake";
 import { FileControlStore } from "../server/control-store";
+import { REAL_CONTACT_POLICY, SYNTHETIC_CONTACT_POLICY, intakeContactPolicyForMode } from "../server/intake-contact-policy";
 import type { IssueRecord } from "../src/client";
 
 const openIntake = (options: Omit<IntakeOptions, "identityStore">) => IntakeService.open({ ...options, identityStore: new FileControlStore(join(options.directory, "identity-claims")) });
@@ -19,6 +20,18 @@ test("synthetic boundary rejects real contact data, unexpected control fields an
   assert.equal(validateSubmission(submission({ email: " ALEX@EXAMPLE.INVALID " })).email, "alex@example.invalid");
   assert.equal(validateSubmission(submission({ email: "alex+demo@example.invalid" })).email, "alex+demo@example.invalid");
   assert.equal(nextBusinessDay(new Date("2026-10-16T23:00:00Z")), "2026-10-19");
+});
+
+test("real-contact policy accepts ordinary addresses only with its own notice version", () => {
+  const realSubmission = (changes: Record<string, unknown> = {}) => submission({ notice_version: REAL_CONTACT_POLICY.noticeVersion, email: "alex@example.com", ...changes });
+  assert.equal(validateSubmission(realSubmission({ email: " Alex.Porter+demo@Example.CO.uk " }), REAL_CONTACT_POLICY).email, "alex.porter+demo@example.co.uk");
+  for (const changes of [{ email: "alex@localhost" }, { email: "alex@-example.com" }, { email: "not an email" }, { notice_version: SYNTHETIC_CONTACT_POLICY.noticeVersion }, { assignee: "intruder" }]) {
+    assert.throws(() => validateSubmission(realSubmission(changes), REAL_CONTACT_POLICY), IntakeError);
+  }
+  assert.throws(() => validateSubmission(realSubmission()), IntakeError);
+  assert.equal(intakeContactPolicyForMode(undefined), SYNTHETIC_CONTACT_POLICY);
+  assert.equal(intakeContactPolicyForMode("real-contacts"), REAL_CONTACT_POLICY);
+  assert.throws(() => intakeContactPolicyForMode("everything"), /Unknown intake contact mode/);
 });
 
 test("durable receipts recover a lost create response and preserve subsequent inquiries after restart", async () => {
