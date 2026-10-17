@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import { Template } from "aws-cdk-lib/assertions";
 import { EvaluationIntake } from "../lib/evaluation-intake";
+import { ProspectusBackend } from "../lib/prospectus-backend";
 
 const lambdaEnvironment = (template: Template) => (Object.values(template.findResources("AWS::Lambda::Function"))[0] as any).Properties.Environment.Variables;
 const corsOrigins = (template: Template) => (Object.values(template.findResources("AWS::ApiGatewayV2::Api"))[0] as any).Properties.CorsConfiguration.AllowOrigins;
@@ -43,4 +45,15 @@ test("real-contact intake adds only the anth.us form origins and keeps the same 
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", { DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 } });
   const actions = Object.values(template.findResources("AWS::IAM::Policy")).flatMap((r: any) => r.Properties.PolicyDocument.Statement).flatMap((s: any) => Array.isArray(s.Action) ? s.Action : [s.Action]).sort();
   assert.deepEqual(actions, ["lambda:InvokeFunction", "logs:CreateLogStream", "logs:PutLogEvents", "s3:GetObject", "s3:PutObject"].sort());
+});
+
+test("the backend passes the deployment's real-contact mode through to the intake API", () => {
+  const stack = new cdk.Stack(new cdk.App(), "BackendRealContactReview", { env: { account: "712236451410", region: "us-east-1" } });
+  const reviewedCrmCode = lambda.Code.fromBucket(s3.Bucket.fromBucketName(stack, "ReviewedArtifact", "review-only-artifact"), "review-only.zip");
+  const intakeCode = lambda.Code.fromInline("exports.handler=async()=>({statusCode:503})");
+  const backend = new ProspectusBackend(stack, "Prospectus", reviewedCrmCode, intakeCode, undefined, "real-contacts");
+  const template = Template.fromStack(stack);
+  assert.ok(backend.outputs.EvaluationIntakeUrl);
+  const intakeApi = Object.values(template.findResources("AWS::ApiGatewayV2::Api")).find((resource: any) => resource.Properties.Name === "prospectus-intake-evaluation") as any;
+  assert.deepEqual(intakeApi.Properties.CorsConfiguration.AllowOrigins, ["https://prospectus.anth.us", "https://anth.us", "https://www.anth.us"]);
 });
