@@ -1,7 +1,7 @@
 {
   "id": "kanbus-b2ddb42a-2a37-4f79-a3f4-c508a8d99cc7",
   "title": "Onboard invited members without implied permission grants",
-  "description": "As an account owner, I want explicit onboarding and invitation acceptance.\n\nFeature: Onboard invited members without implied permission grants\n  Scenario: Observable acceptance\n    Given an approved invitation design and authorized membership operations\n    When a recipient accepts an invitation\n    Then only the reviewed account role and product entitlements are granted with auditable history\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan — 2026-10-17\n\nOrdered next after hosted account acceptancekanbus-6cf11d42. Requested workflow: an authorized owner invites a member; acceptance, expiry/replay and revocation must preserve account/product scope and audit history.\n\nFeature: Explicit invitation acceptance\n  Scenario: Accept within reviewed role scope\n    Given an approved invitation design and an inviter with fresh member-management authority\n    When the intended authenticated recipient accepts the unexpired invitation\n    Then only the named account role/product permission is granted and acceptance is auditable/idempotent\n  Scenario: Expired revoked or unauthorized invite\n    Given expired/revoked invitation or missing inviter authority\n    When acceptance is attempted\n    Then no membership or product access is granted\n\nDelivery/identity/role details and any new outbound service scope await implementation-owner review. No message is sent by this planning task. Billing/credits do not gate this path.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
+  "description": "As an account owner, I want explicit onboarding and invitation acceptance.\n\nFeature: Onboard invited members without implied permission grants\n  Scenario: Observable acceptance\n    Given an approved invitation design and authorized membership operations\n    When a recipient accepts an invitation\n    Then only the reviewed account role and product entitlements are granted with auditable history\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan \u2014 2026-10-17\n\nOrdered next after hosted account acceptancekanbus-6cf11d42. Requested workflow: an authorized owner invites a member; acceptance, expiry/replay and revocation must preserve account/product scope and audit history.\n\nFeature: Explicit invitation acceptance\n  Scenario: Accept within reviewed role scope\n    Given an approved invitation design and an inviter with fresh member-management authority\n    When the intended authenticated recipient accepts the unexpired invitation\n    Then only the named account role/product permission is granted and acceptance is auditable/idempotent\n  Scenario: Expired revoked or unauthorized invite\n    Given expired/revoked invitation or missing inviter authority\n    When acceptance is attempted\n    Then no membership or product access is granted\n\nDelivery/identity/role details and any new outbound service scope await implementation-owner review. No message is sent by this planning task. Billing/credits do not gate this path.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
   "type": "story",
   "status": "backlog",
   "priority": 2,
@@ -13,6 +13,14 @@
     {
       "target": "kanbus-6cf11d42-3f7d-432c-9368-f8b0e5bd3ab7",
       "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-47dc15ae-dff6-48f2-8b60-9a599752f00f",
+      "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-67ae2d79-ea39-4402-83b7-5be6c595ae4c",
+      "type": "blocked-by"
     }
   ],
   "comments": [
@@ -22,6 +30,7 @@
       "text": "2026-10-16 reconciliation: Status describes remaining acceptance, not implementation authorization.",
       "created_at": "2026-10-16T20:46:53.669220Z",
       "comment_type": "default",
+      "data": {},
       "agent": {
         "platform": "codex",
         "model": "gpt-6.1-sol",
@@ -37,6 +46,7 @@
       "text": "2026-10-17 next-step plan recorded in the description. Ordered next after hosted account acceptancekanbus-6cf11d42. Requested workflow: an authorized owner invites a member; acceptance, expiry/replay and revocation must preserve account/product scope and audit history.\n\nFeature: Explicit invitation acceptance\n  Scenario: Accept within reviewed role scope\n    Given an approved invitation design and an inviter with fresh member-management authority\n    When the intended authenticated recipient accepts the unexpired invitation\n    Then only the named account role/product permission is granted and acceptance is auditable/idempotent\n  Scenario: Expired revoked or unauthorized invite\n    Given expired/revoked invitation or missing inviter authority\n    When acceptance is attempted\n    Then no membership or product access is granted\n\nDelivery/identity/role details and any new outbound service scope await implementation-owner review. No message is sent by this planning task. Billing/credits do not gate this path.",
       "created_at": "2026-10-17T06:22:40.354910Z",
       "comment_type": "default",
+      "data": {},
       "agent": {
         "platform": "codex",
         "model": "gpt-6.1-sol",
@@ -45,11 +55,26 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "03125777-c81c-404a-a22e-25b50702d691",
+      "author": "unknown",
+      "text": "2026-10-17 (Ryan): invitations now follow contact/demo intake. Blocked by kanbus-67ae2d79 and kanbus-47dc15ae.",
+      "created_at": "2026-10-17T12:17:05.618263Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": null
     }
   ],
   "created_at": "2026-10-16T20:46:53.621080Z",
-  "updated_at": "2026-10-17T06:24:14.233291Z",
+  "updated_at": "2026-10-17T12:17:05.618430Z",
   "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  },
   "agent": {
     "platform": "codex",
     "model": "gpt-6.1-sol",
@@ -58,10 +83,5 @@
       "reasoning_effort": "medium"
     }
   },
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {
-    "project_label": "kanbus",
-    "source": "shared"
-  }
+  "agent_assignment": null
 }
