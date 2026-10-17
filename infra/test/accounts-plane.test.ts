@@ -5,9 +5,11 @@ import {Bucket} from "aws-cdk-lib/aws-s3";
 import {Code} from "aws-cdk-lib/aws-lambda";
 import {Template} from "aws-cdk-lib/assertions";
 import {ProspectusBackend} from "../lib/prospectus-backend";
-function template(enabled:boolean,consoleClientEnabled=false,consolePairEnabled=false) {
+import {papyrusSiteRegistrations} from "../../accounts/papyrus-sites";
+import type {ProductRegistration} from "../../accounts/auth";
+function template(enabled:boolean,consoleClientEnabled=false,consolePairEnabled=false,papyrusSites:ProductRegistration[]=[]) {
  const stack=new Stack(new App(),"AccountsReview",{env:{account:"712236451410",region:"us-east-1"}});
- new ProspectusBackend(stack,"Prospectus",Code.fromBucket(Bucket.fromBucketName(stack,"Artifact","review-only-artifact"),"crm.zip"),undefined,enabled?{code:Code.fromInline("accounts artifact placeholder"),bffCode:Code.fromInline("BFF artifact placeholder"),googlePolicyReviewId:"synthetic-review-v1",consoleClientEnabled,consolePairEnabled,consoleFederationReviewId:"cyclotron-google-only-unlinked-v1-20261015",consolePairReviewId:"cyclotron-execution-pair-v1-20261015"}:undefined);
+ new ProspectusBackend(stack,"Prospectus",Code.fromBucket(Bucket.fromBucketName(stack,"Artifact","review-only-artifact"),"crm.zip"),undefined,enabled?{code:Code.fromInline("accounts artifact placeholder"),bffCode:Code.fromInline("BFF artifact placeholder"),googlePolicyReviewId:"synthetic-review-v1",consoleClientEnabled,consolePairEnabled,consoleFederationReviewId:"cyclotron-google-only-unlinked-v1-20261015",consolePairReviewId:"cyclotron-execution-pair-v1-20261015",papyrusSites}:undefined);
  return Template.fromStack(stack).toJSON();
 }
 test("Accounts additive synthesis preserves every existing CRM resource and adds only scoped UI routes",()=>{
@@ -72,4 +74,30 @@ test("verified console pair preserves directory and storage grants while allowin
  assert.equal(denied.length,3);assert.deepEqual(denied.slice(1),[bff,worker]);
  const deploymentIds=(template:any)=>Object.entries(template.Resources).filter(([,value]:any)=>value.Type==="AWS::ApiGateway::Deployment").map(([id])=>id);
  assert.notDeepEqual(deploymentIds(after),deploymentIds(before),"Policy rollout must republish the existing API stage");
+});
+
+const syntheticPapyrusSites=(count:number)=>papyrusSiteRegistrations(Array.from({length:count},(_,index)=>({product:`papyrus-synthetic-${index}`,roleArn:`arn:aws:iam::682849160744:role/synthetic-papyrus-site-${index}-runtime`,issuer:`https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticSite${index}`,clientId:`syntheticsite${index}`,federationReviewId:`synthetic-google-only-${index}`,siteReviewId:`synthetic-site-review-${index}`})));
+
+test("reviewed Papyrus sites may call only read and authorize routes and leave every other grant unchanged",()=>{
+ const before=template(true,true,true),after=template(true,true,true,syntheticPapyrusSites(2));
+ for(const [id,resource] of Object.entries(before.Resources) as [string,any][]) {
+  if(["AWS::IAM::Role","AWS::IAM::Policy","AWS::Cognito::UserPoolClient","AWS::S3::Bucket","AWS::DynamoDB::Table","AWS::Lambda::Function"].includes(resource.Type))assert.deepEqual(after.Resources[id],resource,`Unrelated grants or resource changed: ${id}`);
+ }
+ const policy=(Object.values(after.Resources) as any[]).find(value=>value.Type==="AWS::ApiGateway::RestApi").Properties.Policy.Statement;
+ const sitesStatement=policy.find((statement:any)=>statement.Effect==="Allow" && JSON.stringify(statement.Principal).includes("synthetic-papyrus-site-0-runtime"));
+ assert.deepEqual(sitesStatement.Principal.AWS,["arn:aws:iam::682849160744:role/synthetic-papyrus-site-0-runtime","arn:aws:iam::682849160744:role/synthetic-papyrus-site-1-runtime"]);
+ assert.ok(sitesStatement.Resource.includes("execute-api:/api/GET/v1/account-directory"));
+ assert.ok(!sitesStatement.Resource.includes("execute-api:/api/POST/v1/accounts") && !JSON.stringify(sitesStatement.Resource).includes("memberships"));
+ const denied=policy.find((statement:any)=>statement.Effect==="Deny").Condition.ArnNotEquals["aws:PrincipalArn"];
+ assert.deepEqual(denied.slice(-2),sitesStatement.Principal.AWS);
+ const deploymentIds=(template:any)=>Object.entries(template.Resources).filter(([,value]:any)=>value.Type==="AWS::ApiGateway::Deployment").map(([id])=>id);
+ assert.notDeepEqual(deploymentIds(after),deploymentIds(before),"Site rollout must republish the existing API stage");
+});
+
+test("the largest reviewed Papyrus site registry keeps the deployed API access policy within the API Gateway size limit",()=>{
+ const after=template(true,true,true,syntheticPapyrusSites(40));
+ const policy=(Object.values(after.Resources) as any[]).find(value=>value.Type==="AWS::ApiGateway::RestApi").Properties.Policy;
+ const deployedPolicyText=JSON.stringify(policy).replaceAll("execute-api:/","arn:aws:execute-api:us-east-1:712236451410:abcdefghij/");
+ assert.ok(deployedPolicyText.length<8192,`Deployed API resource policy would be ${deployedPolicyText.length} bytes`);
+ assert.throws(()=>syntheticPapyrusSites(41));
 });
