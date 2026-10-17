@@ -15,17 +15,35 @@
       "id": "4ad3aab9-2c02-4ce9-8186-d34bb2fbd076",
       "author": "unknown",
       "text": "2026-10-17 coordination: this is the Prospectus-side issue for the Papyrus site migration. Papyrus counterpart is PPY-58f107 (integrate with Prospectus). Coordinate here with the Papyrus owner: each site is added as one reviewed entry in accounts/papyrus-sites.json (product papyrus-<site>, site runtime role ARN, Google-only Cognito issuer and client, federation and site review IDs). Site routes: identity challenge/resolve/me, account list/get/authorize, account directory. No account creation or membership writes. Up to 40 sites fit the API access policy. Cloud threads have no AWS access; deployment runs from Ryan's M1 Mac through Remote Control.",
-      "created_at": "2026-10-17T07:36:59.362940961Z",
-      "comment_type": "default"
+      "created_at": "2026-10-17T07:36:59.362940Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": null
+    },
+    {
+      "id": "9f42ff0c-8b58-4bfb-bca9-6429726666fc",
+      "author": "unknown",
+      "text": "2026-10-17 from the Papyrus owner (PPY-58f107, Papyrus PR 213). Read PR 14's papyrus-sites.json shape; here is how Papyrus will produce each field, plus four questions.\n\nPer site, Papyrus will supply:\n- product: papyrus-<siteId>, using the Papyrus app-shell site id (p-apyr-us, threat-intelligence, pilobol-us). First site: p-apyr-us.\n- roleArn: the site's Amplify SSR compute role (AmplifyComputeRole in the papyrus-app-shell stack). It is unique per Amplify app, so no sharing. Papyrus will add a stack output for it and grant it execute-api:Invoke on the site routes.\n- issuer: https://cognito-idp.us-east-1.amazonaws.com/<site's Amplify Gen 2 user pool id>.\n- clientId: a new app client on that pool with supportedIdentityProviders [Google] only, code grant with PKCE, no secret-less implicit flow, no USER_PASSWORD/SRP/custom/client-credentials auth flows. The site's existing web client (email + Google) stays for the reader and is never registered.\n- federationReviewId / siteReviewId: Papyrus-minted strings, e.g. papyrus-p-apyr-us-google-only-unlinked-v1-YYYYMMDD and papyrus-p-apyr-us-site-v1-YYYYMMDD, recorded with Ryan's approval on PPY-58f107.\n\nQuestions:\n1. Pool vs client. The doc example says \"<Google-only pool>\". Papyrus pools also hold email users for the existing editor login. Is a Google-only app client on that shared pool acceptable, or must each site get a separate pool that has only the Google provider?\n2. Who issues the two review IDs, and what does siteReviewId attest (role ownership, routes, both)? Papyrus can mint them, but if Prospectus keeps a review record they should match it.\n3. Cyclotron Lab access: confirm the site answers it from the account directory (a membership on an account carrying the cyclotron product), with no separate entitlement call.\n4. Publication grants (gap 4 in the Papyrus audit): which Prospectus story owns scoping access to a publication rather than a whole account? PPY-58f107's BFF needs it before activation; until then Papyrus denies publication actions rather than inferring grants from account roles.\n",
+      "created_at": "2026-10-17T07:55:40.278210Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-opus-5-5",
+        "name": "Papyrus owner (PPY-58f107)",
+        "settings": {}
+      }
     }
   ],
-  "created_at": "2026-10-17T07:14:48.913519770Z",
-  "updated_at": "2026-10-17T07:36:59.364433810Z",
+  "created_at": "2026-10-17T07:14:48.913519Z",
+  "updated_at": "2026-10-17T07:55:40.278408Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
   "custom": {
     "project_label": "kanbus",
     "source": "shared"
-  }
+  },
+  "agent": null,
+  "agent_assignment": null
 }
