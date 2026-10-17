@@ -4,8 +4,9 @@ import { join } from "node:path";
 import type { IssueRecord } from "../src/client";
 import type { ConditionalControlStore } from "./control-store";
 import { IdentityClaims, SharedReceiptConflict } from "./identity";
+import { SYNTHETIC_CONTACT_POLICY, type IntakeContactPolicy } from "./intake-contact-policy";
 
-export const NOTICE_VERSION = "synthetic-demo-v1";
+export const NOTICE_VERSION = SYNTHETIC_CONTACT_POLICY.noticeVersion;
 export class IntakeError extends Error {
   constructor(public status: number, message: string, public code?: string) { super(message); }
 }
@@ -28,12 +29,13 @@ export interface IntakeOptions {
   request: (path: string, init?: RequestInit) => Promise<IssueRecord | { issues: IssueRecord[] }>;
   now?: () => Date;
   identityStore: ConditionalControlStore;
+  contactPolicy?: IntakeContactPolicy;
 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const campaignKeys = ["utm_source", "utm_medium", "utm_campaign"];
 
-export function validateSubmission(raw: unknown): Submission {
+export function validateSubmission(raw: unknown, contactPolicy: IntakeContactPolicy = SYNTHETIC_CONTACT_POLICY): Submission {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new IntakeError(400, "Invalid request.");
   const fields = raw as Record<string, unknown>;
   const allowed = ["submission_id", "name", "email", "company", "message", "website", "notice_version", "marketing_opt_in", "page_path", "campaign"];
@@ -48,9 +50,9 @@ export function validateSubmission(raw: unknown): Submission {
   const submission_id = text("submission_id", 36, true);
   if (!uuid.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
   const email = text("email", 254, true).toLowerCase();
-  if (!/^[^\s@]+@(?:[a-z0-9-]+\.)+invalid$/.test(email)) throw new IntakeError(400, "Use a synthetic email ending in .invalid for this local demo.");
+  if (!contactPolicy.emailPattern.test(email)) throw new IntakeError(400, contactPolicy.emailRejectionMessage);
   const notice_version = text("notice_version", 50, true);
-  if (notice_version !== NOTICE_VERSION) throw new IntakeError(400, "Reload the form to read the current demo notice.");
+  if (notice_version !== contactPolicy.noticeVersion) throw new IntakeError(400, contactPolicy.staleNoticeMessage);
   if (fields.marketing_opt_in !== undefined && typeof fields.marketing_opt_in !== "boolean") throw new IntakeError(400, "Invalid marketing preference.");
   const campaign = fields.campaign ?? {};
   if (!campaign || typeof campaign !== "object" || Array.isArray(campaign)) throw new IntakeError(400, "Invalid campaign.");
@@ -131,7 +133,7 @@ export class IntakeService {
 
   submit(raw: unknown): Promise<{ receipt: string; message: string }> {
     if (this.closing || this.persistenceFailed) return Promise.reject(new IntakeError(503, "Intake is unavailable. Restart after repairing local receipt storage."));
-    const submission = validateSubmission(raw);
+    const submission = validateSubmission(raw, this.options.contactPolicy);
     const run = this.queue.then(async () => {
       if (!this.locked || this.persistenceFailed) throw new IntakeError(503, "Intake is unavailable.");
       if (submission.website) return { receipt: submission.submission_id, message: "Demo request received." };
