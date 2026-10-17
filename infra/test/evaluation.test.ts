@@ -18,7 +18,9 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.resourceCountIs("AWS::S3::Bucket", 0);
   template.resourceCountIs("AWS::DynamoDB::Table", 0);
   template.resourceCountIs("AWS::Lambda::Function", 1);
-  template.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "prospectus-intake-evaluation", ReservedConcurrentExecutions: 2, Runtime: "nodejs22.x" });
+  template.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "prospectus-intake-evaluation", Runtime: "nodejs22.x" });
+  const reservedConcurrencyByFunction = Object.values(template.findResources("AWS::Lambda::Function")).map((resource: any) => resource.Properties.ReservedConcurrentExecutions);
+  assert.deepEqual(reservedConcurrencyByFunction, [undefined], "the target account allows 10 concurrent Lambda executions in total, so no function may reserve any");
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "POST /intake/demo" });
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", { DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 } });
   const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap((r: any) => r.Properties.PolicyDocument.Statement);
