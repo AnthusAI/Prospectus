@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
+  "title": "Serve as the single account service for Papyrus sites and Cyclotron Lab",
+  "description": "Ryan decided on 2026-10-17 that Prospectus is the only account service for the hosted Papyrus newsroom, Cyclotron Lab and the Papyrus site cutovers. Each Papyrus site keeps its own Google project and OAuth client. After sign-in each site asks Prospectus which accounts the person belongs to, their role, and whether they have Cyclotron Lab access. No site keeps account or membership tables. Papyrus PPY-58f107 means integrate with Prospectus.\n\nAgreed model: accounts are per app; membership in a cyclotron account is Lab access. Prospectus stores membership and role (owner, admin, member, viewer). Each app stores permissions on its own resources keyed by Prospectus person and account IDs, never exceeding the Prospectus role. A publication records its owning account ID itself. Papyrus moves editor sign-in to a Google-only Cognito client per site rather than Prospectus verifying raw Google tokens. Site registration stays reviewed deployment configuration (Ryan's choice 2026-10-17).\n\nAlready satisfied: canonical Person keys on the Google subject, which is stable across Google projects; the account directory read returns every product on each of the person's accounts, so a site registration with accountDirectory answers Lab access. Invitations are tracked by kanbus-b2ddb42a.",
+  "type": "epic",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-17T07:14:27.025925205Z",
+  "updated_at": "2026-10-17T07:14:27.025978667Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

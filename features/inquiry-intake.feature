@@ -66,3 +66,9 @@ Feature: A website inquiry becomes an actionable private prospect
     When its configured origin requests a write preflight
     Then those headers are allowed in the reviewed infrastructure template
     And issue routes continue to require JWT and workspace membership
+
+  Scenario: Describe a demo request honestly as a follow-up request
+    Given a submitted demo inquiry
+    When the visitor views its receipt
+    Then it is described as a follow-up request awaiting a reply
+    And it states that no appointment or meeting time has been booked

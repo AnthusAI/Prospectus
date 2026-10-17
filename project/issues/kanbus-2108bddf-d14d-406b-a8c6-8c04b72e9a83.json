@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-2108bddf-d14d-406b-a8c6-8c04b72e9a83",
+  "title": "Provide a Python client for the accounts API",
+  "description": "As a Python backend such as Papyrus or the Lab console, I want a shared client for the Prospectus accounts API.\n\nFeature: Provide a Python client for the accounts API\n  Scenario: Signed server call\n    Given temporary runtime role credentials and a verified human access token\n    When the client lists accounts, reads the directory or authorizes an operation\n    Then it signs the request with SigV4 and returns the same shapes as the TypeScript client\n\nThe Lab console's Python BFF client lives in the Cyclotron repo; this would share it.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-17T07:14:48.992637092Z",
+  "updated_at": "2026-10-17T07:14:48.992685481Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
