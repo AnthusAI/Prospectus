@@ -17,10 +17,17 @@
       "text": "Built on branch claude/project-thread-8m9yf5 (PR 18): setEntitlement in the account service and POST /v1/account-directory/operator/accounts/<id>/entitlements/<product>, gated by a new reviewed operator permission accounts:admin:entitlements. No grant holds it yet; the BFF API Gateway policy change to reach the route is held for approval. Asked Ryan who may grant (recommended: operators only).",
       "created_at": "2026-10-17T13:48:09.057654096Z",
       "comment_type": "default"
+    },
+    {
+      "id": "c9d7db97-013c-4e55-8731-b538a2e1fc6f",
+      "author": "unknown",
+      "text": "Decision (Ryan, 2026-10-17): operators only. Only people holding a reviewed accounts:admin:entitlements grant may turn products on or off; account owners may not.",
+      "created_at": "2026-10-17T13:51:53.947595129Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-17T07:14:48.964167426Z",
-  "updated_at": "2026-10-17T13:48:09.057692380Z",
+  "updated_at": "2026-10-17T13:51:53.948156664Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
