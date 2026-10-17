@@ -15,9 +15,17 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "57f17ee7-a88e-4c64-8ba4-c6e162c9e3fb",
+      "author": "unknown",
+      "text": "PR https://github.com/AnthusAI/Prospectus/pull/25 open against claude/project-thread-3r1x8t; awaiting CI and first deploy verification of head_bucket removal.",
+      "created_at": "2026-10-17T16:47:41.479660180Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T14:50:12.368369215Z",
-  "updated_at": "2026-10-17T16:32:36.927731111Z",
+  "updated_at": "2026-10-17T16:47:41.479740408Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
