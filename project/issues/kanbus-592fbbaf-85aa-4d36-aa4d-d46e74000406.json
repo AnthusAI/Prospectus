@@ -3,16 +3,24 @@
   "title": "Grant and disable product access on an account",
   "description": "As an operator, I want to turn a product such as Cyclotron Lab on or off for an account.\n\nFeature: Grant and disable product access on an account\n  Scenario: Grant a product\n    Given an account and an authorized operator\n    When the operator grants a registered product\n    Then the account gains that product's entitlement with audit history and revision checks\n\n  Scenario: Disable a product\n    Given an account with an active product entitlement\n    When the operator disables it\n    Then that product's authorize calls are denied and no data is deleted\n\nToday an account only receives the product it was created from. Who may grant products needs Ryan's approval before activation.",
   "type": "story",
-  "status": "open",
+  "status": "in_progress",
   "priority": 1,
   "assignee": null,
   "creator": null,
   "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "d6b9e0f0-3f4e-49af-8c4d-68a33c22af92",
+      "author": "unknown",
+      "text": "Built on branch claude/project-thread-8m9yf5 (PR 18): setEntitlement in the account service and POST /v1/account-directory/operator/accounts/<id>/entitlements/<product>, gated by a new reviewed operator permission accounts:admin:entitlements. No grant holds it yet; the BFF API Gateway policy change to reach the route is held for approval. Asked Ryan who may grant (recommended: operators only).",
+      "created_at": "2026-10-17T13:48:09.057654096Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T07:14:48.964167426Z",
-  "updated_at": "2026-10-17T07:14:48.964226575Z",
+  "updated_at": "2026-10-17T13:48:09.057692380Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

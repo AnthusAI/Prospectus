@@ -24,7 +24,7 @@ export interface AccountDocument {
  creation:{personId:string;product:string;requestHash:string;fingerprint:string};
  memberships:Record<string,Membership>;
  entitlements:Record<string,Entitlement>;
- audit:Array<{type:"account.created"|"membership.changed";revision:number;actor:string;product:string;principal:string;at:string;target?:string;role?:Role;status?:Membership["status"]}>;
+ audit:Array<{type:"account.created"|"membership.changed"|"entitlement.changed";revision:number;actor:string;product:string;principal:string;at:string;target?:string;role?:Role;status?:Membership["status"]|Entitlement["status"]}>;
 }
 /** A single canonical aggregate owns each account's permissions. No reciprocal
  * membership authority, distributed transaction emulation, DDB or process lock.
@@ -56,9 +56,11 @@ export class DurableAccountsService implements AccountsApi {
   for(const [product,entitlement] of Object.entries(value.entitlements))if(!product || !record(entitlement) || entitlement.product!==product || entitlement.accountId!==id || !["active","disabled"].includes(entitlement.status) || !Array.isArray(entitlement.capabilities) || entitlement.capabilities.some(operation=>!roleOperations.owner.includes(operation)))bad();
   if(value.audit.length!==value.account.revision)bad();
   for(let index=0;index<value.audit.length;index++) {
-   const event=value.audit[index];if(!record(event) || event.revision!==index+1 || !["account.created","membership.changed"].includes(event.type) || !UUID_PATTERN.test(event.actor) || !timestamp(event.at) || typeof event.product!=="string" || typeof event.principal!=="string")bad();
+   const event=value.audit[index];if(!record(event) || event.revision!==index+1 || !["account.created","membership.changed","entitlement.changed"].includes(event.type) || !UUID_PATTERN.test(event.actor) || !timestamp(event.at) || typeof event.product!=="string" || typeof event.principal!=="string")bad();
    if(index===0 && (event.type!=="account.created" || event.actor!==value.creation.personId || event.product!==value.creation.product))bad();
-   if(index>0 && (event.type!=="membership.changed" || !UUID_PATTERN.test(event.target??"") || !event.role || !Object.hasOwn(roleOperations,event.role) || !["active","revoked"].includes(event.status??"")))bad();
+   if(index>0 && event.type==="membership.changed" && (!UUID_PATTERN.test(event.target??"") || !event.role || !Object.hasOwn(roleOperations,event.role) || !["active","revoked"].includes(event.status??"")))bad();
+   if(index>0 && event.type==="entitlement.changed" && (!Object.hasOwn(value.entitlements,event.target??"") || event.role!==undefined || !["active","disabled"].includes(event.status??"")))bad();
+   if(index>0 && event.type==="account.created")bad();
   }
  }
  async read(id:string):Promise<IdentityObject<AccountDocument>|null> {
@@ -167,6 +169,26 @@ export class DurableAccountsService implements AccountsApi {
    const logical=["account-membership-v1",id,state.stored.revision,state.person.id,context.product,context.principal,personId,role,status];
    if(status==="active")await this.recordMembershipMarker(personId,id);
    try {await this.publish(path(id),`account:${id}:membership:${hash(logical)}`,hash(logical),document,state.stored.revision);return membership;}
+   catch(error){if(!(error instanceof IdentityFileError && error.code==="conflict"))throw error;}
+  }
+  fail(409,"busy","Concurrent account change; retry.");
+ }
+ /** Operator-only. The caller must already hold a reviewed entitlements grant; disabling keeps all account data. */
+ async setEntitlement(operator:Context,id:string,grantedProduct:{product:string;capabilities:readonly Operation[]},status:Entitlement["status"]):Promise<Entitlement> {
+  if(!["active","disabled"].includes(status) || !/^[a-z][a-z0-9-]{0,39}$/.test(grantedProduct.product))fail(400,"invalid_entitlement","Registered product and active or disabled status required.");
+  const capabilities=roleOperations.owner.filter(operation=>grantedProduct.capabilities.includes(operation));
+  for(let attempt=0;attempt<12;attempt++) {
+   const person=await this.person(operator),stored=await this.read(id);if(!stored)fail(404,"account_missing","Account not found.");
+   const document=structuredClone(stored.value),prior=Object.hasOwn(document.entitlements,grantedProduct.product)?document.entitlements[grantedProduct.product]:null;
+   const capabilitiesKeptWhileDisabled=prior?prior.capabilities:capabilities;
+   const entitlement:Entitlement={accountId:id,product:grantedProduct.product,status,capabilities:[...(status==="active"?capabilities:capabilitiesKeptWhileDisabled)]};
+   if(prior && prior.status===entitlement.status && JSON.stringify(prior.capabilities)===JSON.stringify(entitlement.capabilities))return structuredClone(prior);
+   if(document.audit.length>=128)fail(409,"account_capacity","Account audit capacity reached; no history is discarded.");
+   document.entitlements[grantedProduct.product]=entitlement;document.account.revision++;
+   document.audit.push({type:"entitlement.changed",revision:document.account.revision,actor:person.id,target:grantedProduct.product,status,product:operator.product,principal:operator.principal,at:this.now()});
+   if(Buffer.byteLength(JSON.stringify(document))>65536)fail(409,"account_capacity","Account canonical byte capacity reached.");this.validate(document,id);
+   const logical=["account-entitlement-v1",id,stored.revision,person.id,operator.product,operator.principal,grantedProduct.product,status,entitlement.capabilities];
+   try {await this.publish(path(id),`account:${id}:entitlement:${hash(logical)}`,hash(logical),document,stored.revision);return entitlement;}
    catch(error){if(!(error instanceof IdentityFileError && error.code==="conflict"))throw error;}
   }
   fail(409,"busy","Concurrent account change; retry.");

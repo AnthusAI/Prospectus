@@ -90,3 +90,9 @@ Rollout, with each AWS step run from Ryan's Mac:
 3. Change `membershipLookup` to `"indexed"` and deploy.
 
 The runtime role already covers `prospectus-central/accounts/*`, which includes the markers, so no IAM change is needed.
+
+## Product access
+
+An account starts with only the product it was created from. An operator can grant or disable another registered product with `POST /v1/account-directory/operator/accounts/<accountId>/entitlements/<product>` and the body `{"status":"active"}` or `{"status":"disabled"}`. A grant gives the product its registered capabilities, which members still use only within their role. Disabling denies that product's authorize calls and keeps memberships and all account data. Each change is an `entitlement.changed` audit event under the same revision check as membership changes.
+
+Only a person holding a reviewed `accounts:admin:entitlements` grant in `accounts/operator-grants.json` can call the route. Operator read access is not enough, and account owners cannot grant products to themselves. No such grant exists yet. The directory BFF's API Gateway policy still allows only `GET` on the account directory, so making the route reachable also needs that policy change, which is held for approval.

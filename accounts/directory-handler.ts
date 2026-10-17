@@ -1,7 +1,7 @@
 import {context,type ProductRegistration,type KeyResolver,type RestEvent} from "./auth";
 import {AccountsError,fail,roleOperations} from "./model";
 import {DurableAccountsService,type AccountDocument} from "./durable-accounts";
-import {canReadOperatorDirectory,type OperatorGrant} from "./operator-policy";
+import {canReadOperatorDirectory,hasOperatorPermission,type OperatorGrant} from "./operator-policy";
 import type {OperatorAccount,OperatorDetail,DirectoryAccount,DirectoryDetail} from "../packages/accounts-client/src/directory";
 /** Personal reads require membership. Operator reads require a separate reviewed
  * human permission and current canonical session proof; neither authorizes app use.
@@ -16,6 +16,16 @@ export function accountDirectoryHandler(service:DurableAccountsService,products:
   try {
    const authenticated=await context(event,products,keys,clock());
    if(!products.some(product=>product.enabled && product.product===authenticated.product && product.roleArn===authenticated.principal && product.accountDirectory===true) || !authenticated.capabilities.includes("console:read"))fail(403,"directory_forbidden","Account directory access is not registered.");
+   const entitlementRoute=/^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})\/entitlements\/([a-z][a-z0-9-]{0,39})$/.exec(event.path);
+   if(entitlementRoute && event.httpMethod==="POST") {
+    const operator=await service.person(authenticated);
+    if(!hasOperatorPermission(authenticated,grants,"accounts:admin:entitlements"))fail(403,"operator_forbidden","Explicit central entitlements permission is required.");
+    let requested:unknown;try{requested=JSON.parse(event.body??"");}catch{fail(400,"invalid_entitlement","JSON body with status required.");}
+    if(!requested || typeof requested!=="object" || Object.keys(requested).join(",")!=="status")fail(400,"invalid_entitlement","Body must contain only status.");
+    const registeredProduct=products.find(product=>product.enabled && product.product===entitlementRoute[2]);if(!registeredProduct)fail(404,"unknown_product","Product is not registered.");
+    const entitlement=await service.setEntitlement(authenticated,entitlementRoute[1],registeredProduct,(requested as {status:"active"|"disabled"}).status);
+    return response(200,{person:operator,entitlement});
+   }
    if(event.httpMethod!=="GET" || event.body && event.body!=="{}")fail(400,"read_only","Account directory supports read requests only.");
    let person;try{person=await service.person(authenticated);}catch(error){if(error instanceof AccountsError && error.code==="identity_enrollment_required" && event.path==="/v1/account-directory")return response(200,{person:null,accounts:[]});throw error;}
    const operatorAccess=canReadOperatorDirectory(authenticated,grants);
