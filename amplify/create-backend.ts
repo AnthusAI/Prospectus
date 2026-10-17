@@ -4,9 +4,10 @@ import { CfnRole, CfnPolicy } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Stack, Token, RemovalPolicy } from "aws-cdk-lib";
 import type {AccountsPlaneOptions} from "../infra/lib/accounts-plane";
+import type { IntakeContactMode } from "../infra/lib/evaluation-intake";
 import { ProspectusBackend } from "../infra/lib/prospectus-backend";
 import { TARGET_ACCOUNT, TARGET_REGION, AMPLIFY_APP_ID, DEPLOYMENT_BRANCH, SOURCE_REPOSITORY, SITE_DOMAIN, assertDeploymentScope } from "../infra/lib/scope";
-export function createProspectusBackend(code: (stack: Stack) => Code, evaluationCode?: (stack: Stack) => Code, accounts?: AccountsPlaneOptions) {
+export function createProspectusBackend(code: (stack: Stack) => Code, evaluationCode?: (stack: Stack) => Code, accounts?: AccountsPlaneOptions, intakeContactMode: IntakeContactMode = "synthetic-only") {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
   if (context["amplify-backend-namespace"] !== AMPLIFY_APP_ID || context["amplify-backend-name"] !== DEPLOYMENT_BRANCH || context["amplify-backend-type"] !== "branch") throw new Error("Prospectus deployment must target its approved Amplify app main branch");
   // Let Amplify bind its normal CDK synthesizer and account bootstrap.
@@ -55,7 +56,7 @@ export function createProspectusBackend(code: (stack: Stack) => Code, evaluation
     }
     node.policyDocument = document;
   }
-  const resources = new ProspectusBackend(stack, "Prospectus", code(backend.stack), evaluationCode?.(backend.stack), accounts);
+  const resources = new ProspectusBackend(stack, "Prospectus", code(backend.stack), evaluationCode?.(backend.stack), accounts, intakeContactMode);
   backend.addOutput({ custom: resources.outputs });
 
   return backend;
