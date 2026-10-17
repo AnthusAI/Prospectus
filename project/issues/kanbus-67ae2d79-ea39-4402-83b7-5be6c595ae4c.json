@@ -1,7 +1,7 @@
 {
   "id": "kanbus-67ae2d79-ea39-4402-83b7-5be6c595ae4c",
   "title": "Accept real contact inquiries only after approved readiness",
-  "description": "As an operator, I want safe contact intake beyond the synthetic evaluation.\n\nFeature: Accept real contact inquiries only after approved readiness\n  Scenario: Observable acceptance\n    Given the existing synthetic-only intake and its reviewed deployment proposal\n    When real-contact capture is considered\n    Then operating ownership privacy retention abuse controls writer reconciliation and real-cloud failure acceptance are approved before enabling it\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.",
+  "description": "As an operator, I want safe contact intake beyond the synthetic evaluation.\n\nFeature: Accept real contact inquiries only after approved readiness\n  Scenario: Observable acceptance\n    Given the existing synthetic-only intake and its reviewed deployment proposal\n    When real-contact capture is considered\n    Then operating ownership privacy retention abuse controls writer reconciliation and real-cloud failure acceptance are approved before enabling it\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan — 2026-10-17\n\nBasic contact/demo inquiry follows the core account acceptance path and must preserve the synthetic evaluation readiness gates already recorded. Real-contact activation remains blocked until operating owner, privacy/retention, abuse controls, writer reconciliation and real-cloud failure acceptance have concrete approval.\n\nFeature: Basic inquiry capture\n  Scenario: Return a receipt for an allowed inquiry\n    Given approved intake scope and enabled runtime\n    When a contact/demo inquiry is saved and retried after an uncertain response\n    Then one durable inquiry is available for authorized follow-up with source and receipt history\n    And no membership appointment charge or credit is created\n\nPR13 addresses wording only; its passing application check is not evidence of production intake activation. Billing design must not block the basic account/login path.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
   "type": "story",
   "status": "blocked",
   "priority": 2,
@@ -25,10 +25,25 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "a92eb1cf-275f-497d-87a9-cf6909091284",
+      "author": "home",
+      "text": "2026-10-17 next-step plan recorded in the description. Basic contact/demo inquiry follows the core account acceptance path and must preserve the synthetic evaluation readiness gates already recorded. Real-contact activation remains blocked until operating owner, privacy/retention, abuse controls, writer reconciliation and real-cloud failure acceptance have concrete approval.\n\nFeature: Basic inquiry capture\n  Scenario: Return a receipt for an allowed inquiry\n    Given approved intake scope and enabled runtime\n    When a contact/demo inquiry is saved and retried after an uncertain response\n    Then one durable inquiry is available for authorized follow-up with source and receipt history\n    And no membership appointment charge or credit is created\n\nPR13 addresses wording only; its passing application check is not evidence of production intake activation. Billing design must not block the basic account/login path.",
+      "created_at": "2026-10-17T06:22:40.398655Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "next-step-plan-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.458450Z",
-  "updated_at": "2026-10-16T20:46:53.521210Z",
+  "updated_at": "2026-10-17T06:22:40.398678Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",
