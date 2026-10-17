@@ -1,0 +1,32 @@
+{
+  "id": "kanbus-47dc15ae-dff6-48f2-8b60-9a599752f00f",
+  "title": "Route the anth.us engage page into Prospectus intake and retire the Google Form",
+  "description": "Ryan, 2026-10-17 portfolio review: the first outside contact arrives through a form, and the anth.us contact path is a Google Form today, which undercuts the pitch. Wire the anth.us engage page into Prospectus contact/demo intake and retire the Google Form once intake works end to end.\n\nFeature: anth.us contact reaches Prospectus\n  Scenario: Visitor sends a demo request from anth.us\n    Given Prospectus intake is enabled for real contacts\n    When a visitor submits the anth.us engage form\n    Then one durable inquiry appears in Prospectus with its source and receipt\n    And the visitor no longer reaches the Google Form\n\nDepends on kanbus-67ae2d79 (real-contact intake readiness). Invitations kanbus-b2ddb42a follow this.",
+  "type": "task",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-ae9b7ee0-79ab-4f30-9eaf-87b5f4f6f9df",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-67ae2d79-ea39-4402-83b7-5be6c595ae4c",
+      "type": "blocked-by"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-17T12:16:51.022069Z",
+  "updated_at": "2026-10-17T12:17:00.977099Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude",
+    "name": "portfolio-review-thread",
+    "settings": {}
+  },
+  "agent_assignment": null
+}
