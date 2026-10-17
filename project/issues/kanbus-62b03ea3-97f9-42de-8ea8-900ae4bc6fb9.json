@@ -3,7 +3,7 @@
   "title": "Keep the native Virtuus bridge alive across invocations and scope its ListBucket grant",
   "description": "`accounts/canonical-lambda.ts` constructs two `identity-files` Rust child processes per Lambda invocation and kills them in `finally`. Each child initializes an S3 client and runs HeadBucket before its first read, so every API request pays two process spawns and two bucket checks. Because the bridge verifies ownership with HeadBucket, `infra/lib/accounts-plane.ts` grants the accounts runtime `s3:ListBucket` on the whole bucket with no prefix condition, so that role can list CRM record keys.\n\nScope:\n- Keep both bridge instances alive at module scope across warm invocations; close and recreate only on bridge failure, child exit or shutdown. Keep the per-invocation deadline so a request cannot outlive the Lambda.\n- In the Rust bridge, send `x-amz-expected-bucket-owner` on every S3 call and drop HeadBucket.\n- Add a `StringLike s3:prefix` condition to the accounts ListBucket statement covering only the four `prospectus-central` scopes. Update the infra test and docs.\n\nAcceptance: native suites, `cargo test` and clippy pass; infra check passes; the request timing log no longer shows `head_bucket`. The S3 path cannot be exercised from a cloud thread; the first deploy from Ryan's Mac verifies it.",
   "type": "task",
-  "status": "open",
+  "status": "in_progress",
   "priority": 1,
   "assignee": null,
   "creator": null,
@@ -25,7 +25,7 @@
     }
   ],
   "created_at": "2026-10-17T14:50:12.368369215Z",
-  "updated_at": "2026-10-17T16:47:41.479740408Z",
+  "updated_at": "2026-10-17T16:47:56.622927759Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
