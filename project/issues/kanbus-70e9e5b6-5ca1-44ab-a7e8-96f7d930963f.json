@@ -3,7 +3,7 @@
   "title": "Remove the memory account service and link route, share one request parser, validate registrations once",
   "description": "Two account services exist: `AccountsService` over a memory `TransactionStore` (`accounts/service.ts`, `store.ts`, `testing/memory-account-store.ts`) and `DurableAccountsService` over Virtuus files. Only the durable one runs. The `/v1/identities/link` route always answers 409. Six handlers each copy their own header lower-casing, body parsing and JSON response helpers with different size limits (1024, 12000, 20000, none). `caller()` re-validates the whole product registry on every request.\n\nScope:\n- Delete `AccountsService`, `TransactionStore`, the memory store, the `link` route and the memory harness mode; make `AccountsApi` a standalone interface.\n- One shared request parser and response helper in `accounts/request.ts`, used by the account, directory, BFF and identity handlers, with each handler's limit stated once.\n- Validate registrations once at composition time; handlers accept the validated array.\n\nAcceptance: `npm test` and all native suites pass; Lambda bundles and the client package still build; docs no longer mention the memory service or the link route.",
   "type": "chore",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -25,8 +25,8 @@
     }
   ],
   "created_at": "2026-10-17T14:50:12.599405532Z",
-  "updated_at": "2026-10-17T17:15:15.982625950Z",
-  "closed_at": null,
+  "updated_at": "2026-10-17T17:57:36.088697013Z",
+  "closed_at": "2026-10-17T17:57:36.087665570Z",
   "right_now_summary": null,
   "right_now_updated_at": null,
   "custom": {}
