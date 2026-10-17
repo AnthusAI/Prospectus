@@ -3,7 +3,7 @@
   "title": "Resolve the canonical Person once per request and batch getPerson reads",
   "description": "`DurableAccountsService.person()` runs the full identity lookup (alias, Google record, session pointer list, each committed login record, alias and person file). `allowed()` calls it, `setMembership` calls `allowed()` and `directory.get()` on every retry attempt, and `list()` and the directory handler call it again. One request can run the lookup several times. `getPerson()` reads session pointers one at a time until one commits.\n\nScope:\n- Resolve the Person once per request and reuse it inside the same `Context`; never cache across requests and never cache account documents or memberships.\n- Batch `getPerson()` pointer reads four at a time with the same per-lookup memo `find()` uses, stopping at the first committed login.\n- Move the target-person existence check out of the `setMembership` retry loop; only the account document is re-read on a CAS conflict, with the actor permission re-check kept.\n\nAcceptance: read-counting tests prove one identity resolution per request, bounded concurrency in `getPerson`, and no repeated target lookup under a CAS conflict. All native suites pass.",
   "type": "task",
-  "status": "open",
+  "status": "in_progress",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -15,9 +15,17 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "d61b7f13-725d-4f8b-9a36-8584ab08e9af",
+      "author": "unknown",
+      "text": "PR https://github.com/AnthusAI/Prospectus/pull/26 (base claude/project-thread-3r1x8t). Person memoized per request Context, getPerson batched four at a time with a per-lookup read memo, target person check hoisted out of the setMembership retry loop. Lint, typecheck, npm test, build and native accounts suites pass.",
+      "created_at": "2026-10-17T16:53:35.159227265Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T14:50:12.888725901Z",
-  "updated_at": "2026-10-17T16:32:36.994037983Z",
+  "updated_at": "2026-10-17T16:53:46.716555238Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
