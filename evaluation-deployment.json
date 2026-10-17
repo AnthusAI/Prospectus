@@ -1,5 +1,5 @@
 {
-  "enabled": false,
-  "mode": "synthetic-only",
-  "approval": "Pending concrete evaluation runtime and access review"
+  "enabled": true,
+  "mode": "real-contacts",
+  "approval": "Ryan approved real-contact intake for the anth.us engage page on 2026-10-17: privacy notice contact-v1, inquiries kept until the person asks for deletion, owner intake-queue"
 }
