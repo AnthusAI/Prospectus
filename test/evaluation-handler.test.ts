@@ -46,7 +46,7 @@ test("evaluation returns only the service receipt and closes its owned cache", a
     }),
   });
   const result = await handler(event);
-  assert.equal(result.statusCode, 200);
+  assert.equal(result.statusCode, 202);
   assert.deepEqual(JSON.parse(result.body), { receipt: "synthetic-receipt", message: "Received" });
   assert.equal(result.headers["cache-control"], "no-store");
   assert.equal(closed, true);
@@ -133,8 +133,8 @@ test("evaluation accepts every configured form origin and nothing else", async (
     }),
   });
   for (const [origin, expected] of [
-    ["https://anth.us", 200],
-    ["https://prospectus.anth.us", 200],
+    ["https://anth.us", 202],
+    ["https://prospectus.anth.us", 202],
     ["https://www.anth.us", 403],
     ["https://anth.us.invalid", 403],
   ] as const) {

@@ -59,7 +59,7 @@ export class EvaluationIntake extends Construct {
     );
     const handler = new lambda.Function(this, "Handler", {
       functionName: "prospectus-intake-evaluation",
-      runtime: lambda.Runtime.NODEJS_22_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       architecture: lambda.Architecture.X86_64,
       description:
         contactMode === "real-contacts"

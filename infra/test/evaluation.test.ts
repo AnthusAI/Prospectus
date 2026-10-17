@@ -28,7 +28,7 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.hasResourceProperties("AWS::Lambda::Function", {
     FunctionName: "prospectus-intake-evaluation",
     ReservedConcurrentExecutions: 2,
-    Runtime: "nodejs22.x",
+    Runtime: "nodejs24.x",
   });
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "POST /intake/demo" });
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {

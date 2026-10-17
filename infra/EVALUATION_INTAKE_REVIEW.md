@@ -4,7 +4,7 @@ This additive slice is disabled in `evaluation-deployment.json` until the exact 
 
 The proposal deploys through the existing Amplify main pipeline in account `712236451410`, `us-east-1`:
 
-- Node 22 Lambda `prospectus-intake-evaluation`, its retained seven-day log group, and its Lambda-only runtime role of the same name.
+- Node 24 Lambda `prospectus-intake-evaluation`, its retained seven-day log group, and its Lambda-only runtime role of the same name.
 - One HTTP API with only `POST /intake/demo`, allowed browser origin `https://prospectus.anth.us`, one request/second with burst two, and Lambda concurrency two.
 - The runtime can invoke only `arn:aws:lambda:us-east-1:712236451410:function:prospectus-api`. Its application adapter fixes the intake actor and exposes only the issue operations needed to create/recover a synthetic inquiry. This is a trusted server capability to invoke the existing private API, not an IAM restriction on individual JSON methods.
 - S3 `GetObject`/`PutObject` only on `prospectus-records-712236451410/_virtuus/cyclotron/prospectus/intake-identities/*` and `intake-receipts/*`; no listing, deletion, unrelated canonical prefix, or catalog access.

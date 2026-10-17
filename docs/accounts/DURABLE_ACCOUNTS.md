@@ -33,7 +33,6 @@ Native absent/revision conditions enforce account creation and changes. A member
 
 ```bash
 npm run test:accounts:durable
-npm run test:canonical:durable
 npm test
 npm run typecheck
 ```
