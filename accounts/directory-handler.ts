@@ -1,13 +1,12 @@
 import {context,type ProductRegistration,type KeyResolver,type RestEvent} from "./auth";
 import {AccountsError,fail,roleOperations} from "./model";
 import {DurableAccountsService,type AccountDocument} from "./durable-accounts";
-import type {IdentityFiles} from "./identity-files";
 import {canReadOperatorDirectory,type OperatorGrant} from "./operator-policy";
 import type {OperatorAccount,OperatorDetail,DirectoryAccount,DirectoryDetail} from "../packages/accounts-client/src/directory";
 /** Personal reads require membership. Operator reads require a separate reviewed
  * human permission and current canonical session proof; neither authorizes app use.
  */
-export function accountDirectoryHandler(service:DurableAccountsService,files:IdentityFiles,products:readonly ProductRegistration[],keys:KeyResolver,clock=()=>Date.now()/1000,grants:readonly OperatorGrant[]=[]) {
+export function accountDirectoryHandler(service:DurableAccountsService,products:readonly ProductRegistration[],keys:KeyResolver,clock=()=>Date.now()/1000,grants:readonly OperatorGrant[]=[]) {
  const summary=(document:AccountDocument,personId:string):DirectoryAccount|null=>{
   const membership=document.memberships[personId];if(!membership || membership.status!=="active")return null;
   return {id:document.account.id,name:document.account.name,role:membership.role,products:Object.values(document.entitlements).map(({product,status})=>({product,status})).sort((a,b)=>a.product.localeCompare(b.product))};
@@ -24,8 +23,7 @@ export function accountDirectoryHandler(service:DurableAccountsService,files:Ide
     if(!operatorAccess)fail(403,"operator_forbidden","Explicit central Accounts administrator permission is required.");
     const operatorSummary=(document:AccountDocument):OperatorAccount=>({id:document.account.id,name:document.account.name,createdAt:document.account.createdAt,revision:document.account.revision,products:Object.values(document.entitlements).map(({product,status})=>({product,status})).sort((a,b)=>a.product.localeCompare(b.product)),activeMembers:Object.values(document.memberships).filter(member=>member.status==="active").length});
     if(event.path==="/v1/account-directory/operator/accounts") {
-     const paths=await files.list("accounts/");if(paths.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");const accounts:OperatorAccount[]=[];
-     for(const path of paths){const match=/^accounts\/([a-f0-9-]{36})\.json$/.exec(path);if(!match)fail(503,"account_inconsistent","Invalid account path.");const stored=await service.read(match[1]);if(!stored)fail(503,"account_inconsistent","Account unavailable during discovery.");accounts.push(operatorSummary(stored.value));}
+     const accounts=(await service.allAccounts()).map(operatorSummary);
      return response(200,{person,accounts:accounts.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id))});
     }
     const match=/^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})$/.exec(event.path);if(!match)fail(404,"route","Operator directory route not found.");
@@ -34,8 +32,7 @@ export function accountDirectoryHandler(service:DurableAccountsService,files:Ide
     return response(200,{account});
    }
    if(event.path==="/v1/account-directory") {
-    const paths=await files.list("accounts/");if(paths.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");const accounts:DirectoryAccount[]=[];
-    for(const path of paths) {const match=/^accounts\/([a-f0-9-]{36})\.json$/.exec(path);if(!match)fail(503,"account_inconsistent","Invalid account path.");const stored=await service.read(match[1]);if(!stored)fail(503,"account_inconsistent","Account unavailable during discovery.");const account=summary(stored.value,person.id);if(account)accounts.push(account);}
+    const accounts=(await service.candidateAccounts(person.id)).map(document=>summary(document,person.id)).filter((account):account is DirectoryAccount=>account!==null);
     return response(200,{person,operatorAccess,accounts:accounts.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id))});
    }
    const match=/^\/v1\/account-directory\/([a-f0-9-]{36})$/.exec(event.path);if(!match)fail(404,"route","Account directory route not found.");

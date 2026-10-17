@@ -5,11 +5,18 @@ import type {PersonDirectory} from "./person-directory";
 import type {AccountsApi} from "./handler";
 const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const path=(id:string)=>`accounts/${id}.json`;
+const membershipMarkerPath=(personId:string,accountId:string)=>`members/${personId}/${accountId}.json`;
 const record=(value:unknown):value is Record<string,any>=>!!value && typeof value==="object" && !Array.isArray(value);
 const timestamp=(value:unknown)=>typeof value==="string" && Number.isFinite(Date.parse(value));
 export function createdAccountId(personId:string,product:string,requestId:string) {
  const hex=hash(["prospectus-account-create-v1",personId,product,requestId.toLowerCase()]).split("");hex[12]="4";hex[16]=((parseInt(hex[16],16)&3)|8).toString(16);
  const value=hex.join("");return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20,32)}`;
+}
+export type MembershipLookup="scan"|"indexed";
+export function membershipLookupMode(value:unknown):MembershipLookup {
+ if(value===undefined)return "scan";
+ if(value!=="scan" && value!=="indexed")throw new Error("Membership lookup must be scan or indexed.");
+ return value;
 }
 export interface AccountDocument {
  version:1;kind:"account";
@@ -21,9 +28,12 @@ export interface AccountDocument {
 }
 /** A single canonical aggregate owns each account's permissions. No reciprocal
  * membership authority, distributed transaction emulation, DDB or process lock.
+ * Membership markers under members/<person>/ only narrow discovery: they are
+ * written before the account publishes, never removed, and every candidate is
+ * rechecked against its canonical account document.
  */
 export class DurableAccountsService implements AccountsApi {
- constructor(private files:IdentityFiles,private directory:PersonDirectory,private now:()=>string=()=>new Date().toISOString()){}
+ constructor(private files:IdentityFiles,private directory:PersonDirectory,private now:()=>string=()=>new Date().toISOString(),private membershipLookup:MembershipLookup="scan"){}
  private async publish<T>(location:string,operationId:string,requestHash:string,value:T,revision:string|null) {
   // Reconcile the exact frozen Virtuus intent only. Never steal/reset a claim or
   // manufacture a replacement operation while publication may be in flight.
@@ -70,19 +80,47 @@ export class DurableAccountsService implements AccountsApi {
  async list(context:Context):Promise<{person:Person|null;accounts:AccountSummary[]}> {
   // Same current directory check as resolve; no automatic identity enrollment.
   let person:Person;try {person=await this.person(context);}catch(error){if(error instanceof AccountsError && error.code==="identity_enrollment_required")return {person:null,accounts:[]};throw error;}
-  const candidates=await this.files.list("accounts/");if(candidates.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");
   const accounts:AccountSummary[]=[];
-  for(let offset=0;offset<candidates.length;offset+=4) {
-   const batch=await Promise.all(candidates.slice(offset,offset+4).map(async candidate=>{
-   const match=/^accounts\/([a-f0-9-]{36})\.json$/.exec(candidate);if(!match)fail(503,"account_inconsistent","Unexpected canonical account path.");
-   const stored=await this.read(match[1]);if(!stored)fail(503,"account_inconsistent","Account disappeared during discovery.");
-   return stored;
-   }));
-   for(const stored of batch) {
-   try {accounts.push(this.summary(context,person.id,stored.value,"console:read"));}catch(error){if(!(error instanceof AccountsError && error.status===403))throw error;}
-   }
+  for(const document of await this.candidateAccounts(person.id)) {
+   try {accounts.push(this.summary(context,person.id,document,"console:read"));}catch(error){if(!(error instanceof AccountsError && error.status===403))throw error;}
   }
   return {person,accounts:accounts.sort((a,b)=>a.id.localeCompare(b.id))};
+ }
+ private async listedAccountIds(prefix:string,pattern:RegExp) {
+  const paths=await this.files.list(prefix);if(paths.length>256)fail(503,"account_read_budget","Account discovery budget exceeded.");
+  return paths.map(candidate=>{const match=pattern.exec(candidate);if(!match)fail(503,"account_inconsistent","Unexpected canonical account path.");return match[1];});
+ }
+ private async readAccountsInBatchesOfFour(accountIds:string[],skipMissingAccounts:boolean) {
+  const documents:AccountDocument[]=[];
+  for(let offset=0;offset<accountIds.length;offset+=4) {
+   const batch=await Promise.all(accountIds.slice(offset,offset+4).map(accountId=>this.read(accountId)));
+   for(const stored of batch) {
+    if(stored)documents.push(stored.value);
+    else if(!skipMissingAccounts)fail(503,"account_inconsistent","Account disappeared during discovery.");
+   }
+  }
+  return documents;
+ }
+ async allAccounts() {
+  return this.readAccountsInBatchesOfFour(await this.listedAccountIds("accounts/",/^accounts\/([a-f0-9-]{36})\.json$/),false);
+ }
+ /** Candidates may include accounts the person has since left; callers check the membership. */
+ async candidateAccounts(personId:string) {
+  if(this.membershipLookup==="scan")return this.allAccounts();
+  if(!UUID_PATTERN.test(personId))fail(400,"invalid_person","UUID person ID required.");
+  const accountIds=await this.listedAccountIds(`members/${personId}/`,new RegExp(`^members/${personId}/([a-f0-9-]{36})\\.json$`));
+  return this.readAccountsInBatchesOfFour(accountIds,true);
+ }
+ private async recordMembershipMarker(personId:string,accountId:string) {
+  const logical=["account-membership-marker-v1",personId,accountId];
+  try {await this.publish(membershipMarkerPath(personId,accountId),`membership-marker:${personId}:${accountId}`,hash(logical),{version:1,kind:"membership-marker",personId,accountId},null);}
+  catch(error){if(!(error instanceof IdentityFileError && ["conflict","operation_mismatch"].includes(error.code)))throw error;}
+ }
+ /** Backfills markers for accounts published before markers existed. Idempotent. */
+ async rebuildMembershipIndex() {
+  const documents=await this.allAccounts();let markers=0;
+  for(const document of documents)for(const member of Object.values(document.memberships))if(member.status==="active"){await this.recordMembershipMarker(member.personId,document.account.id);markers++;}
+  return {accounts:documents.length,markers};
  }
  async create(context:Context,name:string,requestId:string):Promise<AccountSummary> {
   if(!UUID_PATTERN.test(requestId) || typeof name!=="string" || !name.trim() || name.trim().length>150)fail(400,"invalid","UUID idempotency key and account name required.");
@@ -95,6 +133,7 @@ export class DurableAccountsService implements AccountsApi {
   }
   const at=this.now();const document:AccountDocument={version:1,kind:"account",account:{id,name,createdAt:at,revision:1},creation:{personId:person.id,product:context.product,requestHash,fingerprint},memberships:{[person.id]:{accountId:id,personId:person.id,role:"owner",status:"active"}},entitlements:{[context.product]:{accountId:id,product:context.product,status:"active",capabilities:[...context.capabilities]}},audit:[{type:"account.created",revision:1,actor:person.id,product:context.product,principal:context.principal,at}]};
   this.validate(document,id);
+  await this.recordMembershipMarker(person.id,id);
   try {
    await this.publish(path(id),`account:${id}:create`,hash(["account-create-v1",id,requestHash,fingerprint]),document,null);
   } catch(error) {
@@ -126,6 +165,7 @@ export class DurableAccountsService implements AccountsApi {
    document.account.revision++;document.audit.push({type:"membership.changed",revision:document.account.revision,actor:state.person.id,target:personId,role,status,product:context.product,principal:context.principal,at:this.now()});
    if(Buffer.byteLength(JSON.stringify(document))>65536)fail(409,"account_capacity","Account canonical byte capacity reached.");this.validate(document,id);
    const logical=["account-membership-v1",id,state.stored.revision,state.person.id,context.product,context.principal,personId,role,status];
+   if(status==="active")await this.recordMembershipMarker(personId,id);
    try {await this.publish(path(id),`account:${id}:membership:${hash(logical)}`,hash(logical),document,state.stored.revision);return membership;}
    catch(error){if(!(error instanceof IdentityFileError && error.code==="conflict"))throw error;}
   }
