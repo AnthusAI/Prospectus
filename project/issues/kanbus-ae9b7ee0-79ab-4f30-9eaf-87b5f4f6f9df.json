@@ -1,7 +1,7 @@
 {
   "id": "kanbus-ae9b7ee0-79ab-4f30-9eaf-87b5f4f6f9df",
   "title": "Complete onboarding and contact to demo follow-up",
-  "description": "Complete only the remaining CRM/onboarding behavior supported by existing README, SETUP_STATUS.md, TRACKING.md and infra/EVALUATION_INTAKE_REVIEW.md. Existing synthetic .invalid intake is source-proven; hosted activation remains disabled pending its exact additive scope. Contact/demo inquiries do not imply appointment booking, invitations or account/permission provisioning. Cross-project existing issues kbs-df1fc256 and kbs-9727655 retain their IDs.",
+  "description": "Complete only the remaining CRM/onboarding behavior supported by existing README, SETUP_STATUS.md, TRACKING.md and infra/EVALUATION_INTAKE_REVIEW.md. Existing synthetic .invalid intake is source-proven; hosted activation remains disabled pending its exact additive scope. Contact/demo inquiries do not imply appointment booking, invitations or account/permission provisioning. Cross-project existing issues kbs-df1fc256 and kbs-9727655 retain their IDs.\n\n## Current next-step plan — 2026-10-17\n\nAfter basic hosted account acceptance6cf11d42, continue invitationsb2ddb42a and basic contact/demo inquiry67ae2d79/a294e9b0. Preserve the existing synthetic .invalid evaluation and current policy/abuse/retention gates before enabling real-contact capture. A contact inquiry grants no membership, product permission or booking. Billing and credits remain independent design work and do not block basic login or account selection.\n\nFeature: Honest inquiry and onboarding\n  Scenario: Inquiry received without booking or access\n    Given an enabled intake with its approved operating scope\n    When a visitor submits a contact/demo inquiry\n    Then staff can follow it up as an inquiry\n    And no appointment invitation membership or financial effect is implied\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
   "type": "epic",
   "status": "open",
   "priority": 2,
@@ -10,9 +10,25 @@
   "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "3d82a298-8192-45f6-ad29-5754d5348b6d",
+      "author": "home",
+      "text": "2026-10-17 next-step plan recorded in the description. After basic hosted account acceptance6cf11d42, continue invitationsb2ddb42a and basic contact/demo inquiry67ae2d79/a294e9b0. Preserve the existing synthetic .invalid evaluation and current policy/abuse/retention gates before enabling real-contact capture. A contact inquiry grants no membership, product permission or booking. Billing and credits remain independent design work and do not block basic login or account selection.\n\nFeature: Honest inquiry and onboarding\n  Scenario: Inquiry received without booking or access\n    Given an enabled intake with its approved operating scope\n    When a visitor submits a contact/demo inquiry\n    Then staff can follow it up as an inquiry\n    And no appointment invitation membership or financial effect is implied",
+      "created_at": "2026-10-17T06:22:40.311340Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "codex",
+        "model": "gpt-6.1-sol",
+        "name": "next-step-plan-reconciliation",
+        "settings": {
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ],
   "created_at": "2026-10-16T20:46:53.432426Z",
-  "updated_at": "2026-10-16T20:46:53.432446Z",
+  "updated_at": "2026-10-17T06:22:40.311360Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",
@@ -24,5 +40,8 @@
   },
   "right_now_summary": null,
   "right_now_updated_at": null,
-  "custom": {}
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
 }
