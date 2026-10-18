@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-626090bb-4801-437a-bd8d-b370a3be8fde",
+  "title": "Issue short-lived per-account site credentials that the Cyclotron lab can re-verify",
+  "description": "From the Papyrus side. Cyclotron's central lab now authenticates a calling site with Authorization: Bearer <credential> plus X-Cyclotron-Account, and re-verifies the credential with the account service on every call (Cyclotron PR 47, decision_flywheel.site_credentials). Nothing in Prospectus issues that credential: the accounts client only does SigV4 with temporary AWS credentials and the human's access token, and I found no issuing endpoint on main. Needed: an endpoint a site calls, with the signed-in person's access token and a selected account, that returns a short-lived credential bound to person, account and role; and a verify call the lab can use that returns person, account and role, or nothing once the membership is revoked or the credential expires. Prospectus owns the design and the security review. Papyrus side is Papyrus PR 277 (credential_for is injected until this exists). Raised by the Papyrus Prospectus-integration thread.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-18T13:30:09.759617Z",
+  "updated_at": "2026-10-18T13:30:09.759925Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": null,
+  "agent_assignment": null
+}
