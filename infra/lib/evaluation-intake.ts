@@ -35,7 +35,7 @@ export class EvaluationIntake extends Construct {
       description: contactMode === "real-contacts"
         ? "Contact and demo inquiries from anth.us and Prospectus; no email, invitations, accounts or public CRM reads."
         : "Synthetic .invalid inquiry evaluation only; no email, invitations, accounts or public CRM reads.",
-      handler: "index.handler", code, role, logGroup, memorySize: 512, timeout: cdk.Duration.seconds(60), reservedConcurrentExecutions: 2,
+      handler: "index.handler", code, role, logGroup, memorySize: 512, timeout: cdk.Duration.seconds(60),
       environment: { PROSPECTUS_INTAKE_ALLOWED_ORIGINS: formOrigins.join(","), PROSPECTUS_INTAKE_CONTACT_MODE: contactMode, PROSPECTUS_EVALUATION_WORKSPACE: PROJECT_NAMESPACE,
         PROSPECTUS_EVALUATION_BUCKET: `prospectus-records-${TARGET_ACCOUNT}`, PROSPECTUS_CANONICAL_FUNCTION: "prospectus-api" },
     });
