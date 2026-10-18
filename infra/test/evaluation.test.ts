@@ -18,6 +18,7 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.resourceCountIs("AWS::S3::Bucket", 0);
   template.resourceCountIs("AWS::DynamoDB::Table", 0);
   template.resourceCountIs("AWS::Lambda::Function", 1);
+  template.resourceCountIs("AWS::Logs::LogGroup", 0);
   template.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "prospectus-intake-evaluation", ReservedConcurrentExecutions: 2, Runtime: "nodejs22.x" });
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "POST /intake/demo" });
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", { DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 } });
