@@ -19,7 +19,9 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.resourceCountIs("AWS::DynamoDB::Table", 0);
   template.resourceCountIs("AWS::Lambda::Function", 1);
   template.resourceCountIs("AWS::Logs::LogGroup", 0);
-  template.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "prospectus-intake-evaluation", ReservedConcurrentExecutions: 2, Runtime: "nodejs22.x" });
+  template.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "prospectus-intake-evaluation", Runtime: "nodejs22.x" });
+  const intakeFunction = Object.values(template.findResources("AWS::Lambda::Function"))[0] as any;
+  assert.equal(intakeFunction.Properties.ReservedConcurrentExecutions, undefined, "the account has no spare concurrency to reserve; throttling comes from the API stage");
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "POST /intake/demo" });
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", { DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 } });
   const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap((r: any) => r.Properties.PolicyDocument.Statement);
