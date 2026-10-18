@@ -10,9 +10,24 @@
   "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "d80d84f6-3ca2-469c-bb43-7a44c9ce638c",
+      "author": "unknown",
+      "text": "2026-10-18 Resolved. Auto-build on main works: after PR 32 (log group) and PR 33 (reserved concurrency) the backend stack deployed (job 26, then build 28 for ec0502a, UPDATE_COMPLETE). Closing.\n",
+      "created_at": "2026-10-18T20:52:40.279499Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": {
+        "platform": "claude_code",
+        "model": "Sonnet 5.5",
+        "name": "Cloud Agent",
+        "settings": {}
+      }
+    }
+  ],
   "created_at": "2026-10-18T19:43:11.548031Z",
-  "updated_at": "2026-10-18T19:43:32.840675Z",
+  "updated_at": "2026-10-18T20:52:40.279636Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
