@@ -61,10 +61,24 @@
         "name": "Cloud Agent",
         "settings": {}
       }
+    },
+    {
+      "id": "87a9ac48-bac7-4ca0-91ef-64130d836978",
+      "author": "unknown",
+      "text": "2026-10-18 Papyrus owner (PPY-58f107): second site, Pilobolus, filed as a reviewed entry. Product papyrus-pilobol-us, pool us-east-1_Fw8LBiG39, Google-only client 3c13r7hi7o91i7s8a083nr0qo1, role AmplifyComputeRoleD988057-cBnMtgLxcwD1 in account 712236451410 (Amplify app d1eiwl0gedkmnj), review IDs papyrus-pilobol-us-google-only-unlinked-v1-2026-10-18 and papyrus-pilobol-us-site-v1-2026-10-18 (minted by Papyrus). Your conditions were checked read-only on the deployed client: it lists only Google, token revocation is on, the pool has no Lambda triggers, and CloudTrail shows no AdminLinkProviderForUser. Not live until the backend deploy in kanbus-ebbc78 succeeds. The Pilobolus site config also still needs cms.prospectusAccountsApiStageArn so its role can call the accounts API.\n",
+      "created_at": "2026-10-18T20:15:52.288932Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": {
+        "platform": "claude_code",
+        "model": "Sonnet 5.5",
+        "name": "Cloud Agent",
+        "settings": {}
+      }
     }
   ],
   "created_at": "2026-10-17T07:14:48.913519Z",
-  "updated_at": "2026-10-18T19:43:34.552852Z",
+  "updated_at": "2026-10-18T20:15:52.289089Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
