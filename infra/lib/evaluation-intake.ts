@@ -22,7 +22,7 @@ export class EvaluationIntake extends Construct {
   constructor(scope: Construct, id: string, code: lambda.Code, contactMode: IntakeContactMode = "synthetic-only") {
     super(scope, id);
     const formOrigins = intakeFormOriginsForMode(contactMode);
-    const logGroup = new logs.LogGroup(this, "Logs", { logGroupName: "/aws/lambda/prospectus-intake-evaluation", retention: logs.RetentionDays.ONE_WEEK, removalPolicy: cdk.RemovalPolicy.RETAIN });
+    const logGroup = logs.LogGroup.fromLogGroupName(this, "Logs", "/aws/lambda/prospectus-intake-evaluation");
     const role = new iam.Role(this, "Role", { roleName: "prospectus-intake-evaluation", assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com") });
     role.addToPolicy(new iam.PolicyStatement({ actions: ["logs:CreateLogStream", "logs:PutLogEvents"], resources: [logGroup.logGroupArn] }));
     role.addToPolicy(new iam.PolicyStatement({ actions: ["lambda:InvokeFunction"], resources: [`arn:aws:lambda:us-east-1:${TARGET_ACCOUNT}:function:prospectus-api`] }));
