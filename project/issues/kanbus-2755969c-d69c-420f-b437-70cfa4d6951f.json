@@ -75,10 +75,24 @@
         "name": "Cloud Agent",
         "settings": {}
       }
+    },
+    {
+      "id": "5c163ff7-827e-40d1-bfe1-b3e72a7f12c0",
+      "author": "unknown",
+      "text": "2026-10-18 Papyrus owner (PPY-58f107): both sites are registered and deployed. Build 28 (ec0502a) succeeded and the backend stack is UPDATE_COMPLETE. The Mac read the deployed prospectus-central-accounts Lambda: it contains papyrus-p-apyr-us and papyrus-pilobol-us with their pool, client and policy ids. The registry reaches the Lambda through the bundled accounts/papyrus-sites.json, not the PROSPECTUS_PRODUCTS env var (that env holds only the directory and Cyclotron products by design). The bnh9mctvo9 resource policy lists both compute roles for identities/me, the Google challenge and resolve, accounts, authorize and account-directory. Remaining on the Papyrus side: the Pilobolus app-shell stack update (its infra/site.json needs cms.prospectusAccountsApiStageArn) so its role can call the API from its own account's side, and the account selection UI. No further Prospectus change is needed for these two sites.\n",
+      "created_at": "2026-10-18T20:52:39.664085Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": {
+        "platform": "claude_code",
+        "model": "Sonnet 5.5",
+        "name": "Cloud Agent",
+        "settings": {}
+      }
     }
   ],
   "created_at": "2026-10-17T07:14:48.913519Z",
-  "updated_at": "2026-10-18T20:15:52.289089Z",
+  "updated_at": "2026-10-18T20:52:39.664251Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

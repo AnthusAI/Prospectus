@@ -3,17 +3,32 @@
   "title": "Deploy Prospectus automatically when main changes",
   "description": "Feature: Prospectus deploys itself when main changes\n  Scenario: A merge reaches production through the Amplify app\n    Given Prospectus is a public repository with CI on GitHub Actions\n    When a change merges to main\n    Then the Amplify app d15sc1sptohtqb builds main and deploys the backend and frontend without anyone starting a build by hand\n\nHistory 2026-10-18: PR 31 turned auto-build on in the repo settings. Builds 21 to 24 then failed because the intake stack declared the existing log group /aws/lambda/prospectus-intake-evaluation as a new resource (PR 32 references it instead). Job 25 failed because the account cannot reserve Lambda concurrency (PR 33 removes reservedConcurrentExecutions; API stage throttling stays). The backend stack was still in UPDATE_ROLLBACK_COMPLETE at the time of writing. Cloud threads have no AWS access, so build results come from the Mac thread.",
   "type": "story",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 1,
   "assignee": null,
   "creator": null,
   "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "d80d84f6-3ca2-469c-bb43-7a44c9ce638c",
+      "author": "unknown",
+      "text": "2026-10-18 Resolved. Auto-build on main works: after PR 32 (log group) and PR 33 (reserved concurrency) the backend stack deployed (job 26, then build 28 for ec0502a, UPDATE_COMPLETE). Closing.\n",
+      "created_at": "2026-10-18T20:52:40.279499Z",
+      "comment_type": "default",
+      "data": {},
+      "agent": {
+        "platform": "claude_code",
+        "model": "Sonnet 5.5",
+        "name": "Cloud Agent",
+        "settings": {}
+      }
+    }
+  ],
   "created_at": "2026-10-18T19:43:11.548031Z",
-  "updated_at": "2026-10-18T19:43:32.840675Z",
-  "closed_at": null,
+  "updated_at": "2026-10-18T20:52:48.412187Z",
+  "closed_at": "2026-10-18T20:52:48.412011Z",
   "right_now_summary": null,
   "right_now_updated_at": null,
   "custom": {},
