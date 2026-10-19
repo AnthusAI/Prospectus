@@ -23,9 +23,22 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "f4cbbd51-b800-444a-a0b3-32a80f67bbdb",
+      "author": "unknown",
+      "text": "2026-10-19 status: not started. Gate was PR merges for 62b03e, 70e9e5 and 2c3ea8. 62b03e and 70e9e5 have merged; 2c3ea8 (PR 26) has not. Next: Sonnet 5.5 worker once PR 26 merges.",
+      "created_at": "2026-10-19T16:45:21.740930881Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
+    }
+  ],
   "created_at": "2026-10-17T14:50:13.690480536Z",
-  "updated_at": "2026-10-17T14:50:15.021943241Z",
+  "updated_at": "2026-10-19T16:45:21.740953170Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

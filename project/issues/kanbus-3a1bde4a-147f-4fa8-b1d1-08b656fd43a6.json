@@ -17,10 +17,22 @@
       "text": "Implemented on branch claude/project-thread-8m9yf5: create-only membership markers, membershipLookup scan|indexed in accounts/deployment.json (stays scan), and scripts/rebuild-membership-index.ts. Rollout: deploy in scan mode, rebuild from Ryan's Mac, then switch to indexed.",
       "created_at": "2026-10-17T13:39:15.906440844Z",
       "comment_type": "default"
+    },
+    {
+      "id": "8091b4ef-0e18-4408-a84d-c8d295e100b4",
+      "author": "unknown",
+      "text": "2026-10-19 status: PR 18 is merged and the index code ships in scan mode. No record that the index rebuild ran. Next: Mac Remote Control session runs scripts/rebuild-membership-index.ts, then membershipLookup is switched to indexed in accounts/deployment.json. Blocked on Ryan's Mac session being online.",
+      "created_at": "2026-10-19T16:45:21.754736355Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-17T07:14:48.937793284Z",
-  "updated_at": "2026-10-17T13:39:15.906491150Z",
+  "updated_at": "2026-10-19T16:45:21.754762276Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

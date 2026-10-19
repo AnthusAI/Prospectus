@@ -3,7 +3,7 @@
   "title": "Consolidate documentation into README, ARCHITECTURE, SECURITY and OPERATIONS",
   "description": "About 20 Markdown files describe the project, many as historical proof narratives. Several are stale: ACCOUNTS_UI.md and GOOGLE_IDENTITY.md say Accounts activation remains disabled while `deployment.json` has `enabled: true`; TRACKING.md references another board's issue IDs; DURABLE_ACCOUNTS.md names a nonexistent script; many files have stripped spaces around numbers and hashes.\n\nScope: consolidate into `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` and `docs/OPERATIONS.md` with facts taken from the code; keep `.feature` files and `docs/accounts/PAPYRUS_SITES.md`; move proof history into one dated appendix; delete the superseded files after fixing every link to them.\n\nAcceptance: no dangling links; every claim checkable against the code; the account model decision (one account, per-product entitlements, operators grant products) is written down.",
   "type": "chore",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -15,13 +15,19 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "00775aa8-c4bf-4f04-8f29-ef90f2432173",
+      "author": "home",
+      "text": "PR 24 merged to main (6cf77c7). Documentation now lives in README, ARCHITECTURE, SECURITY and OPERATIONS.",
+      "created_at": "2026-10-19T18:20:32.981914Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T14:50:13.450015Z",
-  "updated_at": "2026-10-17T16:41:37.637989Z",
-  "closed_at": null,
+  "updated_at": "2026-10-19T18:20:33.001517Z",
+  "closed_at": "2026-10-19T18:20:33.001493Z",
   "right_now_summary": null,
   "right_now_updated_at": null,
-  "custom": {},
-  "agent": null,
-  "agent_assignment": null
+  "custom": {}
 }

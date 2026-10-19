@@ -24,10 +24,22 @@
       "text": "Decision (Ryan, 2026-10-17): operators only. Only people holding a reviewed accounts:admin:entitlements grant may turn products on or off; account owners may not.",
       "created_at": "2026-10-17T13:51:53.947595129Z",
       "comment_type": "default"
+    },
+    {
+      "id": "15a9677c-ddb2-443f-b847-b6cecc650500",
+      "author": "unknown",
+      "text": "2026-10-19 status: setEntitlement and the operator route merged in PR 18. No BFF or UI caller path exists yet, and the API Gateway policy change was held for approval. No operator grant holds accounts:admin:entitlements yet. Needed for kanbus-6cf11d to give the two Papyrus sites a product entitlement.",
+      "created_at": "2026-10-19T16:45:21.772209900Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-17T07:14:48.964167426Z",
-  "updated_at": "2026-10-17T13:51:53.948156664Z",
+  "updated_at": "2026-10-19T16:45:21.772253311Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

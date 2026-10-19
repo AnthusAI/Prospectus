@@ -29,10 +29,34 @@
       "text": "PR https://github.com/AnthusAI/Prospectus/pull/21 caches Cargo, toolchains, build targets and the Kanbus checkout in CI, uses Node 24 everywhere, adds test:all, and answers 202 from hosted intake. Awaiting CI; the under-10-minute target needs a second cached run.",
       "created_at": "2026-10-17T16:46:19.170933559Z",
       "comment_type": "default"
+    },
+    {
+      "id": "ed1cd009-d7f6-4715-ac52-4eb0017cffce",
+      "author": "home",
+      "text": "2026-10-19 reconcile: PR 21 merged (a2899ca). Acceptance of a no-change CI run well under 10 minutes after the first cached run is NOT yet met. Main CI job 'application' durations: a2899ca 27 min (16:55:35 to 17:22:38, run 39288680623); 28683e5 22.7 min (17:02:21 to 17:25:03, run 39290318855); runs db8afb6 and 2f7d893 were 25 to 30 min wall clock. Runs overlapped, so the cache may not have been warm for all. Leaving in_progress pending a no-change rerun measurement and a check of which steps still dominate.",
+      "created_at": "2026-10-19T17:28:04.994136Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-reconcile-2026-10-19"
+      }
+    },
+    {
+      "id": "e36a47a8-2788-49fc-8b41-0f189d49e2f8",
+      "author": "home",
+      "text": "Re-applied from PR 40 (2026-10-19 morning, now superseded by the merge): PR 21 was open, CI green on the first cold-cache run at about 16 minutes; the under-10-minute target needed a cached run.",
+      "created_at": "2026-10-19T17:28:11.893394Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-reconcile-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-17T14:50:13.243740194Z",
-  "updated_at": "2026-10-17T16:46:19.170981344Z",
+  "updated_at": "2026-10-19T17:28:11.893425Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
