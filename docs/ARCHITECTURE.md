@@ -29,7 +29,7 @@ All canonical data lives in one private versioned S3 bucket, `prospectus-records
 
 DynamoDB (`CatalogTableName` output) is a supplemental query catalog for the CRM only. It can be rebuilt from the files; nothing consults it for authorization.
 
-Writes that must be conditional go through the Rust bridge using the pinned Virtuus `FileStore`, `JournaledStore` and S3 store. Application code never substitutes its own filesystem writes for that authority.
+Writes that must be conditional go through the Rust bridge using the pinned Virtuus `FileStore`, `JournaledStore` and S3 store. Application code never substitutes its own filesystem writes for that authority. The bridge sends `x-amz-expected-bucket-owner` on every S3 call instead of a HeadBucket check. The two bridge processes live at module scope and survive warm Lambda invocations, restarting only after a bridge failure, child exit or the per-invocation deadline.
 
 ## CRM
 

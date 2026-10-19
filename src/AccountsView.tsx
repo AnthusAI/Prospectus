@@ -5,9 +5,11 @@ import type { DirectoryList, DirectoryDetail } from "../packages/accounts-client
 export function AccountsView({
   client,
   onConnect,
+  automaticConfirmationAllowed = () => false,
 }: {
   client: AccountsBrowser;
   onConnect: () => Promise<void>;
+  automaticConfirmationAllowed?: () => boolean;
 }) {
   const [data, setData] = useState<DirectoryList | null>(null),
     [selected, setSelected] = useState<DirectoryDetail | null>(null),
@@ -68,6 +70,9 @@ export function AccountsView({
       request.current++;
     };
   }, [client, reload]);
+  useEffect(() => {
+    if (data && !data.person && automaticConfirmationAllowed()) void connect();
+  }, [data]);
   async function open(id: string) {
     const sequence = ++request.current;
     setSelected(null);

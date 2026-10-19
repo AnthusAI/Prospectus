@@ -13,7 +13,9 @@ import { AccountsView } from "./AccountsView";
 import { accountsBrowser } from "./accounts-client";
 import { ApiError, KanbusClient, type Configuration, type IssueRecord, type Query } from "./client";
 import {
+  AccountsConfirmationError,
   finishSignIn,
+  hasAttemptedAccountsConfirmation,
   getAccessToken,
   setLocalToken,
   signIn,
@@ -69,7 +71,13 @@ export function App() {
           setSignedIn(Boolean(getAccessToken()));
           if (new URLSearchParams(window.location.search).get("view") === "accounts") setView("accounts");
         })
-        .catch((cause: Error) => setError(cause.message));
+        .catch((cause: Error) => {
+          if (cause instanceof AccountsConfirmationError) {
+            setSignedIn(Boolean(getAccessToken()));
+            setView("accounts");
+          }
+          setError(cause.message);
+        });
   }, []);
   useEffect(() => {
     if (!signedIn) return;
@@ -391,6 +399,7 @@ export function App() {
         <TabsContent value="accounts">
           <AccountsView
             client={directory}
+            automaticConfirmationAllowed={() => !hasAttemptedAccountsConfirmation()}
             onConnect={async () => {
               if (!authentication) throw new Error("Sign-in is not configured.");
               await signIn(authentication, await directory.challenge());

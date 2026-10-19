@@ -16,6 +16,7 @@ struct Service {
     deny_canonical: bool,
     uncertain_before_publication: bool,
     calls: Vec<String>,
+    calls_without_expected_owner: Vec<String>,
 }
 fn response(
     status: StatusCode,
@@ -52,6 +53,13 @@ async fn handle(
     let path = parts.uri.path().to_owned();
     let mut service = state.lock().unwrap();
     service.calls.push(path.clone());
+    let expected_owner_header = parts
+        .headers
+        .get("x-amz-expected-bucket-owner")
+        .and_then(|value| value.to_str().ok());
+    if expected_owner_header != Some("123456789012") {
+        service.calls_without_expected_owner.push(path.clone());
+    }
     if parts.method == "GET" && query.contains_key("list-type") {
         let prefix = format!("/mock-bucket/{}", query.get("prefix").unwrap());
         let keys = service
@@ -149,6 +157,7 @@ async fn s3_identity_journal_preserves_bytes_conditions_replay_and_uncertainty()
         ))
         .endpoint_url(format!("http://{address}"))
         .force_path_style(true)
+        .interceptor(ExpectedBucketOwnerInterceptor::new("123456789012".into()))
         .build();
     let objects: Arc<dyn ObjectStore> = Arc::new(virtuus_store::aws::S3Store::new(
         aws_sdk_s3::Client::from_conf(config),
@@ -214,6 +223,8 @@ async fn s3_identity_journal_preserves_bytes_conditions_replay_and_uncertainty()
         Err(StoreError::Uncertain(_))
     ));
     let service = service.lock().unwrap();
+    assert!(!service.calls.is_empty());
+    assert_eq!(service.calls_without_expected_owner, Vec::<String>::new());
     assert!(service.calls.iter().all(|path| path == "/mock-bucket/"
         || path.starts_with("/mock-bucket/synthetic/identities/")
         || path.starts_with("/mock-bucket/_virtuus/synthetic/identities/")));
