@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-f87b9ab6-f8bd-4313-a2da-6c093b77560d",
+  "title": "Customer member management and last-owner protection",
+  "description": "List, change role, remove members for owners and admins via members:read and members:write; never remove the last owner.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-18T19:47:31.670009Z",
+  "updated_at": "2026-10-18T19:47:31.670312Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": null,
+  "agent_assignment": null
+}

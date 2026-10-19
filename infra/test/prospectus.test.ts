@@ -177,6 +177,6 @@ test("hosting SPA rewrite handles dotted application paths while preserving stat
   for (const path of ["/auth/callback", "/prospects/acme.example", "/sales/report.csv"]) assert.ok(route.test(path), path);
   for (const path of ["/assets/app.js", "/assets/style.css", "/assets/icon.svg", "/assets/font.woff2", "/config.json"]) assert.ok(!route.test(path), path);
   assert.equal(settings.environmentVariables._LIVE_UPDATES, "[]", "pinned Gen2 builds must not install global legacy CLI overrides");
-  assert.equal(settings.enableBranchAutoBuild, false);
+  assert.equal(settings.enableBranchAutoBuild, true, "merging to main deploys through the Amplify app");
   assert.equal(settings.enableAutoBranchCreation, false);
 });
