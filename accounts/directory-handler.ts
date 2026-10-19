@@ -3,8 +3,7 @@ import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse } from "./request";
 import { AccountsError, fail, roleOperations } from "./model";
 import { DurableAccountsService, type AccountDocument } from "./durable-accounts";
-import type { IdentityFiles } from "./identity-files";
-import { canReadOperatorDirectory, type OperatorGrant } from "./operator-policy";
+import { canReadOperatorDirectory, hasOperatorPermission, type OperatorGrant } from "./operator-policy";
 import type {
   OperatorAccount,
   OperatorDetail,
@@ -16,7 +15,6 @@ import type {
  */
 export function accountDirectoryHandler(
   service: DurableAccountsService,
-  files: IdentityFiles,
   products: ValidatedRegistrations,
   keys: KeyResolver,
   clock = () => Date.now() / 1000,
@@ -48,6 +46,40 @@ export function accountDirectoryHandler(
         !authenticated.capabilities.includes("console:read")
       )
         fail(403, "directory_forbidden", "Account directory access is not registered.");
+      const entitlementRoute =
+        /^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})\/entitlements\/([a-z][a-z0-9-]{0,39})$/.exec(
+          event.path,
+        );
+      if (entitlementRoute && event.httpMethod === "POST") {
+        const operator = await service.person(authenticated);
+        if (!hasOperatorPermission(authenticated, grants, "accounts:admin:entitlements"))
+          fail(403, "operator_forbidden", "Explicit central entitlements permission is required.");
+        const contentType = Object.entries(event.headers ?? {}).find(
+          ([name]) => name.toLowerCase() === "content-type",
+        )?.[1];
+        if (event.isBase64Encoded || Buffer.byteLength(event.body ?? "") > 12000)
+          fail(400, "body", "Unsupported entitlement payload.");
+        if (contentType?.split(";")[0] !== "application/json") fail(415, "json_required", "JSON required.");
+        let requested: unknown;
+        try {
+          requested = JSON.parse(event.body ?? "");
+        } catch {
+          fail(400, "invalid_entitlement", "JSON body with status required.");
+        }
+        if (!requested || typeof requested !== "object" || Object.keys(requested).join(",") !== "status")
+          fail(400, "invalid_entitlement", "Body must contain only status.");
+        const registeredProduct = products.find(
+          (product) => product.enabled && product.product === entitlementRoute[2],
+        );
+        if (!registeredProduct) fail(404, "unknown_product", "Product is not registered.");
+        const entitlement = await service.setEntitlement(
+          authenticated,
+          entitlementRoute[1],
+          registeredProduct,
+          (requested as { status: "active" | "disabled" }).status,
+        );
+        return jsonResponse(200, { person: operator, entitlement });
+      }
       if (event.httpMethod !== "GET" || (event.body && event.body !== "{}"))
         fail(400, "read_only", "Account directory supports read requests only.");
       let person;
@@ -78,16 +110,7 @@ export function accountDirectoryHandler(
             .length,
         });
         if (event.path === "/v1/account-directory/operator/accounts") {
-          const paths = await files.list("accounts/");
-          if (paths.length > 256) fail(503, "account_read_budget", "Account discovery budget exceeded.");
-          const accounts: OperatorAccount[] = [];
-          for (const path of paths) {
-            const match = /^accounts\/([a-f0-9-]{36})\.json$/.exec(path);
-            if (!match) fail(503, "account_inconsistent", "Invalid account path.");
-            const stored = await service.read(match[1]);
-            if (!stored) fail(503, "account_inconsistent", "Account unavailable during discovery.");
-            accounts.push(operatorSummary(stored.value));
-          }
+          const accounts = (await service.allAccounts()).map(operatorSummary);
           return jsonResponse(200, {
             person,
             accounts: accounts.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
@@ -105,17 +128,9 @@ export function accountDirectoryHandler(
         return jsonResponse(200, { account });
       }
       if (event.path === "/v1/account-directory") {
-        const paths = await files.list("accounts/");
-        if (paths.length > 256) fail(503, "account_read_budget", "Account discovery budget exceeded.");
-        const accounts: DirectoryAccount[] = [];
-        for (const path of paths) {
-          const match = /^accounts\/([a-f0-9-]{36})\.json$/.exec(path);
-          if (!match) fail(503, "account_inconsistent", "Invalid account path.");
-          const stored = await service.read(match[1]);
-          if (!stored) fail(503, "account_inconsistent", "Account unavailable during discovery.");
-          const account = summary(stored.value, person.id);
-          if (account) accounts.push(account);
-        }
+        const accounts = (await service.candidateAccounts(person.id))
+          .map((document) => summary(document, person.id))
+          .filter((account): account is DirectoryAccount => account !== null);
         return jsonResponse(200, {
           person,
           operatorAccess,

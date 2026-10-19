@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "clientId": "1sulrmj5k71cg7i89e7ukug8ig",
+    "federationReviewId": "papyrus-p-apyr-us-google-only-unlinked-v1-2026-10-18",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_1sQaEOwsH",
+    "product": "papyrus-p-apyr-us",
+    "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-p-apyr--AmplifyComputeRoleD988057-tLvmjRYBBw3W",
+    "siteReviewId": "papyrus-p-apyr-us-site-v1-2026-10-18"
+  },
+  {
+    "clientId": "3c13r7hi7o91i7s8a083nr0qo1",
+    "federationReviewId": "papyrus-pilobol-us-google-only-unlinked-v1-2026-10-18",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Fw8LBiG39",
+    "product": "papyrus-pilobol-us",
+    "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-pilobol-AmplifyComputeRoleD988057-cBnMtgLxcwD1",
+    "siteReviewId": "papyrus-pilobol-us-site-v1-2026-10-18"
+  }
+]

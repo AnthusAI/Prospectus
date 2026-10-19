@@ -2,7 +2,7 @@ import type { IdentityFiles } from "./identity-files";
 import type { KeyResolver, RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { DurableGoogleIdentities } from "./durable-google-identities";
-import { DurableAccountsService } from "./durable-accounts";
+import { DurableAccountsService, type MembershipLookup } from "./durable-accounts";
 import { googlePersonDirectory } from "./person-directory";
 import { googleIdentityHandler } from "./google-identity";
 import { accountDirectoryHandler } from "./directory-handler";
@@ -18,23 +18,20 @@ export function canonicalAccountsHandler(
   keys: KeyResolver,
   nowSeconds = () => Date.now() / 1000,
   grants: readonly OperatorGrant[] = [],
+  membershipLookup: MembershipLookup = "scan",
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),
     directory = googlePersonDirectory(repository, products);
   const identity = googleIdentityHandler(repository, products, keys, nowSeconds);
-  const service = new DurableAccountsService(accountFiles, directory, () =>
-    new Date(nowSeconds() * 1000).toISOString(),
+  const service = new DurableAccountsService(
+    accountFiles,
+    directory,
+    () => new Date(nowSeconds() * 1000).toISOString(),
+    membershipLookup,
   );
   const accounts = accountHandler(service, products, keys, nowSeconds);
-  const directoryHandler = accountDirectoryHandler(
-    service,
-    accountFiles,
-    products,
-    keys,
-    nowSeconds,
-    reviewedGrants,
-  );
+  const directoryHandler = accountDirectoryHandler(service, products, keys, nowSeconds, reviewedGrants);
   return (event: RestEvent) =>
     event.path.startsWith("/v1/account-directory")
       ? directoryHandler(event)
