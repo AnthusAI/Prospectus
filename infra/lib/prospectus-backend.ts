@@ -14,6 +14,7 @@ import { AccountsPlane, type AccountsPlaneOptions } from "./accounts-plane";
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
+import { throttleRoutes } from "./throttle-routes";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 /** Separate private CRM data plane; public static assets contain no CRM records. */
@@ -266,16 +267,15 @@ export class ProspectusBackend extends Construct {
         methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsDirectory", accountsPlane.bff),
       });
-      api.addRoutes({
+      const [loginChallengeRoute] = api.addRoutes({
         path: LOGIN_CHALLENGE_PATH,
         methods: [apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsLoginChallenge", accountsPlane.bff),
         authorizer: new apigw.HttpNoneAuthorizer(),
       });
-      const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
-      stage.routeSettings = {
-        [`POST ${LOGIN_CHALLENGE_PATH}`]: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
-      };
+      throttleRoutes(api.defaultStage!, [
+        { routeKey: `POST ${LOGIN_CHALLENGE_PATH}`, route: loginChallengeRoute, burstLimit: 2, rateLimit: 1 },
+      ]);
     }
     const outputs: Record<string, string> = {
       AppUrl: appUrl,

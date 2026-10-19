@@ -54,10 +54,9 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
       assert.deepEqual(RouteSettings, {
         "POST /api/saas/identity/login-challenge": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
       });
-      assert.deepEqual(
-        { ...after.Resources[id], Properties: undefined },
-        { ...resource, Properties: undefined },
-      );
+      const { DependsOn, ...stageRest } = after.Resources[id];
+      assert.deepEqual({ ...stageRest, Properties: undefined }, { ...resource, Properties: undefined });
+      assert.ok(DependsOn?.length, "Stage with RouteSettings must depend on its routes");
       continue;
     }
     assert.deepEqual(after.Resources[id], resource, `Existing CRM resource changed: ${id}`);
@@ -438,4 +437,49 @@ test("the parameter-store signer creates no KMS resource and grants only ssm:Get
     )![1];
     assert.deepEqual(policyWithSsm.Properties.Roles, [{ Ref: centralRole }]);
   }
+});
+
+/** Every stage RouteSettings key must name a Route in the same API that the Stage depends on. */
+function assertStageRoutesOrdered(synth: any): number {
+  const resources = synth.Resources as Record<string, any>;
+  let checked = 0;
+  for (const [stageId, stage] of Object.entries(resources)) {
+    if (stage.Type !== "AWS::ApiGatewayV2::Stage") continue;
+    const apiRef = stage.Properties.ApiId?.Ref;
+    const dependsOn: string[] = [stage.DependsOn ?? []].flat();
+    for (const key of Object.keys(stage.Properties.RouteSettings ?? {})) {
+      const match = Object.entries(resources).find(
+        ([, route]) =>
+          route.Type === "AWS::ApiGatewayV2::Route" &&
+          route.Properties.RouteKey === key &&
+          route.Properties.ApiId?.Ref === apiRef,
+      );
+      assert.ok(match, `${stageId} RouteSettings key "${key}" has no Route in the same API`);
+      assert.ok(
+        dependsOn.includes(match[0]),
+        `${stageId} must DependOn Route ${match[0]} for RouteSettings "${key}" (CloudFormation updates the stage before creating the route otherwise)`,
+      );
+      checked++;
+    }
+  }
+  return checked;
+}
+test("API stage depends on every route its RouteSettings reference", () => {
+  const synth = template(true);
+  assert.ok(assertStageRoutesOrdered(synth) >= 1);
+  const loginChallenge = Object.entries(synth.Resources as Record<string, any>).find(
+    ([, r]) =>
+      r.Type === "AWS::ApiGatewayV2::Route" &&
+      r.Properties.RouteKey === "POST /api/saas/identity/login-challenge",
+  );
+  const stage = Object.values(synth.Resources as Record<string, any>).find(
+    (r) => r.Type === "AWS::ApiGatewayV2::Stage",
+  );
+  assert.ok(loginChallenge && stage.DependsOn.includes(loginChallenge[0]));
+});
+test("the ordering check fails when a route setting lacks its dependency", () => {
+  const synth = JSON.parse(JSON.stringify(template(true)));
+  const stage: any = Object.values(synth.Resources).find((r: any) => r.Type === "AWS::ApiGatewayV2::Stage");
+  delete stage.DependsOn;
+  assert.throws(() => assertStageRoutesOrdered(synth), /must DependOn/);
 });
