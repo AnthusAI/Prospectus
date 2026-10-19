@@ -49,7 +49,7 @@ jobs:
           if node -e 'process.exit(require("./accounts/deployment.json").enabled ? 0 : 1)'; then
             PROSPECTUS_PACKAGE_NODE_MAJOR=24 node accounts/package-smoke.mjs
             mkdir -p .build/intake-control-target/debug
-            ln -s "$PWD/.artifacts/canonical-accounts/identity-files" .build/intake-control-target/debug/prospectus-identity-files
+            ln -sfn "$PWD/.artifacts/canonical-accounts/identity-files" .build/intake-control-target/debug/prospectus-identity-files
             node --import tsx --test accounts/durable-accounts.test.ts accounts/durable-google-identities.test.ts accounts/directory.test.ts accounts/execution-delegation.test.ts accounts/identity-files-session.test.ts
           fi
       - run: bash infra/scripts/test-browser-ci.sh
