@@ -1,10 +1,12 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type RestEvent } from "./auth";
-import { registrations } from "./registration";
+import type { ValidatedRegistrations } from "./registration";
+import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
+const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 1024;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export interface IdentityBinding {
   product: string;
@@ -92,44 +94,16 @@ export const sameBinding = (a: IdentityBinding, b: IdentityBinding) =>
  */
 export function googleIdentityHandler(
   repository: GoogleIdentityRepository,
-  products: readonly ProductRegistration[],
+  products: ValidatedRegistrations,
   keys: KeyResolver,
   nowSeconds = () => Math.floor(Date.now() / 1000),
 ) {
-  const trustedProducts = registrations(structuredClone(products));
   return async (event: RestEvent) => {
-    const response = (statusCode: number, body: unknown) => ({
-      statusCode,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-      body: JSON.stringify(body),
-    });
     try {
-      const authenticated = caller(event, trustedProducts);
+      const authenticated = caller(event, products);
       const scope = enrollmentBinding(authenticated.registration, authenticated.principal);
       const now = nowSeconds();
-      const headers: Record<string, string | undefined> = {};
-      for (const [name, value] of Object.entries(event.headers ?? {})) {
-        const normalized = name.toLowerCase();
-        if (Object.hasOwn(headers, normalized)) fail(400, "headers", "Ambiguous headers.");
-        headers[normalized] = value;
-      }
-      if (event.isBase64Encoded || Buffer.byteLength(event.body ?? "") > 1024)
-        fail(400, "body", "Invalid identity request.");
-      let body: any = {};
-      if (event.body) {
-        if (headers["content-type"]?.split(";")[0] !== "application/json")
-          fail(415, "json_required", "JSON required.");
-        try {
-          body = JSON.parse(event.body);
-        } catch {
-          fail(400, "body", "JSON required.");
-        }
-        if (!body || typeof body !== "object" || Array.isArray(body)) fail(400, "body", "Object required.");
-      }
+      const { headers, body } = parseJsonRequest(event, IDENTITY_REQUEST_MAXIMUM_BODY_BYTES);
       if (event.path === "/v1/identities/google/challenge" && event.httpMethod === "POST") {
         if (Object.keys(body).length) fail(400, "fields", "No authority fields are accepted.");
         // Public challenge timestamps are integer Unix seconds even when the
@@ -143,7 +117,7 @@ export function googleIdentityHandler(
           binding: scope,
         };
         await repository.issue(challenge);
-        return response(200, {
+        return jsonResponse(200, {
           challengeId: challenge.challengeId,
           nonce: challenge.nonce,
           expiresAt: challenge.expiresAt,
@@ -199,7 +173,7 @@ export function googleIdentityHandler(
           lineageHash: digest(access.origin_jti),
           now,
         });
-        return response(200, { person });
+        return jsonResponse(200, { person });
       }
       if (event.path === "/v1/identities/me" && event.httpMethod === "GET") {
         if (Object.keys(body).length) fail(400, "fields", "No authority fields are accepted.");
@@ -234,13 +208,13 @@ export function googleIdentityHandler(
           )
         )
           fail(401, "reenrollment_required", "This login requires a fresh identity challenge.");
-        return response(200, { person: existing?.person ?? null });
+        return jsonResponse(200, { person: existing?.person ?? null });
       }
       fail(404, "route", "Identity route not found.");
     } catch (error) {
       if (error instanceof AccountsError)
-        return response(error.status, { error: error.code, message: error.message });
-      return response(503, {
+        return jsonResponse(error.status, { error: error.code, message: error.message });
+      return jsonResponse(503, {
         error: "identity_unavailable",
         message: "Identity service unavailable; retry identical evidence before challenge expiry.",
       });

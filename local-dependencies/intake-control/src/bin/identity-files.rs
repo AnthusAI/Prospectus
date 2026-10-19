@@ -180,7 +180,7 @@ fn valid_path(path: &str, prefix: bool, project: &str) -> bool {
     let Some((kind, rest)) = path.split_once('/') else {
         return false;
     };
-    if (project == "accounts" && kind != "accounts")
+    if (project == "accounts" && !["accounts", "members"].contains(&kind))
         || (project == "identities"
             && !["google", "aliases", "people", "logins", "sessions"].contains(&kind))
     {

@@ -2,13 +2,21 @@ import type { ProductRegistration } from "./auth";
 const operations = new Set(["console:read", "console:write", "members:read", "members:write"]);
 const rolePattern = /^arn:aws:iam::(\d{12}):role\/(?:[A-Za-z0-9+=,.@_-]+\/)*([A-Za-z0-9+=,.@_-]+)$/;
 const reviewPattern = /^[A-Za-z0-9._:-]{1,128}$/;
-/** Invalid/ambiguous deployment registries never become a permissive runtime. */
-export function registrations(value: unknown): ProductRegistration[] {
+declare const validatedRegistrationsBrand: unique symbol;
+export type ValidatedRegistrations = readonly ProductRegistration[] & {
+  readonly [validatedRegistrationsBrand]: true;
+};
+
+/** Invalid/ambiguous deployment registries never become a permissive runtime.
+ * Validate once where a runtime is composed; request handlers accept only the result.
+ */
+export function registrations(value: unknown): ValidatedRegistrations {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100)
     throw new Error("Exact product runtime registrations are required.");
   const products = new Set<string>(),
     roles = new Set<string>();
-  for (const item of value) {
+  const registrationsSnapshot = structuredClone(value);
+  for (const item of registrationsSnapshot) {
     if (
       !item ||
       Object.keys(item).some(
@@ -90,5 +98,5 @@ export function registrations(value: unknown): ProductRegistration[] {
     }
     products.add(item.product);
   }
-  return value;
+  return registrationsSnapshot as unknown as ValidatedRegistrations;
 }

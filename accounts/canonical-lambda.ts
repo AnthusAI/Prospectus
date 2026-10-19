@@ -6,6 +6,8 @@ import { registrations } from "./registration";
 import grants from "./operator-grants.json";
 import reviewedPapyrusSites from "./papyrus-sites.json";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
+import reviewedDeployment from "./deployment.json";
+import { membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
@@ -25,7 +27,10 @@ const products = registrations([
     ...JSON.parse(process.env.PROSPECTUS_PRODUCTS ?? "[]"),
     ...papyrusSiteRegistrations(reviewedPapyrusSites),
   ]),
-  reviewedGrants = operatorGrants(grants);
+  reviewedGrants = operatorGrants(grants),
+  membershipLookup = membershipLookupMode(
+    (reviewedDeployment as { membershipLookup?: unknown }).membershipLookup,
+  );
 let activeRequestId = "unavailable";
 const timingForProject = (project: "identities" | "accounts") => (value: NativeTiming) =>
   console.info(JSON.stringify({ event: "accounts.native", requestId: activeRequestId, project, ...value }));
@@ -68,6 +73,7 @@ export const handler = async (
       (issuer, kid) => keys.resolve(issuer, kid),
       () => Date.now() / 1000,
       reviewedGrants,
+      membershipLookup,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

@@ -26,9 +26,9 @@ Rollback disables this additive intake route/output and restores the prior front
 
 - Allowed form origins become `https://prospectus.anth.us`, `https://anth.us` and `https://www.anth.us`, in both the HTTP API CORS rule and the handler's origin check.
 - Ordinary email addresses are accepted, and the form must send privacy notice version `contact-v1`. Synthetic `.invalid` submissions and the old demo notice are rejected.
-- The synthetic demo form hosted on prospectus.anth.us stops being accepted in this mode, because it sends the demo notice. The anth.us engage page is the real-contact form.
+- The synthetic demo form on prospectus.anth.us is not served in this mode, because it sends the demo notice. The anth.us engage page is the real-contact form.
 - Inquiries are recorded with source site `anthus-website` and form `engage-contact-v1`, so CRM staff can tell them from synthetic evaluation records.
 
 Routes, throttling, concurrency, IAM actions and resources, log retention and the `intake-queue` owner are unchanged. The mode is inert while `enabled` is `false`.
 
-Turning it on still needs Ryan's approval of the privacy notice text and retention, and a deployment through the normal Amplify pipeline run from Ryan's Mac.
+Ryan approved real-contact mode on 2026-10-17. The privacy notice says details are used only to reply and to keep a record of the conversation, are never sold or added to a mailing list, and are kept until the person asks for deletion. Deployment goes through the normal Amplify main pipeline, started from Ryan's Mac.
