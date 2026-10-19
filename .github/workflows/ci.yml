@@ -8,6 +8,9 @@ permissions:
 jobs:
   application:
     runs-on: ubuntu-latest
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_INCREMENTAL: 0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,8 +25,9 @@ jobs:
             ~/.rustup/toolchains
             .build/target
             .build/intake-control-target
+            .build/accounts-linux-target
             .build/kanbus
-          key: rust-${{ runner.os }}-${{ hashFiles('source-lock.json', 'local-dependencies/intake-control/Cargo.lock') }}
+          key: rust-${{ runner.os }}-${{ hashFiles('source-lock.json', 'local-dependencies/intake-control/Cargo.lock', 'local-dependencies/intake-control/Cargo.toml', 'local-dependencies/intake-control/src/**', 'local-dependencies/intake-control/rust-toolchain.toml', 'scripts/build-accounts-linux.sh') }}
           restore-keys: |
             rust-${{ runner.os }}-
       - run: node infra/scripts/checkout-kanbus.mjs
