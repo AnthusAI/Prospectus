@@ -41,7 +41,6 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
     after = template(true);
   for (const [id, resource] of Object.entries(before.Resources as Record<string, any>)) {
     if (resource.Type === "AWS::ApiGatewayV2::Stage") {
-      // The only permitted change to an existing resource: throttling for the public login challenge.
       const { RouteSettings, ...rest } = after.Resources[id].Properties;
       assert.deepEqual(rest, resource.Properties, `Existing CRM stage changed: ${id}`);
       assert.deepEqual(RouteSettings, {

@@ -17,8 +17,7 @@ interface Login {
   state: string;
   verifier: string;
   accounts?: { challengeId: string; nonce: string };
-  /** The Accounts challenge was issued before sign-in and is bound to this login's state. */
-  bound?: boolean;
+  accountsChallengeBoundToLoginState?: boolean;
 }
 export interface AuthenticationConfiguration {
   domain: string;
@@ -74,11 +73,8 @@ export async function signIn(
   const challenge = encode(
     new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))),
   );
-  let bound = false;
+  let accountsChallengeBoundToLoginState = false;
   if (!accounts && configuration.accountsBffUrl) {
-    // One Google sign-in for both the CRM session and Accounts. If the challenge cannot be issued
-    // (service down, gateway throttling, offline) fall back to a plain sign-in; Accounts can still be
-    // confirmed later from the Accounts tab.
     try {
       const { accountsBrowser } = await import("./accounts-client");
       const stateDigest = Array.from(
@@ -86,14 +82,19 @@ export async function signIn(
         (byte) => byte.toString(16).padStart(2, "0"),
       ).join("");
       accounts = await accountsBrowser(configuration.accountsBffUrl).loginChallenge(stateDigest);
-      bound = true;
+      accountsChallengeBoundToLoginState = true;
     } catch {
       accounts = undefined;
     }
   }
   sessionStorage.setItem(
     LOGIN_KEY,
-    JSON.stringify({ state, verifier, ...(accounts ? { accounts } : {}), ...(bound ? { bound } : {}) }),
+    JSON.stringify({
+      state,
+      verifier,
+      ...(accounts ? { accounts } : {}),
+      ...(accountsChallengeBoundToLoginState ? { accountsChallengeBoundToLoginState } : {}),
+    }),
   );
   if (accounts) sessionStorage.setItem(ACCOUNTS_CONFIRMATION_ATTEMPTED_KEY, "true");
   const destination = new URL("/oauth2/authorize", configuration.domain);
@@ -163,7 +164,7 @@ export async function finishSignIn(configuration: AuthenticationConfiguration): 
         login.accounts.challengeId,
         result.id_token,
         result.access_token,
-        login.bound ? login.state : undefined,
+        login.accountsChallengeBoundToLoginState ? login.state : undefined,
       );
     } catch {
       window.history.replaceState({}, "", "/?view=accounts");

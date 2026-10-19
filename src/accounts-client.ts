@@ -18,7 +18,6 @@ export class DirectoryError extends Error {
 export interface AccountsBrowser extends DirectoryReader, OperatorReader {
   configured: boolean;
   challenge(): Promise<{ challengeId: string; nonce: string }>;
-  /** Pre-sign-in challenge bound to the digest of this browser's login state. Needs no session. */
   loginChallenge(loginStateDigest: string): Promise<{ challengeId: string; nonce: string }>;
   resolve(challengeId: string, idToken: string, accessToken: string, loginState?: string): Promise<void>;
 }
@@ -119,6 +118,7 @@ export function accountsBrowser(
         cache: "no-store",
         redirect: "error",
         credentials: "omit",
+        signal: AbortSignal.timeout(5000),
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ loginStateDigest }),
       });

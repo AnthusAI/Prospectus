@@ -28,8 +28,6 @@ export function accountsBffHandler(options: AccountsBffOptions) {
   return async (event: BffEvent) => {
     try {
       if (event.requestContext.http.method === "POST" && event.rawPath === LOGIN_CHALLENGE_PATH) {
-        // Public by design: nobody has signed in yet. It only mints a challenge bound to a digest of the
-        // browser's own login state, accepts no authority field and is throttled at the gateway.
         // Do not add other unauthenticated routes here.
         const { headers, body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
         if (headers.origin !== options.origin) fail(403, "origin", "Request origin is not permitted.");

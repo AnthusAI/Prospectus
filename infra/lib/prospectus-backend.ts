@@ -266,9 +266,6 @@ export class ProspectusBackend extends Construct {
         methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsDirectory", accountsPlane.bff),
       });
-      // The only unauthenticated route: it runs before sign-in and accepts only the digest of the
-      // browser's login state. Gateway throttling is global (not per caller), so the browser falls
-      // back to a plain sign-in when it is throttled.
       api.addRoutes({
         path: LOGIN_CHALLENGE_PATH,
         methods: [apigw.HttpMethod.POST],
@@ -276,7 +273,6 @@ export class ProspectusBackend extends Construct {
         authorizer: new apigw.HttpNoneAuthorizer(),
       });
       const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
-      // RouteSettings is free-form JSON, so CloudFormation property names are spelled out.
       stage.routeSettings = {
         [`POST ${LOGIN_CHALLENGE_PATH}`]: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
       };

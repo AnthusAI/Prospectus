@@ -268,7 +268,7 @@ test("sign-in requests a pre-sign-in challenge bound to the digest of the login 
   });
   assert.equal(url.searchParams.get("nonce"), "central-nonce");
   assert.equal(url.searchParams.get("prompt"), "login");
-  assert.equal(login.bound, true);
+  assert.equal(login.accountsChallengeBoundToLoginState, true);
   assert.deepEqual(login.accounts, {
     challengeId: "11111111-1111-4111-8111-111111111111",
     nonce: "central-nonce",
@@ -296,7 +296,7 @@ for (const [name, failure] of [
     assert.equal(url.searchParams.has("nonce"), false);
     assert.equal(url.searchParams.has("prompt"), false);
     assert.equal(login.accounts, undefined);
-    assert.equal(login.bound, undefined);
+    assert.equal(login.accountsChallengeBoundToLoginState, undefined);
     assert.equal(hasAttemptedAccountsConfirmation(), false);
   });
 }
@@ -313,7 +313,7 @@ test("a bound sign-in sends the raw login state to resolve; an authenticated cha
         state: "expected",
         verifier: "saved",
         accounts: { challengeId: "11111111-1111-4111-8111-111111111111", nonce: "central-nonce" },
-        ...(bound ? { bound } : {}),
+        ...(bound ? { accountsChallengeBoundToLoginState: true } : {}),
       }),
     );
     let resolved: any;
@@ -327,4 +327,29 @@ test("a bound sign-in sends the raw login state to resolve; an authenticated cha
     assert.equal(resolved.loginState, expected);
     assert.equal(resolved.idToken, "id");
   }
+});
+
+test("sign-in falls back to a plain login when the challenge request hangs past its timeout", async (context) => {
+  const environment = browser(context);
+  const timeouts: number[] = [];
+  const controller = new AbortController();
+  context.mock.method(AbortSignal, "timeout", (milliseconds: number) => {
+    timeouts.push(milliseconds);
+    setTimeout(() => controller.abort(new DOMException("timed out", "TimeoutError")), 0);
+    return controller.signal;
+  });
+  context.mock.method(
+    globalThis,
+    "fetch",
+    (_url: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      }),
+  );
+  await signIn(bffConfiguration);
+  const url = new URL(environment.destination());
+  assert.deepEqual(timeouts, [5000]);
+  assert.equal(url.searchParams.has("nonce"), false);
+  assert.equal(url.searchParams.has("prompt"), false);
+  assert.equal(hasAttemptedAccountsConfirmation(), false);
 });
