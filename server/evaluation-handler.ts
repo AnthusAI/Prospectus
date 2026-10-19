@@ -1,4 +1,5 @@
 import { IntakeError, type IntakeService } from "./intake";
+import { DEMO_ROUTE_PATH, waitlistRoutePath, type IntakeFormConfig } from "./intake-forms";
 
 export interface EvaluationEvent {
   requestContext?: { http?: { method?: string } };
@@ -30,6 +31,8 @@ export function diagnoseUnconfirmedSubmission(cause: unknown): UnconfirmedSubmis
 export function createEvaluationHandler(options: {
   allowedOrigins: readonly string[];
   open: () => Promise<SubmissionService>;
+  forms?: readonly IntakeFormConfig[];
+  openForm?: (form: IntakeFormConfig) => Promise<SubmissionService>;
   reportUnconfirmed?: (diagnostic: UnconfirmedSubmissionDiagnostic) => void;
 }) {
   const reportUnconfirmed =
@@ -44,12 +47,16 @@ export function createEvaluationHandler(options: {
       },
       body: JSON.stringify(body),
     });
-    if (event.requestContext?.http?.method !== "POST" || event.rawPath !== "/intake/demo")
+    if (event.requestContext?.http?.method !== "POST") return response(404, { message: "Not found." });
+    const form = options.forms?.find((candidate) => waitlistRoutePath(candidate) === event.rawPath);
+    if (event.rawPath !== DEMO_ROUTE_PATH && !(form && options.openForm))
       return response(404, { message: "Not found." });
+    const routeOrigins = form ? form.origins : options.allowedOrigins;
+    const openService = () => (form ? options.openForm!(form) : options.open());
     const headers = Object.fromEntries(
       Object.entries(event.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
     );
-    if (!headers.origin || !options.allowedOrigins.includes(headers.origin))
+    if (!headers.origin || !routeOrigins.includes(headers.origin))
       return response(403, { message: "This form origin is not allowed." });
     if (!/^application\/json(?:\s*;|$)/i.test(headers["content-type"] ?? ""))
       return response(415, { message: "A JSON submission is required." });
@@ -63,7 +70,7 @@ export function createEvaluationHandler(options: {
     }
     let service: SubmissionService | undefined;
     try {
-      service = await options.open();
+      service = await openService();
       const receipt = await service.submit(body);
       return response(202, receipt);
     } catch (cause) {

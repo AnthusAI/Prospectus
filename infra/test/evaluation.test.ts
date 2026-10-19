@@ -5,6 +5,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Template } from "aws-cdk-lib/assertions";
 import { EvaluationIntake } from "../lib/evaluation-intake";
+import { parseIntakeForm, parseIntakeFormRegistry } from "../../server/intake-forms";
 import { ProspectusBackend } from "../lib/prospectus-backend";
 
 const lambdaEnvironment = (template: Template) =>
@@ -146,4 +147,133 @@ test("the backend passes the deployment's real-contact mode through to the intak
     "https://anth.us",
     "https://www.anth.us",
   ]);
+});
+
+const babulusWaitlist = parseIntakeForm({
+  enabled: true,
+  approval: "Ryan approved the Babulus waitlist for this synthesis test only",
+  siteId: "babulus",
+  formId: "babulus-waitlist-v1",
+  kind: "waitlist",
+  origins: ["https://babul.us", "https://www.babul.us", "https://babulus.anth.us"],
+  noticeVersion: "babulus-waitlist-v1",
+  owner: "intake-queue",
+  defaultPagePath: "/waitlist",
+  attributes: { persona: { values: ["creator", "other"] } },
+  throttle: { rate: 1, burst: 2 },
+});
+const synthesize = (
+  forms: Parameters<typeof parseIntakeForm>[0][],
+  mode: "synthetic-only" | "real-contacts",
+) => {
+  const stack = new cdk.Stack(new cdk.App(), "WaitlistReview", {
+    env: { account: "712236451410", region: "us-east-1" },
+  });
+  const intake = new EvaluationIntake(
+    stack,
+    "Intake",
+    lambda.Code.fromInline("exports.handler=async()=>({statusCode:503})"),
+    mode,
+    forms.map((form) => parseIntakeForm(form)),
+  );
+  return { template: Template.fromStack(stack), intake };
+};
+const routeKeys = (template: Template) =>
+  Object.values(template.findResources("AWS::ApiGatewayV2::Route"))
+    .map((route: any) => route.Properties.RouteKey)
+    .sort();
+const policyActions = (template: Template) =>
+  Object.values(template.findResources("AWS::IAM::Policy"))
+    .flatMap((r: any) => r.Properties.PolicyDocument.Statement)
+    .flatMap((statement: any) => (Array.isArray(statement.Action) ? statement.Action : [statement.Action]))
+    .sort();
+
+test("a disabled registry form changes nothing in the synthesized real-contact intake", () => {
+  const baseline = synthesize([], "real-contacts");
+  const disabled = synthesize([{ ...babulusWaitlist, enabled: false }], "real-contacts");
+  assert.deepEqual(disabled.template.toJSON(), baseline.template.toJSON());
+  assert.equal(disabled.intake.waitlistBaseUrl, undefined);
+});
+
+test("an enabled waitlist form adds its own route, origins and route-level throttle and no permissions", () => {
+  const baseline = synthesize([], "real-contacts");
+  const { template, intake } = synthesize([babulusWaitlist], "real-contacts");
+  assert.deepEqual(routeKeys(template), ["POST /intake/demo", "POST /intake/waitlist/babulus-waitlist-v1"]);
+  assert.deepEqual(corsOrigins(template), [
+    "https://prospectus.anth.us",
+    "https://anth.us",
+    "https://www.anth.us",
+    "https://babul.us",
+    "https://www.babul.us",
+    "https://babulus.anth.us",
+  ]);
+  const api = Object.values(template.findResources("AWS::ApiGatewayV2::Api"))[0] as any;
+  assert.deepEqual(api.Properties.CorsConfiguration.AllowHeaders, ["content-type"]);
+  assert.deepEqual(api.Properties.CorsConfiguration.AllowMethods, ["POST"]);
+  const environment = lambdaEnvironment(template);
+  assert.equal(
+    environment.PROSPECTUS_INTAKE_ALLOWED_ORIGINS,
+    "https://prospectus.anth.us,https://anth.us,https://www.anth.us",
+    "the demo route keeps its own origin list",
+  );
+  assert.deepEqual(
+    JSON.parse(environment.PROSPECTUS_INTAKE_FORMS).map((form: any) => form.formId),
+    ["babulus-waitlist-v1"],
+  );
+  template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+    DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    RouteSettings: {
+      "POST /intake/waitlist/babulus-waitlist-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    },
+  });
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  assert.deepEqual(Object.keys(stage.Properties.RouteSettings), [
+    "POST /intake/waitlist/babulus-waitlist-v1",
+  ]);
+  assert.deepEqual(policyActions(template), policyActions(baseline.template));
+  assert.ok(!JSON.stringify(template.toJSON()).includes("s3:ListBucket"));
+  template.resourceCountIs("AWS::Lambda::Function", 1);
+  assert.match(intake.waitlistBaseUrl!, /\/intake\/waitlist$/);
+});
+
+test("waitlist forms collect real contacts so they are refused by the synthetic-only runtime", () => {
+  assert.throws(() => synthesize([babulusWaitlist], "synthetic-only"), /real-contacts runtime/);
+});
+
+test("each enabled form gets its own throttle so one app cannot spend another's allowance", () => {
+  const { template } = synthesize(
+    [
+      babulusWaitlist,
+      {
+        ...babulusWaitlist,
+        siteId: "papyrus",
+        formId: "papyrus-waitlist-v1",
+        noticeVersion: "papyrus-waitlist-v1",
+        origins: ["https://papyrus.example.org"],
+        attributes: {},
+        throttle: { rate: 3, burst: 6 },
+      },
+    ],
+    "real-contacts",
+  );
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  assert.deepEqual(stage.Properties.RouteSettings, {
+    "POST /intake/waitlist/babulus-waitlist-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    "POST /intake/waitlist/papyrus-waitlist-v1": { ThrottlingBurstLimit: 6, ThrottlingRateLimit: 3 },
+  });
+});
+
+test("the shipped registry file leaves the synthesized intake identical to having no forms", async () => {
+  const { readFileSync } = await import("node:fs");
+  const shipped = parseIntakeFormRegistry(JSON.parse(readFileSync("../intake-forms.json", "utf8")));
+  assert.deepEqual(
+    new EvaluationIntake(
+      new cdk.Stack(new cdk.App(), "A", { env: { account: "712236451410", region: "us-east-1" } }),
+      "Intake",
+      lambda.Code.fromInline("x"),
+      "real-contacts",
+      shipped,
+    ).waitlistBaseUrl,
+    undefined,
+  );
 });

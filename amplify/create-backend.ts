@@ -5,6 +5,7 @@ import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Stack, Token, RemovalPolicy } from "aws-cdk-lib";
 import type { AccountsPlaneOptions } from "../infra/lib/accounts-plane";
 import type { IntakeContactMode } from "../infra/lib/evaluation-intake";
+import type { IntakeFormConfig } from "../server/intake-forms";
 import { ProspectusBackend } from "../infra/lib/prospectus-backend";
 import {
   TARGET_ACCOUNT,
@@ -20,6 +21,7 @@ export function createProspectusBackend(
   evaluationCode?: (stack: Stack) => Code,
   accounts?: AccountsPlaneOptions,
   intakeContactMode: IntakeContactMode = "synthetic-only",
+  intakeForms: readonly IntakeFormConfig[] = [],
 ) {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
   if (
@@ -115,6 +117,7 @@ export function createProspectusBackend(
     evaluationCode?.(backend.stack),
     accounts,
     intakeContactMode,
+    intakeForms,
   );
   backend.addOutput({ custom: resources.outputs });
 

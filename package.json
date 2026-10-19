@@ -12,7 +12,7 @@
     "intake:local": "node --import tsx server/local.ts",
     "test:all": "npm test && npm run test:accounts:durable && npm run test:accounts:ui && npm run test:intake:integration && npm run test:control-binding",
     "test:intake": "node --import tsx --test test/intake*.test.ts",
-    "test:intake:integration": "node --import tsx --test test/integration/intake.integration.ts",
+    "test:intake:integration": "node --import tsx --test test/integration/*.integration.ts",
     "preview:local": "node --import tsx scripts/local-preview.ts",
     "test:control-binding": "bash scripts/test-control-binding.sh",
     "test:e2e": "playwright test",
