@@ -292,7 +292,8 @@ test("a canonical account conflict rereads the account but not the Person or the
     },
     list: x.files.list.bind(x.files),
     commit: async (...args) => {
-      if (injectedConflicts < 2) {
+      const isAccountDocument = args[0] === `accounts/${account.id}.json`;
+      if (isAccountDocument && injectedConflicts < 2) {
         injectedConflicts++;
         throw new IdentityFileError("conflict");
       }

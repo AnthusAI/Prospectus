@@ -94,6 +94,7 @@ export class DurableAccountsService implements AccountsApi {
     if (!resolution) {
       resolution = this.resolvePerson(context);
       this.personResolutionsByRequestContext.set(context, resolution);
+      resolution.catch(() => this.personResolutionsByRequestContext.delete(context));
     }
     return resolution;
   }
