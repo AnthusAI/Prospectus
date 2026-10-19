@@ -8,17 +8,19 @@ import { DurableGoogleIdentities } from "../durable-google-identities";
 import { DurableAccountsService } from "../durable-accounts";
 import { googlePersonDirectory } from "../person-directory";
 import { canonicalAccountsHandler } from "../canonical-handler";
-import type { ProductRegistration } from "../auth";
+import { registrations } from "../registration";
 import { context } from "../auth";
 /** Real RSA + pinned Virtuus files, disposable synthetic only. */
 export async function directoryFixture() {
   const root = await mkdtemp(join(tmpdir(), "accounts-directory-")),
     f = googleFixture();
-  const products: ProductRegistration[] = f.products.map((product, index) => ({
-    ...product,
-    ...(index === 0 ? { product: "prospectus-directory", accountDirectory: true as const } : {}),
-    capabilities: ["console:read", "console:write", "members:read", "members:write"],
-  }));
+  const products = registrations(
+    f.products.map((product, index) => ({
+      ...product,
+      ...(index === 0 ? { product: "prospectus-directory", accountDirectory: true as const } : {}),
+      capabilities: ["console:read", "console:write", "members:read", "members:write"],
+    })),
+  );
   const repository = new DurableGoogleIdentities(new VirtuusIdentityFiles(root)),
     files = new VirtuusAccountFiles(root);
   const service = new DurableAccountsService(files, googlePersonDirectory(repository, products));

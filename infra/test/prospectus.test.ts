@@ -264,6 +264,6 @@ test("hosting SPA rewrite handles dotted application paths while preserving stat
     "[]",
     "pinned Gen2 builds must not install global legacy CLI overrides",
   );
-  assert.equal(settings.enableBranchAutoBuild, false);
+  assert.equal(settings.enableBranchAutoBuild, true, "merging to main deploys through the Amplify app");
   assert.equal(settings.enableAutoBranchCreation, false);
 });

@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, verify, type JsonWebKey } from "node:crypto";
 import { fail, UUID_PATTERN, type Context, type Human, type Operation } from "./model";
-import { registrations } from "./registration";
+import type { ValidatedRegistrations } from "./registration";
+import { lowerCaseHeaders } from "./request";
 export interface ExecutionDelegation {
   roleArn: string;
   enrollmentRoleArn: string;
@@ -33,15 +34,13 @@ export interface VerifiedCaller {
   principal: string;
   authority: "enrollment" | "execution";
 }
-export function caller(event: RestEvent, products: readonly ProductRegistration[]): VerifiedCaller {
+export function caller(event: RestEvent, products: ValidatedRegistrations): VerifiedCaller {
   const arn = event.requestContext?.identity?.userArn;
   const accountId = event.requestContext?.identity?.accountId;
   const session = /^arn:aws:sts::(\d{12}):assumed-role\/([^/]+)\/[^/]+$/.exec(arn ?? "");
   if (!session || session[1] !== accountId)
     fail(403, "caller_forbidden", "A registered temporary runtime role is required.");
-  // Validate all principals together. A pair belongs to one product, never
-  // another product row or a transitive delegation chain.
-  for (const registration of registrations(products)) {
+  for (const registration of products) {
     if (!registration.enabled) continue;
     for (const [authority, principal] of [
       ["enrollment", registration.roleArn],
@@ -180,14 +179,12 @@ export async function human(
 }
 export async function context(
   event: RestEvent,
-  products: readonly ProductRegistration[],
+  products: ValidatedRegistrations,
   keys: KeyResolver,
   now = Date.now() / 1000,
 ): Promise<Context> {
   const authenticated = caller(event, products);
-  const headers = Object.fromEntries(
-    Object.entries(event.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
-  );
+  const headers = lowerCaseHeaders(event.headers);
   const identity = await human(headers["x-prospectus-human-token"], authenticated.registration, keys, now);
   const capabilities =
     authenticated.authority === "execution"

@@ -1,6 +1,5 @@
 import type { Context, Person } from "./model";
-import type { ProductRegistration } from "./auth";
-import { registrations } from "./registration";
+import type { ValidatedRegistrations } from "./registration";
 import { enrollmentBinding, sameBinding, type GoogleIdentityRepository } from "./google-identity";
 export interface PersonDirectory {
   resolve(context: Context): Promise<Person | null>;
@@ -9,14 +8,13 @@ export interface PersonDirectory {
 /** Context must originate from the verified central transport, never request JSON. */
 export function googlePersonDirectory(
   repository: GoogleIdentityRepository,
-  products: readonly ProductRegistration[],
+  products: ValidatedRegistrations,
 ): PersonDirectory {
-  const trusted = registrations(structuredClone(products));
   return {
     get: (id) => repository.getPerson(id),
     resolve: async (context) => {
       const session = context.human.session;
-      const product = trusted.find(
+      const product = products.find(
         (item) =>
           item.enabled &&
           item.product === context.product &&
