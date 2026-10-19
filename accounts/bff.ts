@@ -1,3 +1,4 @@
+import { matchesStringPattern } from "./validation-rules";
 import { cognitoClaims, type ProductRegistration, type KeyResolver } from "./auth";
 import { AccountsError, fail, UUID_PATTERN } from "./model";
 import { jsonResponse, lowerCaseHeaders, parseJsonRequest } from "./request";
@@ -56,7 +57,7 @@ export function accountsBffHandler(options: AccountsBffOptions) {
       if (method === "POST" && event.rawPath === "/api/saas/identity/resolve") {
         if (
           Object.keys(body).some((key) => !["challengeId", "idToken"].includes(key)) ||
-          !UUID_PATTERN.test(body.challengeId) ||
+          !matchesStringPattern(body.challengeId, UUID_PATTERN) ||
           typeof body.idToken !== "string" ||
           body.idToken.length > 16384
         )

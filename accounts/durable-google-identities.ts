@@ -10,7 +10,7 @@ import {
   type LoginChallenge,
 } from "./google-identity";
 import { fail, UUID_PATTERN, type Person } from "./model";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const googleIdentityKey = (subject: string) => hash(["google-v1", GOOGLE_ISSUER, subject]);
@@ -99,7 +99,10 @@ const googleRecordRules: ValidationRule<{ record: GoogleRecord; subject: string 
   rule(({ record }) => record.kind === "google", "A Google record must have kind google."),
   rule(({ record }) => record.issuer === GOOGLE_ISSUER, "A Google record must name the Google issuer."),
   rule(({ record, subject }) => record.subject === subject, "A Google record must match its subject."),
-  rule(({ record }) => UUID_PATTERN.test(record.person?.id), "A Google record Person ID must be a UUID."),
+  rule(
+    ({ record }) => matchesStringPattern(record.person?.id, UUID_PATTERN),
+    "A Google record Person ID must be a UUID.",
+  ),
   rule(
     ({ record }) => Number.isFinite(Date.parse(record.person?.createdAt)),
     "A Google record Person must have a valid creation time.",
@@ -332,7 +335,8 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
    * Prepared decisions survive expiry; the API still requires fresh valid proofs.
    */
   async recover(challengeId: string): Promise<Person | null> {
-    if (!UUID_PATTERN.test(challengeId)) fail(400, "challenge_invalid", "Invalid challenge ID.");
+    if (!matchesStringPattern(challengeId, UUID_PATTERN))
+      fail(400, "challenge_invalid", "Invalid challenge ID.");
     const stored = await this.files.get<LoginRecord>(`logins/${challengeId}.json`);
     if (!stored) return null;
     this.loginValid(stored.value, challengeId);
@@ -562,7 +566,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     };
   }
   async getPerson(id: string): Promise<Person | null> {
-    if (!UUID_PATTERN.test(id)) return null;
+    if (!matchesStringPattern(id, UUID_PATTERN)) return null;
     const readMemoizedForThisLookup = this.memoizedReadsForOneLookup();
     const pointer = (await readMemoizedForThisLookup<PersonPointer>(`people/${id}.json`))?.value;
     if (!pointer) return null;

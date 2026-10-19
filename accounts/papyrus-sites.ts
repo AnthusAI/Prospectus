@@ -5,6 +5,7 @@ import {
   COGNITO_ISSUER_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
   hasExactlyKeys,
+  matchesStringPattern,
   requireRules,
   throwErrorWithPrefix,
   rule,
@@ -48,29 +49,32 @@ const siteEntryRules: ValidationRule<PapyrusSiteEntry>[] = [
   ),
   rule((site) => isString(site.product), "A Papyrus site product must be a string."),
   rule(
-    (site) => PAPYRUS_PRODUCT_PATTERN.test(site.product),
+    (site) => matchesStringPattern(site.product, PAPYRUS_PRODUCT_PATTERN),
     "A Papyrus site product must be named papyrus-<site> in lowercase letters, digits and hyphens.",
   ),
   rule((site) => isString(site.roleArn), "A Papyrus site runtime role ARN must be a string."),
-  rule((site) => siteRolePattern.test(site.roleArn), "A Papyrus site runtime role must be an IAM role ARN."),
+  rule(
+    (site) => matchesStringPattern(site.roleArn, siteRolePattern),
+    "A Papyrus site runtime role must be an IAM role ARN.",
+  ),
   rule((site) => isString(site.issuer), "A Papyrus site issuer must be a string."),
   rule(
-    (site) => COGNITO_ISSUER_PATTERN.test(site.issuer),
+    (site) => matchesStringPattern(site.issuer, COGNITO_ISSUER_PATTERN),
     "A Papyrus site issuer must be a regional Cognito user pool URL.",
   ),
   rule((site) => isString(site.clientId), "A Papyrus site client ID must be a string."),
   rule(
-    (site) => CLIENT_ID_PATTERN.test(site.clientId),
+    (site) => matchesStringPattern(site.clientId, CLIENT_ID_PATTERN),
     "A Papyrus site client ID must be a lowercase alphanumeric identifier.",
   ),
   rule((site) => isString(site.federationReviewId), "A Papyrus site federation review ID must be a string."),
   rule(
-    (site) => REVIEW_IDENTIFIER_PATTERN.test(site.federationReviewId),
+    (site) => matchesStringPattern(site.federationReviewId, REVIEW_IDENTIFIER_PATTERN),
     "A Papyrus site federation review ID must be a reviewed identifier.",
   ),
   rule((site) => isString(site.siteReviewId), "A Papyrus site review ID must be a string."),
   rule(
-    (site) => REVIEW_IDENTIFIER_PATTERN.test(site.siteReviewId),
+    (site) => matchesStringPattern(site.siteReviewId, REVIEW_IDENTIFIER_PATTERN),
     "A Papyrus site review ID must be a reviewed identifier.",
   ),
 ];

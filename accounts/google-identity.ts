@@ -3,7 +3,7 @@ import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
@@ -187,7 +187,7 @@ const googleIdentityRules: ValidationRule<unknown>[] = [
     "The linked Google user ID must be a string.",
   ),
   rule(
-    (identities) => GOOGLE_USER_ID_PATTERN.test((identities as any[])[0].userId),
+    (identities) => matchesStringPattern((identities as any[])[0].userId, GOOGLE_USER_ID_PATTERN),
     "The linked Google user ID must be 1 to 255 printable characters.",
   ),
 ];
