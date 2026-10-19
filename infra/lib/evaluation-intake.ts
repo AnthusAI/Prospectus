@@ -103,7 +103,7 @@ export class EvaluationIntake extends Construct {
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration("SyntheticSubmission", handler),
     });
-    forms.forEach((form, index) =>
+    const waitlistRoutes = forms.flatMap((form, index) =>
       api.addRoutes({
         path: waitlistRoutePath(form),
         methods: [apigw.HttpMethod.POST],
@@ -112,6 +112,7 @@ export class EvaluationIntake extends Construct {
     );
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 2, throttlingRateLimit: 1 };
+    for (const route of waitlistRoutes) stage.addDependency(route.node.defaultChild as apigw.CfnRoute);
     if (forms.length)
       stage.routeSettings = Object.fromEntries(
         forms.map((form) => [

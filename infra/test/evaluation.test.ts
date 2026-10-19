@@ -311,3 +311,32 @@ test("the synthesized intake refuses forms whose origins overlap another form or
     /demo origin/,
   );
 });
+
+test("every waitlist route in the stage's route settings is created before the stage is updated", () => {
+  const { template } = synthesize(
+    [
+      babulusWaitlist,
+      {
+        ...babulusWaitlist,
+        siteId: "papyrus",
+        formId: "papyrus-waitlist-v1",
+        noticeVersion: "papyrus-waitlist-v1",
+        origins: ["https://papyrus.example.org"],
+        attributes: {},
+      },
+    ],
+    "real-contacts",
+  );
+  const routes = template.findResources("AWS::ApiGatewayV2::Route");
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  const settingKeys = Object.keys(stage.Properties.RouteSettings);
+  assert.equal(settingKeys.length, 2);
+  const dependsOn: string[] = stage.DependsOn ?? [];
+  for (const key of settingKeys) {
+    const routeLogicalIds = Object.entries(routes)
+      .filter(([, route]: [string, any]) => route.Properties.RouteKey === key)
+      .map(([logicalId]) => logicalId);
+    assert.equal(routeLogicalIds.length, 1, `${key} has exactly one route`);
+    assert.ok(dependsOn.includes(routeLogicalIds[0]), `${key} route must be in the stage's DependsOn`);
+  }
+});
