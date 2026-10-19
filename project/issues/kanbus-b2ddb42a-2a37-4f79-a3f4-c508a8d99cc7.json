@@ -72,10 +72,22 @@
         "model": "claude-sonnet-5-5",
         "name": "status-handoff-2026-10-19"
       }
+    },
+    {
+      "id": "e4241398-f73f-48ee-b05e-d59612322a48",
+      "author": "home",
+      "text": "2026-10-19: dependency met. Contact intake (kanbus-67ae2d) and the anth.us engage wiring (kanbus-47dc15) are closed; intake works end to end (receipt 0714f32b-c9fa-4621-976e-c96240619ff8 -> canonical prospect). Status unchanged (backlog) and not started. Any remaining blocker is hosted account acceptance kanbus-6cf11d42.\n",
+      "created_at": "2026-10-19T20:59:13.777647Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-intake-live"
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.621080Z",
-  "updated_at": "2026-10-19T16:45:21.846075643Z",
+  "updated_at": "2026-10-19T20:59:13.777682Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",
