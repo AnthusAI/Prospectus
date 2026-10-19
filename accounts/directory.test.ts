@@ -272,6 +272,14 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
     const afterEnrollment = await bff(directoryRead);
     assert.equal(afterEnrollment.statusCode, 200);
     assert.equal(JSON.parse(afterEnrollment.body).accounts[0].id, environment.account.id);
+    for (const unusableChallengeId of [[challenge.challengeId], 5, null]) {
+      const refused = await bff({
+        ...resolve,
+        body: JSON.stringify({ challengeId: unusableChallengeId, idToken: fresh.id }),
+      });
+      assert.equal(refused.statusCode, 400);
+      assert.equal(JSON.parse(refused.body).error, "body");
+    }
     assert.equal(
       (
         await bff({
@@ -323,6 +331,8 @@ test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bo
       [publicRequest({}), 400],
       [publicRequest({ loginStateDigest: "not-a-digest" }), 400],
       [publicRequest({ loginStateDigest: digest.toUpperCase() }), 400],
+      [publicRequest({ loginStateDigest: [digest] }), 400],
+      [publicRequest({ loginStateDigest: 7 }), 400],
       [publicRequest({ loginStateDigest: digest, roleArn: "forged" }), 400],
       [{ ...publicRequest({ loginStateDigest: digest }), requestContext: { http: { method: "GET" } } }, 401],
     ] as const)
@@ -351,6 +361,8 @@ test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bo
     assert.equal((await resolve({})).statusCode, 401);
     assert.equal((await resolve({ loginState: "another-browser-login-state" })).statusCode, 401);
     assert.equal((await resolve({ loginState: "bad state!" })).statusCode, 400);
+    assert.equal((await resolve({ loginState: [loginState] })).statusCode, 400);
+    assert.equal((await resolve({ loginState: 7 })).statusCode, 400);
     const confirmed = await resolve({ loginState });
     assert.equal(confirmed.statusCode, 200);
     assert.equal(JSON.parse(confirmed.body).person.id, environment.owner.person.id);
@@ -509,6 +521,8 @@ test("BFF carries a signed login challenge token end to end and nothing is store
       (await resolve({ challengeToken: `${challenge.challengeToken}x`, loginState })).statusCode,
       401,
     );
+    for (const challengeToken of [[challenge.challengeToken], 7, {}, "v1.AAAA"])
+      assert.equal((await resolve({ challengeToken, loginState })).statusCode, 400);
     assert.deepEqual(await files.list("logins/"), loginsBefore, "invalid evidence writes nothing");
     const confirmed = await resolve({ challengeToken: challenge.challengeToken, loginState });
     assert.equal(confirmed.statusCode, 200);

@@ -1,3 +1,4 @@
+import { matchesStringPattern } from "./validation-rules";
 import { resolve } from "node:path";
 import { canonicalAccountsHandler } from "./canonical-handler";
 import { VirtuusS3IdentityFiles, VirtuusS3AccountFiles, type NativeTiming } from "./identity-files";
@@ -61,7 +62,7 @@ export const handler = async (
   event: RestEvent,
   context?: { awsRequestId?: string; getRemainingTimeInMillis?: () => number },
 ) => {
-  activeRequestId = /^[a-f0-9-]{36}$/i.test(context?.awsRequestId ?? "")
+  activeRequestId = matchesStringPattern(context?.awsRequestId, /^[a-f0-9-]{36}$/i)
     ? context!.awsRequestId!
     : "unavailable";
   const { identities, accounts } = warmBridges();

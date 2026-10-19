@@ -1,3 +1,4 @@
+import { REVIEW_IDENTIFIER_PATTERN, matchesStringPattern } from "./validation-rules";
 import { readFileSync } from "node:fs";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
 import { membershipLookupMode } from "./durable-accounts";
@@ -7,7 +8,7 @@ export function accountsDeployment() {
   if (
     config.enabled !== true ||
     config.storageMode !== "canonical-virtuus-v1" ||
-    !/^[A-Za-z0-9._:-]{1,128}$/.test(config.googlePolicyReviewId ?? "")
+    !matchesStringPattern(config.googlePolicyReviewId, REVIEW_IDENTIFIER_PATTERN)
   )
     throw new Error("Canonical accounts activation requires reviewed storage and Google policy ID.");
   membershipLookupMode(config.membershipLookup);

@@ -1,7 +1,7 @@
 import { KMSClient, GenerateMacCommand, VerifyMacCommand } from "@aws-sdk/client-kms";
 import { fail, UUID_PATTERN } from "./model";
 import type { LoginChallenge } from "./google-identity";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const CHALLENGE_TOKEN_VERSION = "v1";
 export const CHALLENGE_TOKEN_MAXIMUM_LENGTH = 2048;
@@ -71,18 +71,14 @@ const isText = (value: unknown, maximumLength: number) =>
 const payloadRules: ValidationRule<unknown[]>[] = [
   rule((fields) => fields.length === 11, "The challenge payload must have eleven fields."),
   rule((fields) => fields[0] === CHALLENGE_TOKEN_DOMAIN, "The challenge payload has the wrong domain."),
-  rule(
-    (fields) => typeof fields[1] === "string" && UUID_PATTERN.test(fields[1]),
-    "The challenge ID must be a UUID.",
-  ),
+  rule((fields) => matchesStringPattern(fields[1], UUID_PATTERN), "The challenge ID must be a UUID."),
   rule((fields) => isText(fields[2], 256), "The challenge nonce must be present."),
   rule(
     (fields) => Number.isSafeInteger(fields[3]) && Number.isSafeInteger(fields[4]),
     "The challenge times must be integers.",
   ),
   rule(
-    (fields) =>
-      typeof fields[5] === "string" && (fields[5] === "" || CHALLENGE_DIGEST_PATTERN.test(fields[5])),
+    (fields) => fields[5] === "" || matchesStringPattern(fields[5], CHALLENGE_DIGEST_PATTERN),
     "The login state digest must be empty or lowercase SHA-256 hexadecimal.",
   ),
   rule(
@@ -107,8 +103,14 @@ export async function verifyChallengeToken(
       rule(({ token }) => token.length <= CHALLENGE_TOKEN_MAXIMUM_LENGTH, "The token is too long."),
       rule(({ parts }) => parts.length === 3, "The token must have three parts."),
       rule(({ parts }) => parts[0] === CHALLENGE_TOKEN_VERSION, "The token version is not supported."),
-      rule(({ parts }) => BASE64_URL_PATTERN.test(parts[1]), "The token payload is not base64url."),
-      rule(({ parts }) => BASE64_URL_PATTERN.test(parts[2]), "The token MAC is not base64url."),
+      rule(
+        ({ parts }) => matchesStringPattern(parts[1], BASE64_URL_PATTERN),
+        "The token payload is not base64url.",
+      ),
+      rule(
+        ({ parts }) => matchesStringPattern(parts[2], BASE64_URL_PATTERN),
+        "The token MAC is not base64url.",
+      ),
     ],
     invalid,
   );

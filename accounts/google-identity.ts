@@ -4,12 +4,13 @@ import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
 import { issueChallengeToken, verifyChallengeToken, type ChallengeMacSigner } from "./challenge-token";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
 const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 4096;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const CHALLENGE_TOKEN_PATTERN = /^v1\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const sha256Hex = (value: string) => createHash("sha256").update(value).digest("hex");
 const MAXIMUM_ORIGIN_JTI_LENGTH = 256;
@@ -196,7 +197,7 @@ const googleIdentityRules: ValidationRule<unknown>[] = [
     "The linked Google user ID must be a string.",
   ),
   rule(
-    (identities) => GOOGLE_USER_ID_PATTERN.test((identities as any[])[0].userId),
+    (identities) => matchesStringPattern((identities as any[])[0].userId, GOOGLE_USER_ID_PATTERN),
     "The linked Google user ID must be 1 to 255 printable characters.",
   ),
 ];
@@ -210,7 +211,9 @@ const challengeRequestRules: ValidationRule<Record<string, any>>[] = [
     "The login state digest must be a string.",
   ),
   rule(
-    (body) => body.loginStateDigest === undefined || LOGIN_STATE_DIGEST_PATTERN.test(body.loginStateDigest),
+    (body) =>
+      body.loginStateDigest === undefined ||
+      matchesStringPattern(body.loginStateDigest, LOGIN_STATE_DIGEST_PATTERN),
     "The login state digest must be lowercase SHA-256 hexadecimal.",
   ),
 ];
@@ -225,21 +228,20 @@ const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
     "Exactly one of a challenge ID or a challenge token is required.",
   ),
   rule(
-    (body) =>
-      body.challengeId === undefined ||
-      (typeof body.challengeId === "string" && UUID_PATTERN.test(body.challengeId)),
+    (body) => body.challengeId === undefined || matchesStringPattern(body.challengeId, UUID_PATTERN),
     "The challenge ID must be a UUID.",
   ),
   rule(
-    (body) => body.challengeToken === undefined || typeof body.challengeToken === "string",
-    "The challenge token must be a string.",
+    (body) =>
+      body.challengeToken === undefined || matchesStringPattern(body.challengeToken, CHALLENGE_TOKEN_PATTERN),
+    "The challenge token must be a versioned base64url token.",
   ),
   rule(
     (body) => body.loginState === undefined || typeof body.loginState === "string",
     "The login state must be a string.",
   ),
   rule(
-    (body) => body.loginState === undefined || LOGIN_STATE_PATTERN.test(body.loginState),
+    (body) => body.loginState === undefined || matchesStringPattern(body.loginState, LOGIN_STATE_PATTERN),
     "The login state is malformed.",
   ),
 ];

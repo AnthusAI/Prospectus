@@ -25,10 +25,22 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "f746c110-1ae0-4ac8-a7a9-088074cb2b4f",
+      "author": "home",
+      "text": "2026-10-19 progress: real-contact intake is live end to end. The anth.us engage form posts to Prospectus intake (notice contact-v1) and a labelled test submission produced receipt 0714f32b-c9fa-4621-976e-c96240619ff8 and canonical prospect prsp-964cd0ea-a2c7-44d4-870c-aa835e02216d. kanbus-47dc15 and kanbus-67ae2d are closed. Other children stay open, including invitations kanbus-b2ddb42, whose intake dependency is now met. A contact inquiry still grants no membership, permission or booking.\n",
+      "created_at": "2026-10-19T20:59:13.587142Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-intake-live"
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.432426Z",
-  "updated_at": "2026-10-17T06:22:40.311360Z",
+  "updated_at": "2026-10-19T20:59:13.587245Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",

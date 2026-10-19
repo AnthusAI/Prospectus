@@ -10,11 +10,30 @@ export interface EvaluationEvent {
 
 type SubmissionService = Pick<IntakeService, "submit" | "close">;
 
+export interface UnconfirmedSubmissionDiagnostic {
+  event: "intake-submission-unconfirmed";
+  errorClass: string;
+  outcome?: string;
+}
+
+export function diagnoseUnconfirmedSubmission(cause: unknown): UnconfirmedSubmissionDiagnostic {
+  const errorClass = cause instanceof Error ? cause.constructor.name : typeof cause;
+  const outcome = (cause as { outcome?: unknown } | null)?.outcome;
+  return {
+    event: "intake-submission-unconfirmed",
+    errorClass,
+    ...(typeof outcome === "string" ? { outcome } : {}),
+  };
+}
+
 /** A fixed submission boundary for configured form origins; no record-reading capability. */
 export function createEvaluationHandler(options: {
   allowedOrigins: readonly string[];
   open: () => Promise<SubmissionService>;
+  reportUnconfirmed?: (diagnostic: UnconfirmedSubmissionDiagnostic) => void;
 }) {
+  const reportUnconfirmed =
+    options.reportUnconfirmed ?? ((diagnostic) => console.error(JSON.stringify(diagnostic)));
   return async (event: EvaluationEvent) => {
     const response = (statusCode: number, body: unknown) => ({
       statusCode,
@@ -49,6 +68,7 @@ export function createEvaluationHandler(options: {
       return response(202, receipt);
     } catch (cause) {
       if (cause instanceof IntakeError) return response(cause.status, { message: cause.message });
+      reportUnconfirmed(diagnoseUnconfirmedSubmission(cause));
       return response(503, { message: "The inquiry could not be confirmed. Retry the same receipt." });
     } finally {
       await service?.close().catch(() => undefined);

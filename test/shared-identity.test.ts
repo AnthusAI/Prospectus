@@ -16,8 +16,11 @@ import type { IssueRecord } from "../src/client";
 class MemoryControls implements ConditionalControlStore {
   objects = new Map<string, ControlObject>();
   afterPut?: (object: ControlObject) => void;
+  deniedReads?: "absent-objects" | "existing-objects";
   async getControl(path: string) {
     const object = this.objects.get(path);
+    if (this.deniedReads === "absent-objects" && !object) throw new Error("AccessDenied: no ListBucket");
+    if (this.deniedReads === "existing-objects" && object) throw new Error("AccessDenied: explicit denial");
     return object ? structuredClone(object) : null;
   }
   async putControl(path: string, bytes: string, condition: ControlCondition) {
@@ -190,15 +193,10 @@ test("a durable claim with lost acknowledgement survives receipt loss and catalo
     await recovered.submit(first);
     assert.equal(setup.api.creates, 1);
     assert.equal(([...setup.api.records.values()][0].issue.custom!.inquiries as unknown[]).length, 2);
-    const queries = setup.api.queries;
     const rebuiltReceipts = await setup.worker();
     await rebuiltReceipts.submit(first);
-    assert.equal(
-      setup.api.queries,
-      queries,
-      "Existing claim bypasses unavailable/rebuilt supplemental catalog",
-    );
     assert.equal(setup.api.creates, 1);
+    assert.equal(setup.api.records.size, 1);
   } finally {
     await setup.close();
   }
@@ -344,6 +342,67 @@ test("a contact correction preserves known receipt replay while new old-email in
     );
     assert.equal(setup.api.creates, 1);
     assert.equal((record.issue.custom!.inquiries as unknown[]).length, 1);
+  } finally {
+    await setup.close();
+  }
+});
+
+test("first, retried, changed and concurrent submissions succeed when reading an absent claim is denied", async () => {
+  const setup = await fixture();
+  try {
+    setup.controls.deniedReads = "absent-objects";
+    const workers = await Promise.all([setup.worker(), setup.worker(), setup.worker()]);
+    const first = input();
+    const concurrent = [input(), input()];
+    await workers[0].submit(first);
+    await Promise.all([
+      workers[1].submit(first),
+      ...concurrent.map((request, index) => workers[index + 1].submit(request)),
+    ]);
+    assert.equal(setup.api.creates, 1);
+    assert.equal(setup.api.records.size, 1);
+    const record = [...setup.api.records.values()][0];
+    assert.equal((record.issue.custom!.inquiries as unknown[]).length, 3);
+    await assert.rejects(
+      workers[2].submit({ ...first, message: "Different payload, same receipt" }),
+      (error: unknown) => error instanceof IntakeError && error.status === 409,
+    );
+    assert.equal(setup.controls.objects.size, 4);
+  } finally {
+    await setup.close();
+  }
+});
+
+test("a denied read of an existing claim is still an error and never treated as missing", async () => {
+  const setup = await fixture();
+  try {
+    const request = input();
+    await (await setup.worker()).submit(request);
+    setup.controls.deniedReads = "existing-objects";
+    await assert.rejects(
+      (await setup.worker()).submit(request),
+      (error: unknown) => error instanceof Error && /AccessDenied/.test(error.message),
+    );
+    assert.equal(setup.api.creates, 1);
+  } finally {
+    await setup.close();
+  }
+});
+
+test("an existing claim still completes a repeat contact when the catalog lookup fails or finds duplicates", async () => {
+  const setup = await fixture();
+  try {
+    await (await setup.worker()).submit(input());
+    setup.controls.deniedReads = "absent-objects";
+    const failing = await setup.worker({
+      request: async (path, init) => {
+        if (path.startsWith("/issues?")) throw new IntakeError(503, "Catalog unavailable");
+        return setup.api.request(path, init);
+      },
+    });
+    await failing.submit(input({ message: "Repeat contact while the catalog is down" }));
+    assert.equal(setup.api.creates, 1);
+    assert.equal(([...setup.api.records.values()][0].issue.custom!.inquiries as unknown[]).length, 2);
   } finally {
     await setup.close();
   }

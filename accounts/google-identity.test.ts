@@ -468,7 +468,18 @@ test("a challenge issued without a digest rejects any supplied login state", asy
 });
 test("malformed login state fields fail before a challenge is stored or consumed", async () => {
   const f = googleFixture();
-  for (const digest of ["", "ABC", loginStateDigest.toUpperCase(), loginStateDigest + "0", 7, null, {}]) {
+  for (const digest of [
+    "",
+    "ABC",
+    loginStateDigest.toUpperCase(),
+    loginStateDigest + "0",
+    7,
+    null,
+    {},
+    [loginStateDigest],
+    [],
+    0,
+  ]) {
     const response = await f.request(0, "/v1/identities/google/challenge", { loginStateDigest: digest });
     assert.equal(response.status, 400, JSON.stringify(digest));
   }
@@ -477,7 +488,7 @@ test("malformed login state fields fail before a challenge is stored or consumed
     400,
   );
   const c = await boundChallenge(f);
-  for (const state of ["", "has space", "x".repeat(129), 7, null, {}]) {
+  for (const state of ["", "has space", "x".repeat(129), 7, null, {}, [loginState], [], 0]) {
     const response = await f.request(
       0,
       "/v1/identities/google/resolve",

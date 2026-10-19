@@ -1,18 +1,18 @@
 import { cognitoClaims, type ProductRegistration, type KeyResolver } from "./auth";
 import { AccountsError, fail, UUID_PATTERN } from "./model";
 import { jsonResponse, lowerCaseHeaders, parseJsonRequest } from "./request";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 import { AccountsClientError, type AccountsClient } from "../packages/accounts-client/src/client";
 const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const CHALLENGE_TOKEN_PATTERN = /^v1\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
 
 const loginChallengeRequestRules: ValidationRule<Record<string, any>>[] = [
   rule((body) => Object.keys(body).length === 1, "Only a login state digest is accepted."),
-  rule((body) => typeof body.loginStateDigest === "string", "A login state digest is required."),
   rule(
-    (body) => LOGIN_STATE_DIGEST_PATTERN.test(body.loginStateDigest),
+    (body) => matchesStringPattern(body.loginStateDigest, LOGIN_STATE_DIGEST_PATTERN),
     "The login state digest must be lowercase SHA-256 hexadecimal.",
   ),
 ];
@@ -30,21 +30,16 @@ const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
     "Exactly one of a challenge ID or a challenge token is required.",
   ),
   rule(
-    (body) => body.challengeId === undefined || UUID_PATTERN.test(body.challengeId),
+    (body) => body.challengeId === undefined || matchesStringPattern(body.challengeId, UUID_PATTERN),
     "The challenge ID must be a UUID.",
   ),
   rule(
     (body) =>
-      body.challengeToken === undefined ||
-      (typeof body.challengeToken === "string" && body.challengeToken.length <= 2048),
-    "The challenge token must be a string of at most 2048 characters.",
+      body.challengeToken === undefined || matchesStringPattern(body.challengeToken, CHALLENGE_TOKEN_PATTERN),
+    "The challenge token must be a versioned base64url token.",
   ),
   rule(
-    (body) => body.loginState === undefined || typeof body.loginState === "string",
-    "The login state must be a string.",
-  ),
-  rule(
-    (body) => body.loginState === undefined || LOGIN_STATE_PATTERN.test(body.loginState),
+    (body) => body.loginState === undefined || matchesStringPattern(body.loginState, LOGIN_STATE_PATTERN),
     "The login state is malformed.",
   ),
   rule((body) => typeof body.idToken === "string", "An ID token is required."),
