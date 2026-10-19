@@ -34,10 +34,22 @@
         "model": "claude-sonnet-5-5",
         "name": "status-handoff-2026-10-19"
       }
+    },
+    {
+      "id": "699303e9-ad1a-4560-92b9-993515c66d2d",
+      "author": "home",
+      "text": "2026-10-19 reconcile: PR 25 merged to main (2f7d893). Stays in_progress until the first production deploy timing log confirms head_bucket is gone; needs Ryan's Mac/AWS.",
+      "created_at": "2026-10-19T17:28:05.170866Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-reconcile-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-17T14:50:12.368369215Z",
-  "updated_at": "2026-10-19T16:45:21.636561660Z",
+  "updated_at": "2026-10-19T17:28:05.170895Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
