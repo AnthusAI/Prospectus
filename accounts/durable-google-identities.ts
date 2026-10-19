@@ -16,6 +16,7 @@ export const googleIdentityKey = (subject: string) => hash(["google-v1", GOOGLE_
 export const cognitoAliasKey = (issuer: string, subject: string) => hash(["cognito-v1", issuer, subject]);
 export type EnrollmentPhase = "issue" | "prepare" | "google" | "alias" | "person" | "session" | "complete";
 export type EnrollmentHook = (phase: EnrollmentPhase, point: "before" | "after") => void | Promise<void>;
+const SESSION_POINTER_READ_BATCH_SIZE = 4;
 interface GoogleRecord {
   version: 1;
   kind: "google";
@@ -326,18 +327,21 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
       fail(503, "identity_inconsistent", "Committed Person lookup is incomplete.");
     return login;
   }
+  private memoizedReadsForOneLookup(): IdentityFiles["get"] {
+    const pendingReadsByPath = new Map<string, Promise<IdentityObject | null>>();
+    return (path) => {
+      let pendingRead = pendingReadsByPath.get(path);
+      if (!pendingRead) {
+        pendingRead = this.files.get(path);
+        pendingReadsByPath.set(path, pendingRead);
+      }
+      return pendingRead;
+    };
+  }
   async find(issuer: string, subject: string, _session?: IdentitySession) {
     // Immutable identity links are shared only within this lookup. Every later
     // request rereads canonical authority; no mutable account permissions cache.
-    const reads = new Map<string, Promise<IdentityObject | null>>();
-    const read: IdentityFiles["get"] = (path) => {
-      let pending = reads.get(path);
-      if (!pending) {
-        pending = this.files.get(path);
-        reads.set(path, pending);
-      }
-      return pending;
-    };
+    const read = this.memoizedReadsForOneLookup();
     const aliasKey = cognitoAliasKey(issuer, subject);
     const alias = (await read<AliasRecord>(`aliases/${aliasKey}.json`))?.value;
     if (!alias) return null;
@@ -380,13 +384,14 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
   }
   async getPerson(id: string): Promise<Person | null> {
     if (!UUID_PATTERN.test(id)) return null;
+    const readMemoizedForThisLookup = this.memoizedReadsForOneLookup();
     const pointer = (
-      await this.files.get<{ version: number; kind: string; googleKey: string; person: Person }>(
+      await readMemoizedForThisLookup<{ version: number; kind: string; googleKey: string; person: Person }>(
         `people/${id}.json`,
       )
     )?.value;
     if (!pointer) return null;
-    const google = (await this.files.get<GoogleRecord>(`google/${pointer.googleKey}.json`))?.value;
+    const google = (await readMemoizedForThisLookup<GoogleRecord>(`google/${pointer.googleKey}.json`))?.value;
     if (!google) return null;
     this.checkGoogle(google, google.subject);
     if (
@@ -397,9 +402,15 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
       pointer.googleKey !== googleIdentityKey(google.subject)
     )
       fail(503, "identity_inconsistent", "Person pointer conflicts.");
-    for (const path of await this.files.list(`sessions/${pointer.googleKey}/`)) {
-      const session = (await this.files.get<SessionPointer>(path))?.value;
-      if (session && (await this.committed(session, google))) return google.person;
+    const sessionPointerPaths = await this.files.list(`sessions/${pointer.googleKey}/`);
+    for (let offset = 0; offset < sessionPointerPaths.length; offset += SESSION_POINTER_READ_BATCH_SIZE) {
+      const committedLogins = await Promise.all(
+        sessionPointerPaths.slice(offset, offset + SESSION_POINTER_READ_BATCH_SIZE).map(async (path) => {
+          const session = (await readMemoizedForThisLookup<SessionPointer>(path))?.value;
+          return session ? this.committed(session, google, undefined, readMemoizedForThisLookup) : null;
+        }),
+      );
+      if (committedLogins.some((login) => login)) return google.person;
     }
     return null;
   }

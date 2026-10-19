@@ -17,20 +17,15 @@
   ],
   "comments": [
     {
-      "id": "928e5901-d0a5-4bbd-993b-866d7d9c451f",
-      "author": "unknown",
-      "text": "2026-10-19 status: the Gatsby engage page PR (Anth.us-legacy-Gatsby 83) targeted the wrong repo; public anth.us is AnthusAI/Anth.us-Papyrus. Next step, nothing blocks it except the endpoint check in kanbus-67ae2d: open the Anth.us-Papyrus PR that points the inquiry form at the production Prospectus intake endpoint with notice contact-v1, and retire the Google Form. Priority 3.",
-      "created_at": "2026-10-19T16:45:21.827092586Z",
-      "comment_type": "default",
-      "agent": {
-        "platform": "claude-code",
-        "model": "claude-sonnet-5-5",
-        "name": "status-handoff-2026-10-19"
-      }
+      "id": "a74981e8-7840-42d0-94f6-ed57176b9b64",
+      "author": "home",
+      "text": "STUBS: open items named by the coordinator whose details live in other threads or boards and were NOT re-verified in this session. Whoever picks these up should read the original thread/board first.\n\n2. Prospectus intake activation: Prospectus PR #19 plus production endpoint configuration.\n\nStub caveat: details live in other threads or boards and were NOT re-verified; read the original thread/board first.\n\nSource: Claude Code Projects handoff, 2026-10-19.",
+      "created_at": "2026-10-19T16:42:52.567127Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-17T12:16:51.022069Z",
-  "updated_at": "2026-10-19T16:45:21.827129224Z",
+  "updated_at": "2026-10-19T16:42:52.567147Z",
   "closed_at": null,
   "agent": {
     "platform": "claude-code",

@@ -12,8 +12,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup/toolchains
+            .build/target
+            .build/intake-control-target
+            .build/kanbus
+          key: rust-${{ runner.os }}-${{ hashFiles('source-lock.json', 'local-dependencies/intake-control/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
       - run: node infra/scripts/checkout-kanbus.mjs
       - run: npm ci --prefix .build/kanbus-ui/packages/ui
       - run: npm run build --prefix .build/kanbus-ui/packages/ui
@@ -32,15 +44,12 @@ jobs:
       - run: bash infra/scripts/build-backend.sh
       - run: node infra/scripts/build-evaluation-if-enabled.mjs
       - run: node --import tsx accounts/build-deployment.ts
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - name: Verify the enabled Accounts package and persisted isolation
         run: |
           if node -e 'process.exit(require("./accounts/deployment.json").enabled ? 0 : 1)'; then
             PROSPECTUS_PACKAGE_NODE_MAJOR=24 node accounts/package-smoke.mjs
             mkdir -p .build/intake-control-target/debug
-            ln -s "$PWD/.artifacts/canonical-accounts/identity-files" .build/intake-control-target/debug/prospectus-identity-files
+            ln -sfn "$PWD/.artifacts/canonical-accounts/identity-files" .build/intake-control-target/debug/prospectus-identity-files
             node --import tsx --test accounts/durable-accounts.test.ts accounts/durable-google-identities.test.ts accounts/directory.test.ts accounts/execution-delegation.test.ts accounts/identity-files-session.test.ts
           fi
       - run: bash infra/scripts/test-browser-ci.sh
