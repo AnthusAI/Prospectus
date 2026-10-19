@@ -7,11 +7,18 @@ import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
+import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
+const parameterStoreSigner = {
+  kind: "parameter-store",
+  parameterPrefix: "/prospectus/central-accounts/login-challenge-mac/",
+  currentKeyId: "v1",
+} as const;
 function template(
   enabled: boolean,
   consoleClientEnabled = false,
   consolePairEnabled = false,
   papyrusSites: ProductRegistration[] = [],
+  loginChallengeSigner: LoginChallengeSignerConfiguration = parameterStoreSigner,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -31,6 +38,7 @@ function template(
           consoleFederationReviewId: "cyclotron-google-only-unlinked-v1-20261015",
           consolePairReviewId: "cyclotron-execution-pair-v1-20261015",
           papyrusSites,
+          loginChallengeSigner,
         }
       : undefined,
   );
@@ -39,8 +47,21 @@ function template(
 test("Accounts additive synthesis preserves every existing CRM resource and adds only scoped UI routes", () => {
   const before = template(false),
     after = template(true);
-  for (const [id, resource] of Object.entries(before.Resources))
+  for (const [id, resource] of Object.entries(before.Resources as Record<string, any>)) {
+    if (resource.Type === "AWS::ApiGatewayV2::Stage") {
+      const { RouteSettings, ...rest } = after.Resources[id].Properties;
+      assert.deepEqual(rest, resource.Properties, `Existing CRM stage changed: ${id}`);
+      assert.deepEqual(RouteSettings, {
+        "POST /api/saas/identity/login-challenge": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+      });
+      assert.deepEqual(
+        { ...after.Resources[id], Properties: undefined },
+        { ...resource, Properties: undefined },
+      );
+      continue;
+    }
     assert.deepEqual(after.Resources[id], resource, `Existing CRM resource changed: ${id}`);
+  }
   const resources = Object.values(after.Resources) as any[],
     newResources = Object.entries(after.Resources)
       .filter(([id]) => !before.Resources[id])
@@ -66,9 +87,14 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
     0,
   );
   const routes = newResources.filter((value) => value.Type === "AWS::ApiGatewayV2::Route");
-  assert.equal(routes.length, 2);
-  assert.ok(routes.every((route) => route.Properties.AuthorizationType === "JWT"));
+  assert.equal(routes.length, 3);
   assert.ok(routes.every((route) => route.Properties.RouteKey.includes("/api/saas/")));
+  const publicRoutes = routes.filter((route) => route.Properties.AuthorizationType !== "JWT");
+  assert.deepEqual(
+    publicRoutes.map((route) => [route.Properties.RouteKey, route.Properties.AuthorizationType]),
+    [["POST /api/saas/identity/login-challenge", "NONE"]],
+  );
+  assert.equal(routes.filter((route) => route.Properties.AuthorizationType === "JWT").length, 2);
   const policies = newResources
     .filter((value) => value.Type === "AWS::IAM::Policy")
     .flatMap((value) => value.Properties.PolicyDocument.Statement);
@@ -303,4 +329,113 @@ test("the largest reviewed Papyrus site registry keeps the deployed API access p
     `Deployed API resource policy would be ${deployedPolicyText.length} bytes`,
   );
   assert.throws(() => syntheticPapyrusSites(41));
+});
+
+test("the login challenge MAC key is an HMAC_256 generate-verify key and only the central runtime may use it", () => {
+  const after = template(true, false, false, [], { kind: "kms" }),
+    before = template(false);
+  const added = Object.entries(after.Resources as Record<string, any>).filter(
+    ([id]) => !before.Resources[id],
+  );
+  const keys = added.filter(([, resource]) => resource.Type === "AWS::KMS::Key");
+  assert.equal(keys.length, 1);
+  const [keyId, key] = keys[0];
+  assert.equal(key.Properties.KeySpec, "HMAC_256");
+  assert.equal(key.Properties.KeyUsage, "GENERATE_VERIFY_MAC");
+  assert.equal(key.DeletionPolicy, "Retain");
+  assert.equal(key.Properties.PendingWindowInDays, 30);
+  assert.equal(key.Properties.EnableKeyRotation, undefined);
+  const statements = key.Properties.KeyPolicy.Statement;
+  assert.equal(statements.length, 1);
+  assert.equal(statements[0].Action, "kms:*");
+  assert.equal(statements[0].Resource, "*");
+  assert.ok(JSON.stringify(statements[0].Principal).includes(":iam::712236451410:root"));
+  assert.equal(added.filter(([, resource]) => resource.Type === "AWS::KMS::Alias").length, 1);
+  const keyArn = { "Fn::GetAtt": [keyId, "Arn"] };
+  const policies = added.filter(([, resource]) => resource.Type === "AWS::IAM::Policy");
+  const usages = policies.filter(([, resource]) =>
+    JSON.stringify(resource.Properties.PolicyDocument).includes("kms:"),
+  );
+  assert.equal(usages.length, 1);
+  const kmsStatements = usages[0][1].Properties.PolicyDocument.Statement.filter((statement: any) =>
+    JSON.stringify(statement.Action).includes("kms:"),
+  );
+  assert.equal(kmsStatements.length, 1);
+  assert.deepEqual(kmsStatements[0].Action, ["kms:GenerateMac", "kms:VerifyMac"]);
+  assert.deepEqual(kmsStatements[0].Resource, keyArn);
+  assert.deepEqual(kmsStatements[0].Condition, { StringEquals: { "kms:MacAlgorithm": "HMAC_SHA_256" } });
+  const centralRole = added.find(
+    ([, resource]) =>
+      resource.Type === "AWS::IAM::Role" &&
+      resource.Properties.RoleName === "prospectus-central-accounts-runtime",
+  )![0];
+  assert.deepEqual(usages[0][1].Properties.Roles, [{ Ref: centralRole }]);
+  const central = added.find(
+    ([, resource]) =>
+      resource.Type === "AWS::Lambda::Function" &&
+      resource.Properties.FunctionName === "prospectus-central-accounts",
+  )![1];
+  assert.deepEqual(central.Properties.Environment.Variables.PROSPECTUS_CHALLENGE_MAC_KEY_ARN, keyArn);
+  assert.ok(!JSON.stringify(central.Properties.Environment.Variables).includes("secret"));
+});
+
+test("the parameter-store signer creates no KMS resource and grants only ssm:GetParameter on the exact parameters", () => {
+  for (const [signer, names] of [
+    [parameterStoreSigner, ["/prospectus/central-accounts/login-challenge-mac/v1"]],
+    [
+      { ...parameterStoreSigner, currentKeyId: "v2", previousKeyId: "v1" },
+      [
+        "/prospectus/central-accounts/login-challenge-mac/v2",
+        "/prospectus/central-accounts/login-challenge-mac/v1",
+      ],
+    ],
+  ] as const) {
+    const after = template(true, false, false, [], signer),
+      before = template(false);
+    const added = Object.entries(after.Resources as Record<string, any>).filter(
+      ([id]) => !before.Resources[id],
+    );
+    assert.ok(!JSON.stringify(after.Resources).includes('"AWS::KMS::'), "no KMS key or alias");
+    assert.ok(!JSON.stringify(after.Resources).includes("kms:"), "no KMS permission");
+    assert.ok(!JSON.stringify(after.Resources).includes("AWS::SSM::Parameter"), "no parameter is created");
+    const statements = added
+      .filter(([, resource]) => resource.Type === "AWS::IAM::Policy")
+      .flatMap(([, resource]) => resource.Properties.PolicyDocument.Statement)
+      .filter((statement: any) => JSON.stringify(statement.Action).includes("ssm:"));
+    assert.equal(statements.length, 1);
+    assert.deepEqual(statements[0].Action, "ssm:GetParameter");
+    assert.equal(statements[0].Effect, "Allow");
+    assert.equal(statements[0].Condition, undefined);
+    const resources = Array.isArray(statements[0].Resource)
+      ? statements[0].Resource
+      : [statements[0].Resource];
+    assert.deepEqual(
+      resources.map((arn: any) =>
+        typeof arn === "string"
+          ? arn
+          : arn["Fn::Join"][1].map((part: any) => (part.Ref === "AWS::Partition" ? "aws" : part)).join(""),
+      ),
+      names.map((name) => `arn:aws:ssm:us-east-1:712236451410:parameter${name}`),
+    );
+    const central = added.find(
+      ([, resource]) =>
+        resource.Type === "AWS::Lambda::Function" &&
+        resource.Properties.FunctionName === "prospectus-central-accounts",
+    )![1];
+    const environment = central.Properties.Environment.Variables;
+    assert.deepEqual(JSON.parse(environment.PROSPECTUS_LOGIN_CHALLENGE_SIGNER), signer);
+    assert.equal(environment.PROSPECTUS_CHALLENGE_MAC_KEY_ARN, undefined);
+    assert.ok(!JSON.stringify(environment).toLowerCase().includes("secret"));
+    const centralRole = added.find(
+      ([, resource]) =>
+        resource.Type === "AWS::IAM::Role" &&
+        resource.Properties.RoleName === "prospectus-central-accounts-runtime",
+    )![0];
+    const policyWithSsm = added.find(
+      ([, resource]) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties).includes("ssm:GetParameter"),
+    )![1];
+    assert.deepEqual(policyWithSsm.Properties.Roles, [{ Ref: centralRole }]);
+  }
 });

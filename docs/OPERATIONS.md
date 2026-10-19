@@ -82,6 +82,20 @@ Only a person holding a reviewed `accounts:admin:entitlements` grant in `account
 this repository is public, so CI runs on GitHub Actions (`.github/workflows/ci.yml`, on pull requests and pushes to `main`) and CD runs in AWS. Merging to `main` starts an Amplify build of the branch (`enableAutoBuild` in `infra/branch-settings.json`, `enableBranchAutoBuild` in `infra/hosting-settings.json`), which runs `amplify.yml`. Nobody starts builds by hand. The settings were `false` since the initial `papyrus-proof` source (b57ad68) with no recorded reason, so a proof app would not deploy on push.
 
 
+### Login challenge signing secret
+
+Login challenges are signed with a secret in SSM Parameter Store (`loginChallengeSigner` in `accounts/deployment.json`, kind `parameter-store`). CDK grants `ssm:GetParameter` on the parameter but cannot create a SecureString, so create it once before or after the deployment. Run on your Mac, with the `papyrus-production` profile; the command generates the secret and stores it without printing it:
+
+```
+aws ssm put-parameter --profile papyrus-production --region us-east-1 \
+  --name /prospectus/central-accounts/login-challenge-mac/v1 \
+  --type SecureString --value "$(openssl rand -base64 48)" --no-overwrite
+```
+
+The default `alias/aws/ssm` key encrypts it. Until the parameter exists, challenge requests return 503 and sign-in falls back to a plain Google login (no outage, only the second Accounts confirmation on the Accounts tab); failed reads are not cached, so signed challenges start working as soon as the parameter exists.
+
+Rotation: create `/prospectus/central-accounts/login-challenge-mac/v2` with the same command, set `currentKeyId` to `v2` and `previousKeyId` to `v1` in `accounts/deployment.json`, review and merge, and after at least 5 minutes remove `previousKeyId`. Delete the old parameter afterwards with `aws ssm delete-parameter`. Never paste the value into a ticket, chat or commit.
+
 ## Verification
 
 Run from the repository root after building the pinned Kanbus UI (see [README.md](../README.md#development)):

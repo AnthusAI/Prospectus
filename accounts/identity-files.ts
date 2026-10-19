@@ -1,3 +1,4 @@
+import { matchesStringPattern } from "./validation-rules";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 export interface IdentityObject<T = any> {
@@ -302,9 +303,9 @@ export class VirtuusS3IdentityFiles extends StdioIdentityFiles {
     if (
       config.enabled !== true ||
       config.region !== "us-east-1" ||
-      !/^[0-9]{12}$/.test(config.expectedOwner) ||
-      !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(config.bucket) ||
-      !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(config.tenant) ||
+      !matchesStringPattern(config.expectedOwner, /^[0-9]{12}$/) ||
+      !matchesStringPattern(config.bucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/) ||
+      !matchesStringPattern(config.tenant, /^[a-z0-9][a-z0-9_-]{0,127}$/) ||
       !["identities", "accounts"].includes(config.project)
     )
       throw new Error("Explicit fixed S3 identity configuration required.");

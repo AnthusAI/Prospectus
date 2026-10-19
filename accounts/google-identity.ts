@@ -3,11 +3,17 @@ import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { issueChallengeToken, verifyChallengeToken } from "./challenge-token";
+import type { ChallengeSigner } from "./challenge-signer";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
-const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 1024;
+const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 4096;
+const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const CHALLENGE_TOKEN_PATTERN = /^v1\.[a-z0-9]{1,16}\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
+const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const sha256Hex = (value: string) => createHash("sha256").update(value).digest("hex");
 const MAXIMUM_ORIGIN_JTI_LENGTH = 256;
 const MAXIMUM_NONCE_LENGTH = 256;
 const ALLOWED_CLOCK_SKEW_SECONDS = 30;
@@ -26,6 +32,7 @@ export interface LoginChallenge {
   issuedAt: number;
   expiresAt: number;
   binding: IdentityBinding;
+  loginStateDigest?: string;
 }
 export interface GoogleAssociation {
   challengeId: string;
@@ -37,6 +44,8 @@ export interface GoogleAssociation {
   authTime: number;
   lineageHash: string;
   now: number;
+  loginStateDigest?: string;
+  challenge?: LoginChallenge;
 }
 export interface GoogleAlias {
   personId: string;
@@ -91,6 +100,8 @@ export function enrollmentBinding(registration: ProductRegistration, principal: 
     policyRevision: policy.reviewedPolicyId,
   };
 }
+export const sameLoginState = (challenge: LoginChallenge, proof: GoogleAssociation) =>
+  challenge.loginStateDigest === proof.loginStateDigest;
 export const sameBinding = (binding: IdentityBinding, otherBinding: IdentityBinding) =>
   binding.product === otherBinding.product &&
   binding.principal === otherBinding.principal &&
@@ -187,8 +198,52 @@ const googleIdentityRules: ValidationRule<unknown>[] = [
     "The linked Google user ID must be a string.",
   ),
   rule(
-    (identities) => GOOGLE_USER_ID_PATTERN.test((identities as any[])[0].userId),
+    (identities) => matchesStringPattern((identities as any[])[0].userId, GOOGLE_USER_ID_PATTERN),
     "The linked Google user ID must be 1 to 255 printable characters.",
+  ),
+];
+const challengeRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule(
+    (body) => Object.keys(body).every((key) => key === "loginStateDigest"),
+    "No authority fields are accepted.",
+  ),
+  rule(
+    (body) => body.loginStateDigest === undefined || typeof body.loginStateDigest === "string",
+    "The login state digest must be a string.",
+  ),
+  rule(
+    (body) =>
+      body.loginStateDigest === undefined ||
+      matchesStringPattern(body.loginStateDigest, LOGIN_STATE_DIGEST_PATTERN),
+    "The login state digest must be lowercase SHA-256 hexadecimal.",
+  ),
+];
+
+const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule(
+    (body) => Object.keys(body).every((key) => ["challengeId", "challengeToken", "loginState"].includes(key)),
+    "Only a challenge reference and login state are accepted.",
+  ),
+  rule(
+    (body) => (body.challengeId === undefined) !== (body.challengeToken === undefined),
+    "Exactly one of a challenge ID or a challenge token is required.",
+  ),
+  rule(
+    (body) => body.challengeId === undefined || matchesStringPattern(body.challengeId, UUID_PATTERN),
+    "The challenge ID must be a UUID.",
+  ),
+  rule(
+    (body) =>
+      body.challengeToken === undefined || matchesStringPattern(body.challengeToken, CHALLENGE_TOKEN_PATTERN),
+    "The challenge token must be a versioned base64url token.",
+  ),
+  rule(
+    (body) => body.loginState === undefined || typeof body.loginState === "string",
+    "The login state must be a string.",
+  ),
+  rule(
+    (body) => body.loginState === undefined || matchesStringPattern(body.loginState, LOGIN_STATE_PATTERN),
+    "The login state is malformed.",
   ),
 ];
 /** Fixed central transport: caller is IAM verified, JWTs stay in signed headers.
@@ -200,6 +255,7 @@ export function googleIdentityHandler(
   products: ValidatedRegistrations,
   keys: KeyResolver,
   nowSeconds = () => Math.floor(Date.now() / 1000),
+  challengeSigner?: ChallengeSigner,
 ) {
   return async (event: RestEvent) => {
     try {
@@ -208,7 +264,11 @@ export function googleIdentityHandler(
       const now = nowSeconds();
       const { headers, body } = parseJsonRequest(event, IDENTITY_REQUEST_MAXIMUM_BODY_BYTES);
       if (event.path === "/v1/identities/google/challenge" && event.httpMethod === "POST") {
-        if (Object.keys(body).length) fail(400, "fields", "No authority fields are accepted.");
+        requireRules(
+          body,
+          challengeRequestRules,
+          failWith(400, "fields", "The challenge request is invalid"),
+        );
         // Public challenge timestamps are integer Unix seconds even when the
         // production composition supplies a subsecond freshness clock.
         const issuedAt = Math.floor(now);
@@ -218,19 +278,21 @@ export function googleIdentityHandler(
           issuedAt,
           expiresAt: issuedAt + GOOGLE_CHALLENGE_SECONDS,
           binding: scope,
+          ...(body.loginStateDigest ? { loginStateDigest: body.loginStateDigest } : {}),
         };
-        await repository.issue(challenge);
+        const challengeToken = challengeSigner
+          ? await issueChallengeToken(challengeSigner, challenge)
+          : undefined;
+        if (!challengeToken) await repository.issue(challenge);
         return jsonResponse(200, {
           challengeId: challenge.challengeId,
           nonce: challenge.nonce,
           expiresAt: challenge.expiresAt,
+          ...(challengeToken ? { challengeToken } : {}),
         });
       }
       if (event.path === "/v1/identities/google/resolve" && event.httpMethod === "POST") {
-        if (Object.keys(body).some((key) => key !== "challengeId"))
-          fail(400, "fields", "Only a challenge ID is accepted.");
-        if (typeof body.challengeId !== "string" || !UUID_PATTERN.test(body.challengeId))
-          fail(400, "fields", "A UUID challenge ID is required.");
+        requireRules(body, resolveRequestRules, failWith(400, "fields", "The resolve request is invalid"));
         const registration = { ...authenticated.registration, clientIds: [scope.clientId] };
         const [access, id] = await Promise.all([
           cognitoClaims(headers["x-prospectus-human-token"], registration, keys, "access", now),
@@ -247,8 +309,15 @@ export function googleIdentityHandler(
           googleIdentityRules,
           failWith(401, "google_identity", "One unambiguous trusted Google identity is required"),
         );
+        const signedChallenge =
+          body.challengeToken === undefined
+            ? undefined
+            : challengeSigner
+              ? await verifyChallengeToken(challengeSigner, body.challengeToken)
+              : fail(401, "challenge_invalid", "Signed challenges are not accepted by this service.");
         const person = await repository.associate({
-          challengeId: body.challengeId,
+          challengeId: signedChallenge?.challengeId ?? body.challengeId,
+          ...(signedChallenge ? { challenge: signedChallenge } : {}),
           nonce: id.nonce,
           fingerprint: digest([headers["x-prospectus-human-token"], headers["x-prospectus-identity-token"]]),
           binding: scope,
@@ -257,6 +326,7 @@ export function googleIdentityHandler(
           authTime: access.auth_time,
           lineageHash: digest(access.origin_jti),
           now,
+          ...(body.loginState ? { loginStateDigest: sha256Hex(body.loginState) } : {}),
         });
         return jsonResponse(200, { person });
       }

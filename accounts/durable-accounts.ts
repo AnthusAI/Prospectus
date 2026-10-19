@@ -19,7 +19,8 @@ import type { AccountsApi } from "./handler";
 import {
   failWith,
   isPlainRecord,
-  PRODUCT_NAME_PATTERN,
+  isProductName,
+  matchesStringPattern,
   requireRules,
   rule,
   type ValidationRule,
@@ -69,7 +70,7 @@ const accountDocumentRules: ValidationRule<AccountDocumentUnderValidation>[] = [
     ({ document, accountId }) => document.account.id === accountId,
     "Account ID must match the canonical path.",
   ),
-  rule(({ accountId }) => UUID_PATTERN.test(accountId), "Account ID must be a UUID."),
+  rule(({ accountId }) => matchesStringPattern(accountId, UUID_PATTERN), "Account ID must be a UUID."),
   rule(({ document }) => typeof document.account.name === "string", "Account name must be a string."),
   rule(({ document }) => !!document.account.name.trim(), "Account name must not be blank."),
   rule(
@@ -85,14 +86,17 @@ const accountDocumentRules: ValidationRule<AccountDocumentUnderValidation>[] = [
     "Account revision must be a positive integer.",
   ),
   rule(({ document }) => isPlainRecord(document.creation), "Creation section must be an object."),
-  rule(({ document }) => UUID_PATTERN.test(document.creation.personId), "Creating Person ID must be a UUID."),
+  rule(
+    ({ document }) => matchesStringPattern(document.creation.personId, UUID_PATTERN),
+    "Creating Person ID must be a UUID.",
+  ),
   rule(({ document }) => typeof document.creation.product === "string", "Creating product must be a string."),
   rule(
-    ({ document }) => SHA256_HEX_PATTERN.test(document.creation.requestHash),
+    ({ document }) => matchesStringPattern(document.creation.requestHash, SHA256_HEX_PATTERN),
     "Creation request hash must be a SHA-256 hex digest.",
   ),
   rule(
-    ({ document }) => SHA256_HEX_PATTERN.test(document.creation.fingerprint),
+    ({ document }) => matchesStringPattern(document.creation.fingerprint, SHA256_HEX_PATTERN),
     "Creation fingerprint must be a SHA-256 hex digest.",
   ),
   rule(({ document }) => isPlainRecord(document.memberships), "Memberships must be an object."),
@@ -114,7 +118,10 @@ const accountDocumentRules: ValidationRule<AccountDocumentUnderValidation>[] = [
 ];
 
 const membershipRules: ValidationRule<MembershipUnderValidation>[] = [
-  rule(({ personId }) => UUID_PATTERN.test(personId), "Membership key must be a Person UUID."),
+  rule(
+    ({ personId }) => matchesStringPattern(personId, UUID_PATTERN),
+    "Membership key must be a Person UUID.",
+  ),
   rule(({ member }) => isPlainRecord(member), "Membership must be an object."),
   rule(({ member, personId }) => member.personId === personId, "Membership Person ID must match its key."),
   rule(
@@ -173,7 +180,10 @@ const auditEventRules: ValidationRule<AuditEventUnderValidation>[] = [
     "Audit event revisions must be consecutive from 1.",
   ),
   rule(({ event }) => auditEventTypes.includes(event.type), "Audit event type must be known."),
-  rule(({ event }) => UUID_PATTERN.test(event.actor), "Audit event actor must be a Person UUID."),
+  rule(
+    ({ event }) => matchesStringPattern(event.actor, UUID_PATTERN),
+    "Audit event actor must be a Person UUID.",
+  ),
   rule(({ event }) => timestamp(event.at), "Audit event time must be a valid timestamp."),
   rule(({ event }) => typeof event.product === "string", "Audit event product must be a string."),
   rule(({ event }) => typeof event.principal === "string", "Audit event principal must be a string."),
@@ -195,7 +205,7 @@ const auditEventRules: ValidationRule<AuditEventUnderValidation>[] = [
   ),
   rule(
     ({ event, index }) =>
-      index === 0 || event.type !== "membership.changed" || UUID_PATTERN.test(event.target ?? ""),
+      index === 0 || event.type !== "membership.changed" || matchesStringPattern(event.target, UUID_PATTERN),
     "A membership audit event must target a Person UUID.",
   ),
   rule(
@@ -362,7 +372,7 @@ export class DurableAccountsService implements AccountsApi {
     return person;
   }
   async read(id: string): Promise<IdentityObject<AccountDocument> | null> {
-    if (!UUID_PATTERN.test(id)) fail(400, "account", "UUID account ID required.");
+    if (!matchesStringPattern(id, UUID_PATTERN)) fail(400, "account", "UUID account ID required.");
     const stored = await this.files.get<AccountDocument>(path(id));
     if (stored) validateAccountDocument(stored.value, id);
     return stored;
@@ -451,7 +461,8 @@ export class DurableAccountsService implements AccountsApi {
   /** Candidates may include accounts the person has since left; callers check the membership. */
   async candidateAccounts(personId: string) {
     if (this.membershipLookup === "scan") return this.allAccounts();
-    if (!UUID_PATTERN.test(personId)) fail(400, "invalid_person", "UUID person ID required.");
+    if (!matchesStringPattern(personId, UUID_PATTERN))
+      fail(400, "invalid_person", "UUID person ID required.");
     const accountIds = await this.listedAccountIds(
       `members/${personId}/`,
       new RegExp(`^members/${personId}/([a-f0-9-]{36})\\.json$`),
@@ -486,7 +497,8 @@ export class DurableAccountsService implements AccountsApi {
     return { accounts: documents.length, markers };
   }
   async create(context: Context, name: string, requestId: string): Promise<AccountSummary> {
-    if (!UUID_PATTERN.test(requestId)) fail(400, "invalid", "UUID idempotency key required.");
+    if (!matchesStringPattern(requestId, UUID_PATTERN))
+      fail(400, "invalid", "UUID idempotency key required.");
     if (typeof name !== "string" || !name.trim()) fail(400, "invalid", "Non-blank account name required.");
     if (name.trim().length > MAXIMUM_ACCOUNT_NAME_LENGTH)
       fail(400, "invalid", "Account name must be at most 150 characters.");
@@ -580,7 +592,8 @@ export class DurableAccountsService implements AccountsApi {
     role: Role,
     status: Membership["status"],
   ): Promise<Membership> {
-    if (!UUID_PATTERN.test(personId)) fail(400, "invalid_membership", "Person UUID required for membership.");
+    if (!matchesStringPattern(personId, UUID_PATTERN))
+      fail(400, "invalid_membership", "Person UUID required for membership.");
     if (!Object.hasOwn(roleOperations, role))
       fail(400, "invalid_membership", "Known membership role required.");
     if (!membershipStatuses.includes(status))
@@ -656,7 +669,7 @@ export class DurableAccountsService implements AccountsApi {
   ): Promise<Entitlement> {
     if (!entitlementStatuses.includes(status))
       fail(400, "invalid_entitlement", "Entitlement status must be active or disabled.");
-    if (!PRODUCT_NAME_PATTERN.test(grantedProduct.product))
+    if (!isProductName(grantedProduct.product))
       fail(400, "invalid_entitlement", "Registered product name required.");
     const capabilities = roleOperations.owner.filter((operation) =>
       grantedProduct.capabilities.includes(operation),

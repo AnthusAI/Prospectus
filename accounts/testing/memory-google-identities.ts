@@ -1,8 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { fail, type Person } from "../model";
 import {
   GOOGLE_ISSUER,
   sameBinding,
+  sameLoginState,
   type GoogleAlias,
   type GoogleAssociation,
   type GoogleIdentityRepository,
@@ -38,7 +40,14 @@ export class MemoryGoogleIdentities implements GoogleIdentityRepository {
     this.challenges.set(challenge.challengeId, structuredClone(challenge));
   }
   async associate(proof: GoogleAssociation): Promise<Person> {
-    const challenge = this.challenges.get(proof.challengeId);
+    const stored = this.challenges.get(proof.challengeId);
+    if (
+      stored &&
+      proof.challenge &&
+      !isDeepStrictEqual({ ...stored, receipt: undefined }, { ...proof.challenge, receipt: undefined })
+    )
+      fail(401, "challenge_invalid", "Challenge expired or does not match login evidence.");
+    const challenge = stored ?? (proof.challenge ? { ...structuredClone(proof.challenge) } : undefined);
     if (
       !challenge ||
       challenge.expiresAt <= proof.now ||
@@ -48,6 +57,9 @@ export class MemoryGoogleIdentities implements GoogleIdentityRepository {
       fail(401, "challenge_invalid", "Challenge expired or does not match login evidence.");
     if (!sameBinding(challenge.binding, proof.binding))
       fail(403, "challenge_binding", "Challenge belongs to another product/client/policy.");
+    if (!sameLoginState(challenge, proof))
+      fail(401, "login_state", "Login state does not match this challenge.");
+    if (!stored) this.challenges.set(proof.challengeId, challenge!);
     if (challenge.receipt) {
       if (challenge.receipt.fingerprint !== proof.fingerprint)
         fail(409, "challenge_replay", "Challenge already consumed with different evidence.");

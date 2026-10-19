@@ -1,8 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { IdentityFileError, type IdentityFiles, type IdentityObject } from "./identity-files";
 import {
   GOOGLE_ISSUER,
   sameBinding,
+  sameLoginState,
   type GoogleAlias,
   type GoogleAssociation,
   type GoogleIdentityRepository,
@@ -10,7 +12,7 @@ import {
   type LoginChallenge,
 } from "./google-identity";
 import { fail, UUID_PATTERN, type Person } from "./model";
-import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const googleIdentityKey = (subject: string) => hash(["google-v1", GOOGLE_ISSUER, subject]);
@@ -99,7 +101,10 @@ const googleRecordRules: ValidationRule<{ record: GoogleRecord; subject: string 
   rule(({ record }) => record.kind === "google", "A Google record must have kind google."),
   rule(({ record }) => record.issuer === GOOGLE_ISSUER, "A Google record must name the Google issuer."),
   rule(({ record, subject }) => record.subject === subject, "A Google record must match its subject."),
-  rule(({ record }) => UUID_PATTERN.test(record.person?.id), "A Google record Person ID must be a UUID."),
+  rule(
+    ({ record }) => matchesStringPattern(record.person?.id, UUID_PATTERN),
+    "A Google record Person ID must be a UUID.",
+  ),
   rule(
     ({ record }) => Number.isFinite(Date.parse(record.person?.createdAt)),
     "A Google record Person must have a valid creation time.",
@@ -291,35 +296,69 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
   private loginValid(record: LoginRecord, id: string) {
     requireRules(record, loginRecordRules(id), inconsistentIdentity("Invalid canonical login record"));
   }
-  async associate(proof: GoogleAssociation): Promise<Person> {
-    const path = `logins/${proof.challengeId}.json`;
-    let stored = await this.files.get<LoginRecord>(path);
-    if (!stored) fail(401, "challenge_invalid", "Challenge does not exist.");
-    this.loginValid(stored.value, proof.challengeId);
-    const prior = stored.value;
+  private requireUsableChallenge(challenge: LoginChallenge, proof: GoogleAssociation) {
     requireRules(
-      { challenge: prior.challenge, proof },
+      { challenge, proof },
       challengeFreshnessRules,
       failWith(401, "challenge_invalid", "Challenge expired or does not match evidence"),
     );
-    if (!sameBinding(prior.challenge.binding, proof.binding))
+    if (!sameBinding(challenge.binding, proof.binding))
       fail(403, "challenge_binding", "Challenge belongs to another product/client/policy.");
+    if (!sameLoginState(challenge, proof))
+      fail(401, "login_state", "Login state does not match this challenge.");
+  }
+  private async prepareLogin(
+    path: string,
+    prior: LoginRecord,
+    proof: GoogleAssociation,
+    revision: string | null,
+  ) {
+    const prepared: LoginRecord = {
+      ...prior,
+      state: "prepared",
+      proof: structuredClone(proof),
+      candidate: { id: randomUUID(), createdAt: new Date(proof.now * 1000).toISOString() },
+    };
+    return this.step("prepare", () =>
+      this.write(path, `identity:${proof.challengeId}:prepare`, prepared, revision, {
+        fingerprint: proof.fingerprint,
+      }),
+    );
+  }
+  /** A signed challenge has no stored file, so the login record is created first and an existing record is read only
+   * after the conditional create reports a conflict; absent keys are never read.
+   */
+  private async createLoginFromSignedChallenge(path: string, proof: GoogleAssociation) {
+    const challenge = structuredClone(proof.challenge!);
+    this.requireUsableChallenge(challenge, proof);
+    try {
+      await this.prepareLogin(path, { version: 1, kind: "login", state: "pending", challenge }, proof, null);
+    } catch (error) {
+      if (error instanceof IdentityFileError && error.code === "operation_mismatch")
+        fail(409, "challenge_replay", "Challenge already claimed with different evidence.");
+      if (!(error instanceof IdentityFileError && error.code === "conflict")) throw error;
+    }
+    const current = await this.files.get<LoginRecord>(path);
+    if (!current) fail(503, "identity_inconsistent", "The login record is missing after its creation.");
+    return current;
+  }
+  async associate(proof: GoogleAssociation): Promise<Person> {
+    const path = `logins/${proof.challengeId}.json`;
+    let stored: IdentityObject<LoginRecord> | null = proof.challenge
+      ? await this.createLoginFromSignedChallenge(path, proof)
+      : await this.files.get<LoginRecord>(path);
+    if (!stored) fail(401, "challenge_invalid", "Challenge does not exist.");
+    this.loginValid(stored.value, proof.challengeId);
+    const prior = stored.value;
+    if (proof.challenge && !isDeepStrictEqual(prior.challenge, proof.challenge))
+      fail(401, "challenge_invalid", "Challenge expired or does not match evidence.");
+    this.requireUsableChallenge(prior.challenge, proof);
     if (prior.proof && prior.proof.fingerprint !== proof.fingerprint)
       fail(409, "challenge_replay", "Challenge already consumed with different evidence.");
     if (prior.state === "conflicted") fail(409, "identity_conflict", "Existing identity mapping conflicts.");
     if (prior.state === "pending") {
-      const prepared: LoginRecord = {
-        ...prior,
-        state: "prepared",
-        proof: structuredClone(proof),
-        candidate: { id: randomUUID(), createdAt: new Date(proof.now * 1000).toISOString() },
-      };
       try {
-        stored = await this.step("prepare", () =>
-          this.write(path, `identity:${proof.challengeId}:prepare`, prepared, stored!.revision, {
-            fingerprint: proof.fingerprint,
-          }),
-        );
+        stored = await this.prepareLogin(path, prior, proof, stored.revision);
       } catch (error) {
         if (error instanceof IdentityFileError && error.code === "operation_mismatch")
           fail(409, "challenge_replay", "Challenge already claimed with different evidence.");
@@ -332,7 +371,8 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
    * Prepared decisions survive expiry; the API still requires fresh valid proofs.
    */
   async recover(challengeId: string): Promise<Person | null> {
-    if (!UUID_PATTERN.test(challengeId)) fail(400, "challenge_invalid", "Invalid challenge ID.");
+    if (!matchesStringPattern(challengeId, UUID_PATTERN))
+      fail(400, "challenge_invalid", "Invalid challenge ID.");
     const stored = await this.files.get<LoginRecord>(`logins/${challengeId}.json`);
     if (!stored) return null;
     this.loginValid(stored.value, challengeId);
@@ -562,7 +602,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     };
   }
   async getPerson(id: string): Promise<Person | null> {
-    if (!UUID_PATTERN.test(id)) return null;
+    if (!matchesStringPattern(id, UUID_PATTERN)) return null;
     const readMemoizedForThisLookup = this.memoizedReadsForOneLookup();
     const pointer = (await readMemoizedForThisLookup<PersonPointer>(`people/${id}.json`))?.value;
     if (!pointer) return null;

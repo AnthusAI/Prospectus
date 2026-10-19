@@ -245,3 +245,138 @@ test("starting Accounts confirmation records the attempt so it is never launched
   await signIn(configuration, { challengeId: "c", nonce: "n" });
   assert.equal(hasAttemptedAccountsConfirmation(), true);
 });
+
+const bffConfiguration = { ...configuration, accountsBffUrl: "https://bff.invalid/api/saas" };
+
+test("sign-in requests a pre-sign-in challenge bound to the digest of the login state and attaches its nonce", async (context) => {
+  const environment = browser(context);
+  const requests: Array<{ url: string; init: any }> = [];
+  context.mock.method(globalThis, "fetch", async (input: any, init: any) => {
+    requests.push({ url: String(input), init });
+    return Response.json({ challengeId: "11111111-1111-4111-8111-111111111111", nonce: "central-nonce" });
+  });
+  await signIn(bffConfiguration);
+  const login = JSON.parse(environment.values.get("prospectus.login")!);
+  const url = new URL(environment.destination());
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "https://bff.invalid/api/saas/identity/login-challenge");
+  assert.equal(requests[0].init.method, "POST");
+  assert.equal(requests[0].init.headers.authorization, undefined);
+  assert.equal(requests[0].init.credentials, "omit");
+  assert.deepEqual(JSON.parse(requests[0].init.body), {
+    loginStateDigest: createHash("sha256").update(login.state).digest("hex"),
+  });
+  assert.equal(url.searchParams.get("nonce"), "central-nonce");
+  assert.equal(url.searchParams.get("prompt"), "login");
+  assert.equal(login.accountsChallengeBoundToLoginState, true);
+  assert.deepEqual(login.accounts, {
+    challengeId: "11111111-1111-4111-8111-111111111111",
+    nonce: "central-nonce",
+  });
+});
+
+for (const [name, failure] of [
+  ["is throttled", async () => new Response('{"message":"Too Many Requests"}', { status: 429 })],
+  ["fails", async () => new Response("{}", { status: 503 })],
+  [
+    "is unreachable",
+    async () => {
+      throw new TypeError("network down");
+    },
+  ],
+  ["returns malformed evidence", async () => Response.json({ nonce: 7 })],
+] as const) {
+  test(`sign-in falls back to a plain login when the challenge request ${name}`, async (context) => {
+    const environment = browser(context);
+    context.mock.method(globalThis, "fetch", failure);
+    await signIn(bffConfiguration);
+    const login = JSON.parse(environment.values.get("prospectus.login")!);
+    const url = new URL(environment.destination());
+    assert.equal(url.pathname, "/oauth2/authorize");
+    assert.equal(url.searchParams.has("nonce"), false);
+    assert.equal(url.searchParams.has("prompt"), false);
+    assert.equal(login.accounts, undefined);
+    assert.equal(login.accountsChallengeBoundToLoginState, undefined);
+    assert.equal(hasAttemptedAccountsConfirmation(), false);
+  });
+}
+
+test("a bound sign-in sends the raw login state to resolve; an authenticated challenge sends none", async (context) => {
+  for (const [bound, expected] of [
+    [true, "expected"],
+    [false, undefined],
+  ] as const) {
+    const environment = browser(context, "?code=fresh-code&state=expected");
+    environment.values.set(
+      "prospectus.login",
+      JSON.stringify({
+        state: "expected",
+        verifier: "saved",
+        accounts: { challengeId: "11111111-1111-4111-8111-111111111111", nonce: "central-nonce" },
+        ...(bound ? { accountsChallengeBoundToLoginState: true } : {}),
+      }),
+    );
+    let resolved: any;
+    context.mock.method(globalThis, "fetch", async (input: any, init: any) => {
+      if (String(input).includes("oauth2/token"))
+        return Response.json({ access_token: "access", id_token: "id", expires_in: 3600 });
+      resolved = JSON.parse(init.body);
+      return new Response("{}");
+    });
+    await finishSignIn(bffConfiguration);
+    assert.equal(resolved.loginState, expected);
+    assert.equal(resolved.idToken, "id");
+  }
+});
+
+test("sign-in falls back to a plain login when the challenge request hangs past its timeout", async (context) => {
+  const environment = browser(context);
+  const timeouts: number[] = [];
+  const controller = new AbortController();
+  context.mock.method(AbortSignal, "timeout", (milliseconds: number) => {
+    timeouts.push(milliseconds);
+    setTimeout(() => controller.abort(new DOMException("timed out", "TimeoutError")), 0);
+    return controller.signal;
+  });
+  context.mock.method(
+    globalThis,
+    "fetch",
+    (_url: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      }),
+  );
+  await signIn(bffConfiguration);
+  const url = new URL(environment.destination());
+  assert.deepEqual(timeouts, [5000]);
+  assert.equal(url.searchParams.has("nonce"), false);
+  assert.equal(url.searchParams.has("prompt"), false);
+  assert.equal(hasAttemptedAccountsConfirmation(), false);
+});
+
+test("a signed challenge token is kept for the redirect and sent instead of the challenge ID", async (context) => {
+  const environment = browser(context);
+  context.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      challengeId: "11111111-1111-4111-8111-111111111111",
+      nonce: "central-nonce",
+      challengeToken: "v1.payload.mac",
+    }),
+  );
+  await signIn(bffConfiguration);
+  const login = JSON.parse(environment.values.get("prospectus.login")!);
+  assert.equal(login.accounts.challengeToken, "v1.payload.mac");
+  const completed = browser(context, `?code=fresh-code&state=${login.state}`);
+  completed.values.set("prospectus.login", JSON.stringify(login));
+  let resolved: any;
+  context.mock.method(globalThis, "fetch", async (input: any, init: any) => {
+    if (String(input).includes("oauth2/token"))
+      return Response.json({ access_token: "access", id_token: "id", expires_in: 3600 });
+    resolved = JSON.parse(init.body);
+    return new Response("{}");
+  });
+  await finishSignIn(bffConfiguration);
+  assert.equal(resolved.challengeToken, "v1.payload.mac");
+  assert.equal(resolved.challengeId, undefined);
+  assert.equal(resolved.loginState, login.state);
+});

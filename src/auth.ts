@@ -1,3 +1,4 @@
+import type { AccountsChallenge } from "./accounts-client";
 const SESSION_KEY = "prospectus.session";
 const LOGIN_KEY = "prospectus.login";
 const ACCOUNTS_CONFIRMATION_ATTEMPTED_KEY = "prospectus.accounts-confirmation-attempted";
@@ -16,7 +17,8 @@ interface Session {
 interface Login {
   state: string;
   verifier: string;
-  accounts?: { challengeId: string; nonce: string };
+  accounts?: AccountsChallenge;
+  accountsChallengeBoundToLoginState?: boolean;
 }
 export interface AuthenticationConfiguration {
   domain: string;
@@ -65,14 +67,36 @@ export function hasAttemptedAccountsConfirmation(): boolean {
 
 export async function signIn(
   configuration: AuthenticationConfiguration,
-  accounts?: { challengeId: string; nonce: string },
+  accounts?: AccountsChallenge,
 ): Promise<void> {
   const state = encode(crypto.getRandomValues(new Uint8Array(32)));
   const verifier = encode(crypto.getRandomValues(new Uint8Array(64)));
   const challenge = encode(
     new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))),
   );
-  sessionStorage.setItem(LOGIN_KEY, JSON.stringify({ state, verifier, ...(accounts ? { accounts } : {}) }));
+  let accountsChallengeBoundToLoginState = false;
+  if (!accounts && configuration.accountsBffUrl) {
+    try {
+      const { accountsBrowser } = await import("./accounts-client");
+      const stateDigest = Array.from(
+        new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(state))),
+        (byte) => byte.toString(16).padStart(2, "0"),
+      ).join("");
+      accounts = await accountsBrowser(configuration.accountsBffUrl).loginChallenge(stateDigest);
+      accountsChallengeBoundToLoginState = true;
+    } catch {
+      accounts = undefined;
+    }
+  }
+  sessionStorage.setItem(
+    LOGIN_KEY,
+    JSON.stringify({
+      state,
+      verifier,
+      ...(accounts ? { accounts } : {}),
+      ...(accountsChallengeBoundToLoginState ? { accountsChallengeBoundToLoginState } : {}),
+    }),
+  );
   if (accounts) sessionStorage.setItem(ACCOUNTS_CONFIRMATION_ATTEMPTED_KEY, "true");
   const destination = new URL("/oauth2/authorize", configuration.domain);
   destination.search = new URLSearchParams({
@@ -138,9 +162,10 @@ export async function finishSignIn(configuration: AuthenticationConfiguration): 
         throw new Error("Accounts sign-in evidence is unavailable.");
       const { accountsBrowser } = await import("./accounts-client");
       await accountsBrowser(configuration.accountsBffUrl).resolve(
-        login.accounts.challengeId,
+        login.accounts,
         result.id_token,
         result.access_token,
+        login.accountsChallengeBoundToLoginState ? login.state : undefined,
       );
     } catch {
       window.history.replaceState({}, "", "/?view=accounts");
