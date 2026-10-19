@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-0314455b-d248-4f25-82cd-59a5e452f505",
+  "title": "Invitations in the portal",
+  "description": "Portal UI and BFF for invitations; builds on kanbus-b2ddb42a. Sequenced after contact intake works end to end.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-18T19:47:38.153961Z",
+  "updated_at": "2026-10-18T19:47:38.154189Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": null,
+  "agent_assignment": null
+}

@@ -64,7 +64,7 @@ One document per account, `<scope>/accounts/<UUID>.json`, holds account metadata
 
 Every read and write checks the caller's active membership, role, the product's registered capability and the account's entitlement for that product. Concurrent membership changes use revision compare-and-set and recheck the actor on conflict, so the last owner cannot be removed and a revoked actor cannot publish a stale mutation. Identical repeated membership settings are no-ops.
 
-Limits enforced in `accounts/durable-accounts.ts`: 256 account documents per discovery scan (exceeding it is a `503` `account_read_budget`, never a partial result), 100 membership entries per account including revoked ones, 128 retained audit entries, and 64 KiB per account document. A strict cross-account quota per person is not enforced.
+Limits enforced in `accounts/durable-accounts.ts`: 256 account documents per discovery scan, which `membershipLookup: "indexed"` replaces with per-person membership markers for the person's own listings (exceeding it is a `503` `account_read_budget`, never a partial result), 100 membership entries per account including revoked ones, 128 retained audit entries, and 64 KiB per account document. A strict cross-account quota per person is not enforced.
 
 ### Products and registrations
 
@@ -120,7 +120,7 @@ Two modes, selected in `evaluation-deployment.json`:
 | `synthetic-only` | `https://prospectus.anth.us` | `.invalid` addresses and the demo notice | demo records |
 | `real-contacts` | `https://prospectus.anth.us`, `https://anth.us`, `https://www.anth.us` | ordinary addresses and privacy notice `contact-v1` | site `anthus-website`, form `engage-contact-v1` |
 
-The route is throttled to one request per second with a burst of two and Lambda concurrency of two. Public anth.us is served by the AnthusAI/Anth.us-Papyrus repository, whose engage page is the real-contact form.
+The route is throttled to one request per second with a burst of two. The Lambda reserves no concurrency, because the account allows 10 concurrent executions in total and AWS keeps them unreserved. Public anth.us is served by the AnthusAI/Anth.us-Papyrus repository, whose engage page is the real-contact form.
 
 Intake sends no email and creates no accounts, invitations, bookings, billing or permissions. Manual creation, import and email edits do not acquire intake claims, so uniqueness holds only among intake writers.
 

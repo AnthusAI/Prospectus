@@ -54,7 +54,32 @@ Before changing `enabled` or any role pair, get action-time approval for the exa
 
 ### Granting a product to an account
 
-Only a reviewed operator turns a product on or off for an account. On this branch the operator routes are read-only, so entitlements are created with the account by the registered product; the writable operator entitlement route is Prospectus pull request #18.
+Only a reviewed operator turns a product on or off for an account. The writable route is merged but unreachable until the directory BFF policy allows it, and no one holds the grant yet.
+
+### Membership index
+
+Listing a person's accounts used to read every canonical account document, with a hard limit of 256 accounts. Each active membership now also has a create-only marker at `members/<personId>/<accountId>.json`, written before the account document publishes. With `membershipLookup: "indexed"` in `accounts/deployment.json`, `GET /v1/accounts` and `GET /v1/account-directory` list only the person's markers and read only those accounts. Markers never grant anything: every candidate is checked against its account document, so a revoked membership or an account that never published is not listed. Revocation leaves the marker in place. The operator listing still reads every account.
+
+Rollout, with each AWS step run from Ryan's Mac (the code is merged; the setting is still `scan`):
+
+1. Deploy with `membershipLookup: "scan"` (the current setting). New accounts and memberships start writing markers; listings still use the full scan.
+2. Build the bridge with S3 support (`PROSPECTUS_BUILD_IDENTITY_S3=true npm run build:identity-files`) and backfill markers for older accounts. Without `--write` the script only counts accounts and active memberships:
+   `PROSPECTUS_ACCOUNTS_BUCKET=<bucket> PROSPECTUS_ACCOUNTS_OWNER=<account> node --import tsx scripts/rebuild-membership-index.ts`
+   then with `PROSPECTUS_MEMBERSHIP_INDEX_APPROVAL=<account>/<bucket>` and `--write`. Rerunning it is harmless.
+3. Change `membershipLookup` to `"indexed"` and deploy.
+
+The runtime role already covers `prospectus-central/accounts/*`, which includes the markers, so no IAM change is needed.
+
+### Product access
+
+An account starts with only the product it was created from. An operator can grant or disable another registered product with `POST /v1/account-directory/operator/accounts/<accountId>/entitlements/<product>` and the body `{"status":"active"}` or `{"status":"disabled"}`. A grant gives the product its registered capabilities, which members still use only within their role. Disabling denies that product's authorize calls and keeps memberships and all account data. Each change is an `entitlement.changed` audit event under the same revision check as membership changes.
+
+Only a person holding a reviewed `accounts:admin:entitlements` grant in `accounts/operator-grants.json` can call the route. Operator read access is not enough, and account owners cannot grant products to themselves. No such grant exists yet. The directory BFF's API Gateway policy still allows only `GET` on the account directory, so making the route reachable also needs that policy change, which is held for approval.
+
+### Delivery
+
+this repository is public, so CI runs on GitHub Actions (`.github/workflows/ci.yml`, on pull requests and pushes to `main`) and CD runs in AWS. Merging to `main` starts an Amplify build of the branch (`enableAutoBuild` in `infra/branch-settings.json`, `enableBranchAutoBuild` in `infra/hosting-settings.json`), which runs `amplify.yml`. Nobody starts builds by hand. The settings were `false` since the initial `papyrus-proof` source (b57ad68) with no recorded reason, so a proof app would not deploy on push.
+
 
 ## Verification
 
