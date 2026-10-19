@@ -102,7 +102,10 @@ async fn handle(
         .headers
         .get("if-none-match")
         .and_then(|header_value| header_value.to_str().ok());
-    let revision = parts.headers.get("if-match").and_then(|header_value| header_value.to_str().ok());
+    let revision = parts
+        .headers
+        .get("if-match")
+        .and_then(|header_value| header_value.to_str().ok());
     let current = service.objects.get(&path);
     if absent == Some("*") && current.is_some()
         || revision.is_some() && current.map(|(_, etag, _)| etag.as_str()) != revision

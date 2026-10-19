@@ -426,9 +426,8 @@ async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
     let owner = setting("PROSPECTUS_IDENTITY_EXPECTED_OWNER")?;
     let tenant = setting("PROSPECTUS_IDENTITY_TENANT")?;
     let project = setting("PROSPECTUS_IDENTITY_PROJECT")?;
-    let invalid = |reason: &str| {
-        StoreError::Invalid(format!("invalid fixed S3 configuration: {reason}"))
-    };
+    let invalid =
+        |reason: &str| StoreError::Invalid(format!("invalid fixed S3 configuration: {reason}"));
     if !bucket_name_is_valid(&bucket) {
         return Err(invalid("bucket name"));
     }
