@@ -30,7 +30,7 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.resourceCountIs("AWS::Logs::LogGroup", 0);
   template.hasResourceProperties("AWS::Lambda::Function", {
     FunctionName: "prospectus-intake-evaluation",
-    Runtime: "nodejs22.x",
+    Runtime: "nodejs24.x",
   });
   const intakeFunction = Object.values(template.findResources("AWS::Lambda::Function"))[0] as any;
   assert.equal(

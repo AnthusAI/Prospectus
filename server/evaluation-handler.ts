@@ -46,7 +46,7 @@ export function createEvaluationHandler(options: {
     try {
       service = await options.open();
       const receipt = await service.submit(body);
-      return response(200, receipt);
+      return response(202, receipt);
     } catch (cause) {
       if (cause instanceof IntakeError) return response(cause.status, { message: cause.message });
       return response(503, { message: "The inquiry could not be confirmed. Retry the same receipt." });

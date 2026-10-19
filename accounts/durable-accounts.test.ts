@@ -15,7 +15,7 @@ import {
 } from "./identity-files";
 import { type Context, type Person, roleOperations } from "./model";
 import { DurableGoogleIdentities } from "./durable-google-identities";
-import { googlePersonDirectory } from "./person-directory";
+import { googlePersonDirectory, type PersonDirectory } from "./person-directory";
 import { googleIdentityHandler } from "./google-identity";
 import { googleFixture } from "./testing/google-fixture";
 import { accountHandler } from "./handler";
@@ -247,6 +247,72 @@ test("revocation wins against a stale authorized writer before canonical CAS", a
   const document = (await x.files.get<AccountDocument>(`accounts/${account.id}.json`))!.value;
   assert.ok(!Object.hasOwn(document.memberships, x.people.carol.id));
   assert.equal(document.audit.length, 3);
+});
+function countingDirectory(directory: PersonDirectory) {
+  const counts = { resolutions: 0, targetLookups: 0 };
+  const countedDirectory: PersonDirectory = {
+    resolve: async (context) => {
+      counts.resolutions++;
+      return directory.resolve(context);
+    },
+    get: async (id) => {
+      counts.targetLookups++;
+      return directory.get(id);
+    },
+  };
+  return { counts, countedDirectory };
+}
+test("one request resolves the canonical Person once while later requests resolve it again", async () => {
+  const x = await fixture(),
+    account = await x.service().create(x.contexts.alice, "Resolution count", randomUUID());
+  const { counts, countedDirectory } = countingDirectory(x.directory);
+  const service = new DurableAccountsService(x.files, countedDirectory, () => at);
+  await service.setMembership(x.contexts.alice, account.id, x.people.bob.id, "viewer", "active");
+  assert.equal(counts.resolutions, 1);
+  await service.get({ ...x.contexts.alice }, account.id);
+  assert.equal(counts.resolutions, 2);
+  const requestContext = { ...x.contexts.alice };
+  await service.list(requestContext);
+  await service.authorize(requestContext, account.id, "console:read");
+  await service.get(requestContext, account.id);
+  assert.equal(counts.resolutions, 3);
+  await service.get({ ...x.contexts.alice }, account.id);
+  assert.equal(counts.resolutions, 4);
+});
+test("a canonical account conflict rereads the account but not the Person or the target lookup", async () => {
+  const x = await fixture(),
+    account = await x.service().create(x.contexts.alice, "Conflict count", randomUUID());
+  const { counts, countedDirectory } = countingDirectory(x.directory);
+  let injectedConflicts = 0;
+  const accountReads: string[] = [];
+  const storage: IdentityFiles = {
+    get: async (path) => {
+      accountReads.push(path);
+      return x.files.get(path);
+    },
+    list: x.files.list.bind(x.files),
+    commit: async (...args) => {
+      const isAccountDocument = args[0] === `accounts/${account.id}.json`;
+      if (isAccountDocument && injectedConflicts < 2) {
+        injectedConflicts++;
+        throw new IdentityFileError("conflict");
+      }
+      return x.files.commit(...args);
+    },
+  };
+  const service = new DurableAccountsService(storage, countedDirectory, () => at);
+  const membership = await service.setMembership(
+    x.contexts.alice,
+    account.id,
+    x.people.bob.id,
+    "viewer",
+    "active",
+  );
+  assert.equal(membership.role, "viewer");
+  assert.equal(injectedConflicts, 2);
+  assert.equal(accountReads.filter((path) => path === `accounts/${account.id}.json`).length, 3);
+  assert.equal(counts.resolutions, 1);
+  assert.equal(counts.targetLookups, 1);
 });
 test("admins cannot grant ownership or change an owner; final owner remains protected", async () => {
   const x = await fixture(),

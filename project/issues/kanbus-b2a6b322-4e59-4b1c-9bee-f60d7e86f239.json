@@ -3,7 +3,7 @@
   "title": "Cache Rust builds in CI, add test:all, standardize on Node 24, align intake status codes",
   "description": "CI runs take 18 to 23 minutes because every run builds the pinned Kanbus API and the accounts bridge with `cargo build --release` and no cache, and re-clones the pinned checkouts. The workflow installs Node 22 then Node 24 mid-run; the evaluation Lambda is Node 22 while the accounts Lambdas are Node 24. `npm test` runs a fraction of the suites and the docs reference a `test:canonical:durable` script that does not exist. Local intake answers 202 and hosted intake 200 for the same accepted submission.\n\nScope: Rust and checkout caching in CI; one Node 24; `test:all`; 202 everywhere; fix the duplicated cache line in `amplify.yml`.\n\nAcceptance: infra and amplify checks pass; a no-change CI run finishes well under 10 minutes after the first cached run.",
   "type": "chore",
-  "status": "open",
+  "status": "in_progress",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -15,9 +15,24 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "28d54ff5-c4da-4d32-9ef2-c2e790f371c0",
+      "author": "unknown",
+      "text": "PR https://github.com/AnthusAI/Prospectus/pull/21 caches Cargo, toolchains, build targets and the Kanbus checkout in CI, uses Node 24 everywhere, adds test:all, and answers 202 from hosted intake. Awaiting CI; the under-10-minute target needs a second cached run.",
+      "created_at": "2026-10-17T16:46:15.080837794Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "b2765b91-d102-4341-ac2b-d4e346433641",
+      "author": "unknown",
+      "text": "PR https://github.com/AnthusAI/Prospectus/pull/21 caches Cargo, toolchains, build targets and the Kanbus checkout in CI, uses Node 24 everywhere, adds test:all, and answers 202 from hosted intake. Awaiting CI; the under-10-minute target needs a second cached run.",
+      "created_at": "2026-10-17T16:46:19.170933559Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T14:50:13.243740194Z",
-  "updated_at": "2026-10-17T16:32:37.060481546Z",
+  "updated_at": "2026-10-17T16:46:19.170981344Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
