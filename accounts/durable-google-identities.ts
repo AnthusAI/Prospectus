@@ -11,6 +11,7 @@ import {
   type LoginChallenge,
 } from "./google-identity";
 import { fail, UUID_PATTERN, type Person } from "./model";
+import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const googleIdentityKey = (subject: string) => hash(["google-v1", GOOGLE_ISSUER, subject]);
@@ -18,6 +19,8 @@ export const cognitoAliasKey = (issuer: string, subject: string) => hash(["cogni
 export type EnrollmentPhase = "issue" | "prepare" | "google" | "alias" | "person" | "session" | "complete";
 export type EnrollmentHook = (phase: EnrollmentPhase, point: "before" | "after") => void | Promise<void>;
 const SESSION_POINTER_READ_BATCH_SIZE = 4;
+const loginStates = ["pending", "prepared", "committed", "conflicted"];
+const inconsistentIdentity = (summary: string) => failWith(503, "identity_inconsistent", summary);
 interface GoogleRecord {
   version: 1;
   kind: "google";
@@ -51,6 +54,206 @@ interface SessionPointer {
   aliasKey: string;
   personId: string;
 }
+
+interface PersonPointer {
+  version: number;
+  kind: string;
+  googleKey: string;
+  person: Person;
+}
+
+interface ChallengeFreshness {
+  challenge: LoginChallenge;
+  proof: GoogleAssociation;
+}
+
+interface CommittedLinks {
+  login: LoginRecord;
+  pointer: SessionPointer;
+  google: GoogleRecord;
+}
+
+const loginRecordRules = (challengeId: string): ValidationRule<LoginRecord>[] => [
+  rule((record) => record?.version === 1, "A login record must be version 1."),
+  rule((record) => record.kind === "login", "A login record must have kind login."),
+  rule(
+    (record) => record.challenge?.challengeId === challengeId,
+    "A login record must belong to its challenge.",
+  ),
+  rule((record) => loginStates.includes(record.state), "A login record must have a known state."),
+];
+
+const challengeFreshnessRules: ValidationRule<ChallengeFreshness>[] = [
+  rule(({ challenge, proof }) => !(challenge.expiresAt <= proof.now), "The challenge has expired."),
+  rule(
+    ({ challenge, proof }) => !(challenge.issuedAt > proof.now),
+    "The challenge was issued after the evidence time.",
+  ),
+  rule(
+    ({ challenge, proof }) => challenge.nonce === proof.nonce,
+    "The challenge nonce does not match the evidence.",
+  ),
+];
+
+const googleRecordRules: ValidationRule<{ record: GoogleRecord; subject: string }>[] = [
+  rule(({ record }) => record?.version === 1, "A Google record must be version 1."),
+  rule(({ record }) => record.kind === "google", "A Google record must have kind google."),
+  rule(({ record }) => record.issuer === GOOGLE_ISSUER, "A Google record must name the Google issuer."),
+  rule(({ record, subject }) => record.subject === subject, "A Google record must match its subject."),
+  rule(({ record }) => UUID_PATTERN.test(record.person?.id), "A Google record Person ID must be a UUID."),
+  rule(
+    ({ record }) => Number.isFinite(Date.parse(record.person?.createdAt)),
+    "A Google record Person must have a valid creation time.",
+  ),
+];
+
+const enrollmentIntentRules: ValidationRule<{ record: LoginRecord; proof: GoogleAssociation }>[] = [
+  rule(
+    ({ record, proof }) => proof.challengeId === record.challenge.challengeId,
+    "The proof must belong to the login challenge.",
+  ),
+  rule(
+    ({ record, proof }) => sameBinding(proof.binding, record.challenge.binding),
+    "The proof binding must match the challenge binding.",
+  ),
+];
+
+const committedLinkRules: ValidationRule<CommittedLinks>[] = [
+  rule(({ login }) => !!login.proof, "The committed login carries no proof."),
+  rule(
+    ({ login, google }) => login.proof!.googleSubject === google.subject,
+    "The committed proof names a different Google subject.",
+  ),
+  rule(
+    ({ login, pointer }) =>
+      cognitoAliasKey(login.proof!.binding.issuer, login.proof!.cognitoSubject) === pointer.aliasKey,
+    "The committed proof names a different Cognito alias.",
+  ),
+  rule(
+    ({ login }) => sameBinding(login.proof!.binding, login.challenge.binding),
+    "The committed proof binding differs from the challenge binding.",
+  ),
+  rule(
+    ({ login, google }) => hash(login.person) === hash(google.person),
+    "The committed login Person differs from the Google Person.",
+  ),
+];
+
+const committedAliasRules: ValidationRule<CommittedLinks & { alias: AliasRecord | undefined }>[] = [
+  rule(({ alias }) => !!alias, "The alias record is missing."),
+  rule(
+    ({ alias, pointer }) => alias!.googleKey === pointer.googleKey,
+    "The alias names a different Google identity.",
+  ),
+  rule(({ alias, pointer }) => alias!.personId === pointer.personId, "The alias names a different Person."),
+  rule(
+    ({ alias, login }) => alias!.issuer === login.proof!.binding.issuer,
+    "The alias names a different issuer.",
+  ),
+  rule(
+    ({ alias, login }) => alias!.subject === login.proof!.cognitoSubject,
+    "The alias names a different subject.",
+  ),
+];
+
+const committedPersonRules: ValidationRule<{
+  person: PersonPointer | undefined;
+  pointer: SessionPointer;
+  google: GoogleRecord;
+}>[] = [
+  rule(({ person }) => !!person, "The Person lookup record is missing."),
+  rule(({ person }) => person!.version === 1, "The Person lookup record must be version 1."),
+  rule(({ person }) => person!.kind === "person", "The Person lookup record must have kind person."),
+  rule(
+    ({ person, pointer }) => person!.googleKey === pointer.googleKey,
+    "The Person lookup record names a different Google identity.",
+  ),
+  rule(
+    ({ person, google }) => hash(person!.person) === hash(google.person),
+    "The Person lookup record holds a different Person.",
+  ),
+];
+
+const canonicalAliasRules: ValidationRule<{ alias: AliasRecord; issuer: string; subject: string }>[] = [
+  rule(({ alias }) => alias.version === 1, "An alias record must be version 1."),
+  rule(({ alias }) => alias.kind === "alias", "An alias record must have kind alias."),
+  rule(({ alias, issuer }) => alias.issuer === issuer, "An alias record must name the looked-up issuer."),
+  rule(({ alias, subject }) => alias.subject === subject, "An alias record must name the looked-up subject."),
+];
+
+const aliasGoogleAgreementRules: ValidationRule<{ alias: AliasRecord; google: GoogleRecord }>[] = [
+  rule(
+    ({ alias, google }) => alias.googleKey === googleIdentityKey(google.subject),
+    "The alias key does not match the Google identity.",
+  ),
+  rule(
+    ({ alias, google }) => alias.personId === google.person.id,
+    "The alias Person does not match the Google Person.",
+  ),
+];
+
+const personPointerRules: ValidationRule<{
+  pointer: PersonPointer;
+  google: GoogleRecord;
+  personId: string;
+}>[] = [
+  rule(({ pointer }) => pointer.kind === "person", "A Person pointer must have kind person."),
+  rule(({ pointer }) => pointer.version === 1, "A Person pointer must be version 1."),
+  rule(
+    ({ google, personId }) => google.person.id === personId,
+    "A Person pointer must resolve to the same Person ID.",
+  ),
+  rule(
+    ({ pointer, google }) => hash(pointer.person) === hash(google.person),
+    "A Person pointer must hold the Google Person.",
+  ),
+  rule(
+    ({ pointer, google }) => pointer.googleKey === googleIdentityKey(google.subject),
+    "A Person pointer must name the Google identity.",
+  ),
+];
+
+const googleRecordMatches = (value: GoogleRecord | undefined, googleSubject: string) =>
+  value?.kind === "google" && value.issuer === GOOGLE_ISSUER && value.subject === googleSubject;
+
+const aliasRecordMatches = (
+  value: AliasRecord | undefined,
+  expected: Pick<AliasRecord, "issuer" | "subject" | "googleKey" | "personId">,
+) =>
+  value?.version === 1 &&
+  value.kind === "alias" &&
+  value.issuer === expected.issuer &&
+  value.subject === expected.subject &&
+  value.googleKey === expected.googleKey &&
+  value.personId === expected.personId;
+
+const personRecordMatches = (value: PersonPointer | undefined, googleKey: string, person: Person) =>
+  value?.version === 1 &&
+  value.kind === "person" &&
+  value.googleKey === googleKey &&
+  hash(value.person) === hash(person);
+
+const sessionPointerMatches = (
+  value: SessionPointer | undefined,
+  expected: Omit<SessionPointer, "version" | "kind">,
+) =>
+  value?.version === 1 &&
+  value.kind === "session" &&
+  value.challengeId === expected.challengeId &&
+  value.googleKey === expected.googleKey &&
+  value.aliasKey === expected.aliasKey &&
+  value.personId === expected.personId;
+
+const sessionPointerBelongsToGoogleIdentity = (
+  pointer: SessionPointer,
+  google: GoogleRecord,
+  aliasKey: string | undefined,
+) =>
+  pointer?.version === 1 &&
+  pointer.kind === "session" &&
+  pointer.personId === google.person.id &&
+  pointer.googleKey === googleIdentityKey(google.subject) &&
+  (!aliasKey || pointer.aliasKey === aliasKey);
 
 /** Recoverable multi-file enrollment. Only committed logins expose identities.
  * All writes use Virtuus journals/CAS; no process mutex, lease timeout or DDB.
@@ -87,13 +290,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     );
   }
   private loginValid(record: LoginRecord, id: string) {
-    if (
-      record?.version !== 1 ||
-      record.kind !== "login" ||
-      record.challenge?.challengeId !== id ||
-      !["pending", "prepared", "committed", "conflicted"].includes(record.state)
-    )
-      fail(503, "identity_inconsistent", "Invalid canonical login record.");
+    requireRules(record, loginRecordRules(id), inconsistentIdentity("Invalid canonical login record"));
   }
   async associate(proof: GoogleAssociation): Promise<Person> {
     const path = `logins/${proof.challengeId}.json`;
@@ -101,12 +298,11 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     if (!stored) fail(401, "challenge_invalid", "Challenge does not exist.");
     this.loginValid(stored.value, proof.challengeId);
     const prior = stored.value;
-    if (
-      prior.challenge.expiresAt <= proof.now ||
-      prior.challenge.issuedAt > proof.now ||
-      prior.challenge.nonce !== proof.nonce
-    )
-      fail(401, "challenge_invalid", "Challenge expired or does not match evidence.");
+    requireRules(
+      { challenge: prior.challenge, proof },
+      challengeFreshnessRules,
+      failWith(401, "challenge_invalid", "Challenge expired or does not match evidence"),
+    );
     if (!sameBinding(prior.challenge.binding, proof.binding))
       fail(403, "challenge_binding", "Challenge belongs to another product/client/policy.");
     if (!sameLoginState(prior.challenge, proof))
@@ -149,15 +345,11 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     return this.finish(stored);
   }
   private checkGoogle(value: GoogleRecord, subject: string) {
-    if (
-      value?.version !== 1 ||
-      value.kind !== "google" ||
-      value.issuer !== GOOGLE_ISSUER ||
-      value.subject !== subject ||
-      !UUID_PATTERN.test(value.person?.id) ||
-      !Number.isFinite(Date.parse(value.person?.createdAt))
-    )
-      fail(503, "identity_inconsistent", "Canonical Google identity is inconsistent.");
+    requireRules(
+      { record: value, subject },
+      googleRecordRules,
+      inconsistentIdentity("Canonical Google identity is inconsistent"),
+    );
   }
   private async ensure<T>(
     path: string,
@@ -179,13 +371,19 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     const record = stored.value;
     const proof = record.proof;
     const candidate = record.candidate;
-    if (
-      !proof ||
-      !candidate ||
-      proof.challengeId !== record.challenge.challengeId ||
-      !sameBinding(proof.binding, record.challenge.binding)
-    )
-      fail(503, "identity_inconsistent", "Enrollment intent is incomplete.");
+    if (!proof)
+      fail(503, "identity_inconsistent", "Enrollment intent is incomplete: the login carries no proof.");
+    if (!candidate)
+      fail(
+        503,
+        "identity_inconsistent",
+        "Enrollment intent is incomplete: the login carries no candidate Person.",
+      );
+    requireRules(
+      { record, proof },
+      enrollmentIntentRules,
+      inconsistentIdentity("Enrollment intent is incomplete"),
+    );
     const id = record.challenge.challengeId,
       googleKey = googleIdentityKey(proof.googleSubject),
       aliasKey = cognitoAliasKey(proof.binding.issuer, proof.cognitoSubject);
@@ -200,8 +398,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
           subject: proof.googleSubject,
           person: candidate,
         },
-        (value) =>
-          value?.kind === "google" && value.issuer === GOOGLE_ISSUER && value.subject === proof.googleSubject,
+        (value) => googleRecordMatches(value, proof.googleSubject),
       ),
     );
     this.checkGoogle(google, proof.googleSubject);
@@ -220,12 +417,12 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
             createdAt: new Date(proof.now * 1000).toISOString(),
           },
           (value) =>
-            value?.version === 1 &&
-            value.kind === "alias" &&
-            value.issuer === proof.binding.issuer &&
-            value.subject === proof.cognitoSubject &&
-            value.googleKey === googleKey &&
-            value.personId === google.person.id,
+            aliasRecordMatches(value, {
+              issuer: proof.binding.issuer,
+              subject: proof.cognitoSubject,
+              googleKey,
+              personId: google.person.id,
+            }),
         ),
       );
     } catch (error) {
@@ -249,11 +446,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
         `people/${google.person.id}.json`,
         `identity:${id}:person`,
         { version: 1, kind: "person", googleKey, person: google.person },
-        (value) =>
-          value?.version === 1 &&
-          value.kind === "person" &&
-          value.googleKey === googleKey &&
-          hash(value.person) === hash(google.person),
+        (value) => personRecordMatches(value, googleKey, google.person),
       ),
     );
     await this.step("session", () =>
@@ -262,12 +455,12 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
         `identity:${id}:session`,
         { version: 1, kind: "session", challengeId: id, googleKey, aliasKey, personId: google.person.id },
         (value) =>
-          value?.version === 1 &&
-          value.kind === "session" &&
-          value.challengeId === id &&
-          value.googleKey === googleKey &&
-          value.aliasKey === aliasKey &&
-          value.personId === google.person.id,
+          sessionPointerMatches(value, {
+            challengeId: id,
+            googleKey,
+            aliasKey,
+            personId: google.person.id,
+          }),
       ),
     );
     if (record.state !== "committed")
@@ -287,47 +480,27 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     aliasKey?: string,
     read: IdentityFiles["get"] = this.files.get.bind(this.files),
   ): Promise<LoginRecord | null> {
-    if (
-      pointer?.version !== 1 ||
-      pointer.kind !== "session" ||
-      pointer.personId !== google.person.id ||
-      pointer.googleKey !== googleIdentityKey(google.subject) ||
-      (aliasKey && pointer.aliasKey !== aliasKey)
-    )
-      return null;
+    if (!sessionPointerBelongsToGoogleIdentity(pointer, google, aliasKey)) return null;
     const login = (await read<LoginRecord>(`logins/${pointer.challengeId}.json`))?.value;
     if (!login || login.state !== "committed") return null;
     this.loginValid(login, pointer.challengeId);
-    if (
-      !login.proof ||
-      login.proof.googleSubject !== google.subject ||
-      cognitoAliasKey(login.proof.binding.issuer, login.proof.cognitoSubject) !== pointer.aliasKey ||
-      !sameBinding(login.proof.binding, login.challenge.binding) ||
-      hash(login.person) !== hash(google.person)
-    )
-      fail(503, "identity_inconsistent", "Committed enrollment links are inconsistent.");
+    requireRules(
+      { login, pointer, google },
+      committedLinkRules,
+      inconsistentIdentity("Committed enrollment links are inconsistent"),
+    );
     const alias = (await read<AliasRecord>(`aliases/${pointer.aliasKey}.json`))?.value;
-    if (
-      !alias ||
-      alias.googleKey !== pointer.googleKey ||
-      alias.personId !== pointer.personId ||
-      alias.issuer !== login.proof.binding.issuer ||
-      alias.subject !== login.proof.cognitoSubject
-    )
-      fail(503, "identity_inconsistent", "Committed alias is inconsistent.");
-    const person = (
-      await read<{ version: number; kind: string; googleKey: string; person: Person }>(
-        `people/${google.person.id}.json`,
-      )
-    )?.value;
-    if (
-      !person ||
-      person.version !== 1 ||
-      person.kind !== "person" ||
-      person.googleKey !== pointer.googleKey ||
-      hash(person.person) !== hash(google.person)
-    )
-      fail(503, "identity_inconsistent", "Committed Person lookup is incomplete.");
+    requireRules(
+      { login, pointer, google, alias },
+      committedAliasRules,
+      inconsistentIdentity("Committed alias is inconsistent"),
+    );
+    const person = (await read<PersonPointer>(`people/${google.person.id}.json`))?.value;
+    requireRules(
+      { person, pointer, google },
+      committedPersonRules,
+      inconsistentIdentity("Committed Person lookup is incomplete"),
+    );
     return login;
   }
   private memoizedReadsForOneLookup(): IdentityFiles["get"] {
@@ -348,13 +521,19 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     const aliasKey = cognitoAliasKey(issuer, subject);
     const alias = (await read<AliasRecord>(`aliases/${aliasKey}.json`))?.value;
     if (!alias) return null;
-    if (alias.version !== 1 || alias.kind !== "alias" || alias.issuer !== issuer || alias.subject !== subject)
-      fail(503, "identity_inconsistent", "Invalid canonical alias.");
+    requireRules(
+      { alias, issuer, subject },
+      canonicalAliasRules,
+      inconsistentIdentity("Invalid canonical alias"),
+    );
     const google = (await read<GoogleRecord>(`google/${alias.googleKey}.json`))?.value;
     if (!google) fail(503, "identity_inconsistent", "Missing Google identity.");
     this.checkGoogle(google, google.subject);
-    if (alias.googleKey !== googleIdentityKey(google.subject) || alias.personId !== google.person.id)
-      fail(503, "identity_inconsistent", "Canonical alias conflicts.");
+    requireRules(
+      { alias, google },
+      aliasGoogleAgreementRules,
+      inconsistentIdentity("Canonical alias conflicts"),
+    );
     const logins: LoginRecord[] = [];
     const paths = await this.files.list(`sessions/${alias.googleKey}/${aliasKey}/`);
     for (let offset = 0; offset < paths.length; offset += 4) {
@@ -388,23 +567,16 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
   async getPerson(id: string): Promise<Person | null> {
     if (!UUID_PATTERN.test(id)) return null;
     const readMemoizedForThisLookup = this.memoizedReadsForOneLookup();
-    const pointer = (
-      await readMemoizedForThisLookup<{ version: number; kind: string; googleKey: string; person: Person }>(
-        `people/${id}.json`,
-      )
-    )?.value;
+    const pointer = (await readMemoizedForThisLookup<PersonPointer>(`people/${id}.json`))?.value;
     if (!pointer) return null;
     const google = (await readMemoizedForThisLookup<GoogleRecord>(`google/${pointer.googleKey}.json`))?.value;
     if (!google) return null;
     this.checkGoogle(google, google.subject);
-    if (
-      pointer.kind !== "person" ||
-      pointer.version !== 1 ||
-      google.person.id !== id ||
-      hash(pointer.person) !== hash(google.person) ||
-      pointer.googleKey !== googleIdentityKey(google.subject)
-    )
-      fail(503, "identity_inconsistent", "Person pointer conflicts.");
+    requireRules(
+      { pointer, google, personId: id },
+      personPointerRules,
+      inconsistentIdentity("Person pointer conflicts"),
+    );
     const sessionPointerPaths = await this.files.list(`sessions/${pointer.googleKey}/`);
     for (let offset = 0; offset < sessionPointerPaths.length; offset += SESSION_POINTER_READ_BATCH_SIZE) {
       const committedLogins = await Promise.all(

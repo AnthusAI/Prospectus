@@ -22,21 +22,21 @@ after(async () => {
 const worker = "arn:aws:iam::111111111111:role/SyntheticWorker";
 function paired(base: readonly ProductRegistration[]): ValidatedRegistrations {
   const products = structuredClone(base),
-    p = products[0];
-  p.capabilities = ["console:read", "console:write", "members:read", "members:write"];
-  p.executionDelegation = {
+    delegatingRegistration = products[0];
+  delegatingRegistration.capabilities = ["console:read", "console:write", "members:read", "members:write"];
+  delegatingRegistration.executionDelegation = {
     roleArn: worker,
-    enrollmentRoleArn: p.roleArn,
-    issuer: p.issuer,
-    clientId: p.googleFederation!.clientId,
-    enrollmentPolicyRevision: p.googleFederation!.reviewedPolicyId,
+    enrollmentRoleArn: delegatingRegistration.roleArn,
+    issuer: delegatingRegistration.issuer,
+    clientId: delegatingRegistration.googleFederation!.clientId,
+    enrollmentPolicyRevision: delegatingRegistration.googleFederation!.reviewedPolicyId,
     reviewedPolicyId: "synthetic-execution-review-v1",
   };
   return registrations(products);
 }
 async function fixture() {
-  const f = googleFixture(),
-    products = paired(f.products),
+  const identityFixture = googleFixture(),
+    products = paired(identityFixture.products),
     root = await mkdtemp(join(tmpdir(), "prospectus-delegation-"));
   roots.push(root);
   const identities = new VirtuusIdentityFiles(root),
@@ -45,33 +45,45 @@ async function fixture() {
     registry = products,
     identityFiles: IdentityFiles = identities,
     accountFiles: IdentityFiles = accounts,
-  ) => canonicalAccountsHandler(identityFiles, accountFiles, registry, f.keys, () => f.now);
+  ) =>
+    canonicalAccountsHandler(
+      identityFiles,
+      accountFiles,
+      registry,
+      identityFixture.keys,
+      () => identityFixture.now,
+    );
   const handler = make();
   const run = async (event: RestEvent, target = handler) => {
     const result = await target(event);
     return { status: result.statusCode, body: JSON.parse(result.body) };
   };
-  const challenge = (await run(f.event(0, "/v1/identities/google/challenge"))).body;
-  const proof = f.pair(0, challenge.nonce),
+  const challenge = (await run(identityFixture.event(0, "/v1/identities/google/challenge"))).body;
+  const proof = identityFixture.pair(0, challenge.nonce),
     enrolled = await run(
-      f.event(0, "/v1/identities/google/resolve", { challengeId: challenge.challengeId }, proof),
+      identityFixture.event(
+        0,
+        "/v1/identities/google/resolve",
+        { challengeId: challenge.challengeId },
+        proof,
+      ),
     );
   assert.equal(enrolled.status, 200);
-  const create = f.event(0, "/v1/accounts", { name: "Synthetic execution account" }, proof);
+  const create = identityFixture.event(0, "/v1/accounts", { name: "Synthetic execution account" }, proof);
   create.headers!["idempotency-key"] = randomUUID();
   const created = await run(create);
   assert.equal(created.status, 200);
   const id = created.body.account.id as string;
   const event = (path = "/v1/identities/me", method = "GET", body: unknown = {}, token = proof) => {
-    const e = f.event(0, path, body, token, method);
-    e.requestContext!.identity!.userArn =
+    const builtEvent = identityFixture.event(0, path, body, token, method);
+    builtEvent.requestContext!.identity!.userArn =
       "arn:aws:sts::111111111111:assumed-role/SyntheticWorker/synthetic-session";
     // Execution needs only access evidence, never the callback ID proof.
-    delete e.headers!["x-prospectus-identity-token"];
-    return e;
+    delete builtEvent.headers!["x-prospectus-identity-token"];
+    return builtEvent;
   };
   return {
-    f,
+    identityFixture,
     products,
     identities,
     accounts,
@@ -86,58 +98,80 @@ async function fixture() {
   };
 }
 test("paired execution survives canonical restart without changing original provenance", async () => {
-  const x = await fixture(),
-    repo = new DurableGoogleIdentities(x.identities),
-    before = await repo.find(x.products[0].issuer, "synthetic-pool-person-0");
-  assert.equal((await x.run(x.event())).body.person.id, x.person.id);
-  const result = await x.run(x.authorize("console:write"), x.make());
+  const environment = await fixture(),
+    repo = new DurableGoogleIdentities(environment.identities),
+    before = await repo.find(environment.products[0].issuer, "synthetic-pool-person-0");
+  assert.equal((await environment.run(environment.event())).body.person.id, environment.person.id);
+  const result = await environment.run(environment.authorize("console:write"), environment.make());
   assert.equal(result.status, 200);
   assert.deepEqual(result.body, {
     allowed: true,
-    accountId: x.id,
-    personId: x.person.id,
+    accountId: environment.id,
+    personId: environment.person.id,
     product: "cyclotron",
     role: "owner",
     operation: "console:write",
     revision: 1,
   });
-  const verified = await context(x.authorize(), x.products, x.f.keys, x.f.now);
+  const verified = await context(
+    environment.authorize(),
+    environment.products,
+    environment.identityFixture.keys,
+    environment.identityFixture.now,
+  );
   assert.equal(verified.principal, worker);
   assert.deepEqual(verified.capabilities, ["console:read", "console:write"]);
   assert.deepEqual(
-    await new DurableGoogleIdentities(x.identities).find(x.products[0].issuer, "synthetic-pool-person-0"),
+    await new DurableGoogleIdentities(environment.identities).find(
+      environment.products[0].issuer,
+      "synthetic-pool-person-0",
+    ),
     before,
   );
-  assert.equal(before!.alias.sessions[0].binding.principal, x.products[0].roleArn);
+  assert.equal(before!.alias.sessions[0].binding.principal, environment.products[0].roleArn);
   assert.ok(!before!.alias.provenance.some((binding) => binding.principal === worker));
 });
-test("production composition fractional wall clock emits integer challenge expiry", async (t) => {
-  const x = await fixture(),
-    now = x.f.now + 0.625;
-  t.mock.method(Date, "now", () => now * 1000);
+test("production composition fractional wall clock emits integer challenge expiry", async (testContext) => {
+  const environment = await fixture(),
+    now = environment.identityFixture.now + 0.625;
+  testContext.mock.method(Date, "now", () => now * 1000);
   // Omit the fixture clock: exercise the production factory's actual default,
   // which passes fractional seconds into the identity handler.
-  const production = canonicalAccountsHandler(x.identities, x.accounts, x.products, x.f.keys);
-  const issued = await x.run(x.f.event(0, "/v1/identities/google/challenge"), production);
+  const production = canonicalAccountsHandler(
+    environment.identities,
+    environment.accounts,
+    environment.products,
+    environment.identityFixture.keys,
+  );
+  const issued = await environment.run(
+    environment.identityFixture.event(0, "/v1/identities/google/challenge"),
+    production,
+  );
   assert.equal(issued.status, 200);
   const challenge = issued.body;
   assert.ok(Number.isSafeInteger(challenge.expiresAt));
   assert.equal(challenge.expiresAt, Math.floor(now) + 300);
-  assert.ok(now < challenge.expiresAt && challenge.expiresAt <= now + 300);
-  const stored = (await x.identities.get(`logins/${challenge.challengeId}.json`))!;
+  assert.ok(now < challenge.expiresAt);
+  assert.ok(challenge.expiresAt <= now + 300);
+  const stored = (await environment.identities.get(`logins/${challenge.challengeId}.json`))!;
   assert.equal(stored.value.challenge.issuedAt, Math.floor(now));
   assert.equal(stored.value.challenge.expiresAt, challenge.expiresAt);
-  const proof = x.f.pair(0, challenge.nonce);
-  const resolved = await x.run(
-    x.f.event(0, "/v1/identities/google/resolve", { challengeId: challenge.challengeId }, proof),
+  const proof = environment.identityFixture.pair(0, challenge.nonce);
+  const resolved = await environment.run(
+    environment.identityFixture.event(
+      0,
+      "/v1/identities/google/resolve",
+      { challengeId: challenge.challengeId },
+      proof,
+    ),
     production,
   );
   assert.equal(resolved.status, 200);
-  assert.equal(resolved.body.person.id, x.person.id);
+  assert.equal(resolved.body.person.id, environment.person.id);
 });
-test("worker route/method/operation negative matrix denies before canonical writes", async (t) => {
-  const x = await fixture(),
-    before = await x.accounts.get(`accounts/${x.id}.json`);
+test("worker route/method/operation negative matrix denies before canonical writes", async (testContext) => {
+  const environment = await fixture(),
+    before = await environment.accounts.get(`accounts/${environment.id}.json`);
   let writes = 0;
   const observe = (files: IdentityFiles): IdentityFiles => ({
     get: (path) => files.get(path),
@@ -147,7 +181,11 @@ test("worker route/method/operation negative matrix denies before canonical writ
       return files.commit(...args);
     },
   });
-  const target = x.make(x.products, observe(x.identities), observe(x.accounts));
+  const target = environment.make(
+    environment.products,
+    observe(environment.identities),
+    observe(environment.accounts),
+  );
   const paths: Array<[string, string, unknown]> = [
     ["/v1/identities/google/challenge", "POST", {}],
     ["/v1/identities/google/resolve", "POST", { challengeId: randomUUID() }],
@@ -155,74 +193,80 @@ test("worker route/method/operation negative matrix denies before canonical writ
     ["/v1/identities/link", "POST", {}],
     ["/v1/accounts", "GET", {}],
     ["/v1/accounts", "POST", { name: "Denied" }],
-    [`/v1/accounts/${x.id}`, "GET", {}],
-    [`/v1/accounts/${x.id}/memberships`, "POST", { personId: x.person.id, role: "owner", status: "active" }],
+    [`/v1/accounts/${environment.id}`, "GET", {}],
+    [
+      `/v1/accounts/${environment.id}/memberships`,
+      "POST",
+      { personId: environment.person.id, role: "owner", status: "active" },
+    ],
     ["/v1/account-directory", "GET", {}],
-    [`/v1/account-directory/${x.id}`, "GET", {}],
+    [`/v1/account-directory/${environment.id}`, "GET", {}],
     ["/v1/identities/me", "POST", {}],
     ["/v1/identities/me/", "GET", {}],
-    [`/v1/accounts/${x.id}/authorize`, "GET", {}],
-    [`/v1/accounts/${x.id}/authorize/extra`, "POST", {}],
+    [`/v1/accounts/${environment.id}/authorize`, "GET", {}],
+    [`/v1/accounts/${environment.id}/authorize/extra`, "POST", {}],
     [`/v1/accounts/${"a".repeat(36)}/authorize`, "POST", { operation: "console:read" }],
   ];
   for (const [path, method, body] of paths)
-    await t.test(`${method} ${path}`, async () =>
-      assert.equal((await x.run(x.event(path, method, body), target)).status, 403),
+    await testContext.test(`${method} ${path}`, async () =>
+      assert.equal((await environment.run(environment.event(path, method, body), target)).status, 403),
     );
   for (const operation of ["members:read", "members:write"])
-    await t.test(operation, async () =>
-      assert.equal((await x.run(x.authorize(operation), target)).status, 403),
+    await testContext.test(operation, async () =>
+      assert.equal((await environment.run(environment.authorize(operation), target)).status, 403),
     );
-  assert.deepEqual(await x.accounts.get(`accounts/${x.id}.json`), before);
+  assert.deepEqual(await environment.accounts.get(`accounts/${environment.id}.json`), before);
   assert.equal(writes, 0);
 });
-test("unlisted, disabled and removed pairs fail closed on the next request", async (t) => {
-  const x = await fixture();
-  const variants: Array<[string, (p: ProductRegistration[]) => void]> = [
-    ["removed", (p) => delete p[0].executionDelegation],
-    ["disabled", (p) => (p[0].enabled = false)],
+test("unlisted, disabled and removed pairs fail closed on the next request", async (testContext) => {
+  const environment = await fixture();
+  const variants: Array<[string, (productRegistrations: ProductRegistration[]) => void]> = [
+    ["removed", (productRegistrations) => delete productRegistrations[0].executionDelegation],
+    ["disabled", (productRegistrations) => (productRegistrations[0].enabled = false)],
     [
       "different worker",
-      (p) => (p[0].executionDelegation!.roleArn = "arn:aws:iam::111111111111:role/SyntheticOtherWorker"),
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.roleArn =
+          "arn:aws:iam::111111111111:role/SyntheticOtherWorker"),
     ],
     [
       "changed policy",
-      (p) => {
-        p[0].googleFederation!.reviewedPolicyId = "synthetic-review-v2";
-        p[0].executionDelegation!.enrollmentPolicyRevision = "synthetic-review-v2";
+      (productRegistrations) => {
+        productRegistrations[0].googleFederation!.reviewedPolicyId = "synthetic-review-v2";
+        productRegistrations[0].executionDelegation!.enrollmentPolicyRevision = "synthetic-review-v2";
       },
     ],
-    ["different product", (p) => (p[0].product = "other-product")],
+    ["different product", (productRegistrations) => (productRegistrations[0].product = "other-product")],
     [
       "different enrolling principal",
-      (p) => {
-        p[0].roleArn = "arn:aws:iam::111111111111:role/SyntheticNewBff";
-        p[0].executionDelegation!.enrollmentRoleArn = p[0].roleArn;
+      (productRegistrations) => {
+        productRegistrations[0].roleArn = "arn:aws:iam::111111111111:role/SyntheticNewBff";
+        productRegistrations[0].executionDelegation!.enrollmentRoleArn = productRegistrations[0].roleArn;
       },
     ],
     [
       "different registered client",
-      (p) => {
-        p[0].clientIds = ["newclient"];
-        p[0].googleFederation!.clientId = "newclient";
-        p[0].executionDelegation!.clientId = "newclient";
+      (productRegistrations) => {
+        productRegistrations[0].clientIds = ["newclient"];
+        productRegistrations[0].googleFederation!.clientId = "newclient";
+        productRegistrations[0].executionDelegation!.clientId = "newclient";
       },
     ],
     [
       "different registered issuer",
-      (p) => {
-        p[0].issuer = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticNew";
-        p[0].executionDelegation!.issuer = p[0].issuer;
+      (productRegistrations) => {
+        productRegistrations[0].issuer = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticNew";
+        productRegistrations[0].executionDelegation!.issuer = productRegistrations[0].issuer;
       },
     ],
   ];
   for (const [name, change] of variants)
-    await t.test(name, async () => {
-      const p = structuredClone([...x.products]);
-      change(p);
-      const handler = x.make(registrations(p));
-      for (const event of [x.event(), x.authorize()]) {
-        const result = await x.run(event, handler);
+    await testContext.test(name, async () => {
+      const productRegistrations = structuredClone([...environment.products]);
+      change(productRegistrations);
+      const handler = environment.make(registrations(productRegistrations));
+      for (const event of [environment.event(), environment.authorize()]) {
+        const result = await environment.run(event, handler);
         assert.ok(result.status >= 400 || result.body.person === null);
         assert.notEqual(result.body.allowed, true);
       }
@@ -232,97 +276,149 @@ test("unlisted, disabled and removed pairs fail closed on the next request", asy
     ["cross-account", "arn:aws:sts::222222222222:assumed-role/SyntheticWorker/s", "222222222222"],
     ["static IAM", "arn:aws:iam::111111111111:role/SyntheticWorker", "111111111111"],
   ])
-    await t.test(name, async () => {
-      const e = x.event();
-      e.requestContext!.identity = { userArn: arn, accountId };
-      assert.equal((await x.run(e)).status, 403);
+    await testContext.test(name, async () => {
+      const builtEvent = environment.event();
+      builtEvent.requestContext!.identity = { userArn: arn, accountId };
+      assert.equal((await environment.run(builtEvent)).status, 403);
     });
-  const readonlyProducts = structuredClone([...x.products]);
+  const readonlyProducts = structuredClone([...environment.products]);
   readonlyProducts[0].capabilities = ["console:read"];
   const readonly = registrations(readonlyProducts);
-  assert.equal((await x.run(x.authorize("console:write"), x.make(readonly))).status, 403);
-  assert.equal((await x.run(x.authorize(), x.make(readonly))).status, 200);
+  assert.equal(
+    (await environment.run(environment.authorize("console:write"), environment.make(readonly))).status,
+    403,
+  );
+  assert.equal((await environment.run(environment.authorize(), environment.make(readonly))).status, 200);
   assert.equal(
     (
-      await x.run(
-        x.event(`/v1/accounts/${x.id}/authorize`, "POST", {
+      await environment.run(
+        environment.event(`/v1/accounts/${environment.id}/authorize`, "POST", {
           operation: "console:write",
-          principal: x.products[0].roleArn,
+          principal: environment.products[0].roleArn,
         }),
       )
     ).status,
     400,
   );
 });
-test("cross-product/client/issuer, session family and invalid access never authorize", async (t) => {
-  const x = await fixture();
-  const cases: Array<[string, ReturnType<typeof x.f.pair>]> = [
-    ["cross product issuer", x.f.pair(1, "irrelevant")],
-    ["wrong client", x.f.pair(0, "irrelevant", "synthetic-google-a", { client_id: "outside" })],
+test("cross-product/client/issuer, session family and invalid access never authorize", async (testContext) => {
+  const environment = await fixture();
+  const cases: Array<[string, ReturnType<typeof environment.identityFixture.pair>]> = [
+    ["cross product issuer", environment.identityFixture.pair(1, "irrelevant")],
+    [
+      "wrong client",
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", { client_id: "outside" }),
+    ],
     [
       "wrong issuer",
-      x.f.pair(0, "irrelevant", "synthetic-google-a", {
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", {
         iss: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Outside",
       }),
     ],
-    ["unknown subject", x.f.pair(0, "irrelevant", "synthetic-google-a", { sub: "unknown" })],
-    ["new family", x.f.pair(0, "irrelevant", "synthetic-google-a", { origin_jti: "new-family" })],
-    ["changed auth time", x.f.pair(0, "irrelevant", "synthetic-google-a", { auth_time: x.f.now - 1 })],
-    ["missing family", x.f.pair(0, "irrelevant", "synthetic-google-a", { origin_jti: null })],
-    ["expired", x.f.pair(0, "irrelevant", "synthetic-google-a", { exp: x.f.now })],
+    [
+      "unknown subject",
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", { sub: "unknown" }),
+    ],
+    [
+      "new family",
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", { origin_jti: "new-family" }),
+    ],
+    [
+      "changed auth time",
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", {
+        auth_time: environment.identityFixture.now - 1,
+      }),
+    ],
+    [
+      "missing family",
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", { origin_jti: null }),
+    ],
+    [
+      "expired",
+      environment.identityFixture.pair(0, "irrelevant", "synthetic-google-a", {
+        exp: environment.identityFixture.now,
+      }),
+    ],
   ];
   const forged = {
-    ...x.proof,
+    ...environment.proof,
     access:
-      x.proof.access.slice(0, x.proof.access.lastIndexOf(".") + 1) + Buffer.alloc(256).toString("base64url"),
+      environment.proof.access.slice(0, environment.proof.access.lastIndexOf(".") + 1) +
+      Buffer.alloc(256).toString("base64url"),
   };
   cases.push(["forged", forged]);
   for (const [name, proof] of cases)
-    await t.test(name, async () => {
-      const me = await x.run(x.event("/v1/identities/me", "GET", {}, proof));
+    await testContext.test(name, async () => {
+      const me = await environment.run(environment.event("/v1/identities/me", "GET", {}, proof));
       assert.ok(me.status >= 400 || me.body.person === null);
       assert.ok(
         (
-          await x.run(
-            x.event(`/v1/accounts/${x.id}/authorize`, "POST", { operation: "console:write" }, proof),
+          await environment.run(
+            environment.event(
+              `/v1/accounts/${environment.id}/authorize`,
+              "POST",
+              { operation: "console:write" },
+              proof,
+            ),
           )
         ).status >= 400,
       );
     });
   // Continuation accepts a renewed JWT only within the originally enrolled family.
-  x.f.advance(30);
-  const renewed = x.f.pair(0, "unused", "synthetic-google-a", { auth_time: x.f.now - 30 });
-  assert.equal((await x.run(x.event("/v1/identities/me", "GET", {}, renewed))).body.person.id, x.person.id);
+  environment.identityFixture.advance(30);
+  const renewed = environment.identityFixture.pair(0, "unused", "synthetic-google-a", {
+    auth_time: environment.identityFixture.now - 30,
+  });
+  assert.equal(
+    (await environment.run(environment.event("/v1/identities/me", "GET", {}, renewed))).body.person.id,
+    environment.person.id,
+  );
 });
 test("worker authorization reads current canonical role, revocation and entitlement", async () => {
-  const x = await fixture(),
-    location = `accounts/${x.id}.json`;
+  const environment = await fixture(),
+    location = `accounts/${environment.id}.json`;
   for (const [role, status, entitlement, read, write] of [
     ["viewer", "active", "active", 200, 403],
     ["member", "active", "active", 200, 200],
     ["member", "revoked", "active", 403, 403],
     ["owner", "active", "disabled", 403, 403],
   ] as const) {
-    const stored = (await x.accounts.get(location))!,
+    const stored = (await environment.accounts.get(location))!,
       document = structuredClone(stored.value);
     // Synthetic canonical external administration; retain a different active owner.
     const other = randomUUID();
-    document.memberships[other] = { accountId: x.id, personId: other, role: "owner", status: "active" };
-    document.memberships[x.person.id] = { accountId: x.id, personId: x.person.id, role, status };
+    document.memberships[other] = {
+      accountId: environment.id,
+      personId: other,
+      role: "owner",
+      status: "active",
+    };
+    document.memberships[environment.person.id] = {
+      accountId: environment.id,
+      personId: environment.person.id,
+      role,
+      status,
+    };
     document.entitlements.cyclotron.status = entitlement;
-    await x.accounts.commit(location, randomUUID(), "a".repeat(64), document, stored.revision);
-    assert.equal((await x.run(x.authorize(), x.make())).status, read);
-    assert.equal((await x.run(x.authorize("console:write"), x.make())).status, write);
+    await environment.accounts.commit(location, randomUUID(), "a".repeat(64), document, stored.revision);
+    assert.equal((await environment.run(environment.authorize(), environment.make())).status, read);
+    assert.equal(
+      (await environment.run(environment.authorize("console:write"), environment.make())).status,
+      write,
+    );
   }
-  assert.equal((await x.run(x.event())).status, 200); // Identity alone never grants account access.
+  assert.equal((await environment.run(environment.event())).status, 200); // Identity alone never grants account access.
   assert.equal(
-    (await x.run(x.event(`/v1/accounts/${randomUUID()}/authorize`, "POST", { operation: "console:read" })))
-      .status,
+    (
+      await environment.run(
+        environment.event(`/v1/accounts/${randomUUID()}/authorize`, "POST", { operation: "console:read" }),
+      )
+    ).status,
     403,
   );
 });
 test("missing or unavailable canonical persistence cannot grant execution", async () => {
-  const x = await fixture(),
+  const environment = await fixture(),
     down: IdentityFiles = {
       get: async () => {
         throw new IdentityFileError("unavailable");
@@ -334,84 +430,162 @@ test("missing or unavailable canonical persistence cannot grant execution", asyn
         throw new IdentityFileError("unavailable");
       },
     };
-  assert.equal((await x.run(x.event(), x.make(x.products, down))).status, 503);
-  assert.equal((await x.run(x.authorize(), x.make(x.products, x.identities, down))).status, 503);
+  assert.equal(
+    (await environment.run(environment.event(), environment.make(environment.products, down))).status,
+    503,
+  );
+  assert.equal(
+    (
+      await environment.run(
+        environment.authorize(),
+        environment.make(environment.products, environment.identities, down),
+      )
+    ).status,
+    503,
+  );
 });
 test("a different enrolled Person and another product account cannot inherit access", async () => {
-  const x = await fixture();
-  const c = (await x.run(x.f.event(0, "/v1/identities/google/challenge"))).body;
-  const other = x.f.pair(
+  const environment = await fixture();
+  const challenge = (
+    await environment.run(environment.identityFixture.event(0, "/v1/identities/google/challenge"))
+  ).body;
+  const other = environment.identityFixture.pair(
     0,
-    c.nonce,
+    challenge.nonce,
     "synthetic-google-other",
     { sub: "synthetic-other-person" },
     { sub: "synthetic-other-person" },
   );
   assert.equal(
-    (await x.run(x.f.event(0, "/v1/identities/google/resolve", { challengeId: c.challengeId }, other)))
-      .status,
+    (
+      await environment.run(
+        environment.identityFixture.event(
+          0,
+          "/v1/identities/google/resolve",
+          { challengeId: challenge.challengeId },
+          other,
+        ),
+      )
+    ).status,
     200,
   );
-  const me = await x.run(x.event("/v1/identities/me", "GET", {}, other));
+  const me = await environment.run(environment.event("/v1/identities/me", "GET", {}, other));
   assert.equal(me.status, 200);
-  assert.notEqual(me.body.person.id, x.person.id);
+  assert.notEqual(me.body.person.id, environment.person.id);
   assert.equal(
-    (await x.run(x.event(`/v1/accounts/${x.id}/authorize`, "POST", { operation: "console:read" }, other)))
-      .status,
+    (
+      await environment.run(
+        environment.event(
+          `/v1/accounts/${environment.id}/authorize`,
+          "POST",
+          { operation: "console:read" },
+          other,
+        ),
+      )
+    ).status,
     403,
   );
-  const p1 = (await x.run(x.f.event(1, "/v1/identities/google/challenge"))).body,
-    proof = x.f.pair(1, p1.nonce);
+  const p1 = (await environment.run(environment.identityFixture.event(1, "/v1/identities/google/challenge")))
+      .body,
+    proof = environment.identityFixture.pair(1, p1.nonce);
   assert.equal(
-    (await x.run(x.f.event(1, "/v1/identities/google/resolve", { challengeId: p1.challengeId }, proof))).body
-      .person.id,
-    x.person.id,
+    (
+      await environment.run(
+        environment.identityFixture.event(
+          1,
+          "/v1/identities/google/resolve",
+          { challengeId: p1.challengeId },
+          proof,
+        ),
+      )
+    ).body.person.id,
+    environment.person.id,
   );
-  const create = x.f.event(1, "/v1/accounts", { name: "Other product" }, proof);
+  const create = environment.identityFixture.event(1, "/v1/accounts", { name: "Other product" }, proof);
   create.headers!["idempotency-key"] = randomUUID();
-  const account = (await x.run(create)).body.account;
+  const account = (await environment.run(create)).body.account;
   assert.equal(
-    (await x.run(x.event(`/v1/accounts/${account.id}/authorize`, "POST", { operation: "console:read" })))
-      .status,
+    (
+      await environment.run(
+        environment.event(`/v1/accounts/${account.id}/authorize`, "POST", { operation: "console:read" }),
+      )
+    ).status,
     403,
   );
 });
-test("registry rejects ambiguous/transitive/unreviewed or mismatched pairs", async (t) => {
+test("registry rejects ambiguous/transitive/unreviewed or mismatched pairs", async (testContext) => {
   const base = paired(googleFixture().products);
-  const changes: Array<[string, (p: ProductRegistration[]) => void]> = [
-    ["self", (p) => (p[0].executionDelegation!.roleArn = p[0].roleArn)],
-    ["other product enrolling role", (p) => (p[0].executionDelegation!.roleArn = p[1].roleArn)],
+  const changes: Array<[string, (productRegistrations: ProductRegistration[]) => void]> = [
+    [
+      "self",
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.roleArn = productRegistrations[0].roleArn),
+    ],
+    [
+      "other product enrolling role",
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.roleArn = productRegistrations[1].roleArn),
+    ],
     [
       "STS path collision",
-      (p) => (p[0].executionDelegation!.roleArn = p[0].roleArn.replace("role/", "role/path/")),
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.roleArn = productRegistrations[0].roleArn.replace(
+          "role/",
+          "role/path/",
+        )),
     ],
-    ["duplicate product", (p) => (p[1].product = p[0].product)],
-    ["enrollment principal mismatch", (p) => (p[0].executionDelegation!.enrollmentRoleArn = p[1].roleArn)],
-    ["issuer mismatch", (p) => (p[0].executionDelegation!.issuer = p[1].issuer)],
-    ["client mismatch", (p) => (p[0].executionDelegation!.clientId = p[1].clientIds[0])],
-    ["policy mismatch", (p) => (p[0].executionDelegation!.enrollmentPolicyRevision = "other-review")],
-    ["review absent", (p) => (p[0].executionDelegation!.reviewedPolicyId = "")],
-    ["no federation", (p) => delete p[0].googleFederation],
-    ["directory principal", (p) => (p[0].accountDirectory = true)],
-    ["extra authority", (p) => ((p[0].executionDelegation as any).allowEnrollment = true)],
+    [
+      "duplicate product",
+      (productRegistrations) => (productRegistrations[1].product = productRegistrations[0].product),
+    ],
+    [
+      "enrollment principal mismatch",
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.enrollmentRoleArn = productRegistrations[1].roleArn),
+    ],
+    [
+      "issuer mismatch",
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.issuer = productRegistrations[1].issuer),
+    ],
+    [
+      "client mismatch",
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.clientId = productRegistrations[1].clientIds[0]),
+    ],
+    [
+      "policy mismatch",
+      (productRegistrations) =>
+        (productRegistrations[0].executionDelegation!.enrollmentPolicyRevision = "other-review"),
+    ],
+    [
+      "review absent",
+      (productRegistrations) => (productRegistrations[0].executionDelegation!.reviewedPolicyId = ""),
+    ],
+    ["no federation", (productRegistrations) => delete productRegistrations[0].googleFederation],
+    ["directory principal", (productRegistrations) => (productRegistrations[0].accountDirectory = true)],
+    [
+      "extra authority",
+      (productRegistrations) => ((productRegistrations[0].executionDelegation as any).allowEnrollment = true),
+    ],
     [
       "transitive",
-      (p) => {
-        p[1].executionDelegation = {
-          ...p[0].executionDelegation!,
-          roleArn: p[0].roleArn,
-          enrollmentRoleArn: p[1].roleArn,
-          issuer: p[1].issuer,
-          clientId: p[1].googleFederation!.clientId,
+      (productRegistrations) => {
+        productRegistrations[1].executionDelegation = {
+          ...productRegistrations[0].executionDelegation!,
+          roleArn: productRegistrations[0].roleArn,
+          enrollmentRoleArn: productRegistrations[1].roleArn,
+          issuer: productRegistrations[1].issuer,
+          clientId: productRegistrations[1].googleFederation!.clientId,
         };
       },
     ],
   ];
   for (const [name, change] of changes)
-    await t.test(name, () => {
-      const p = structuredClone([...base]);
-      change(p);
-      assert.throws(() => registrations(p));
+    await testContext.test(name, () => {
+      const productRegistrations = structuredClone([...base]);
+      change(productRegistrations);
+      assert.throws(() => registrations(productRegistrations));
     });
   assert.equal(registrations(base).length, 2);
 });

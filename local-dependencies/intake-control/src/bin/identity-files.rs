@@ -44,72 +44,84 @@ fn timing(phase: &str, operation: &str, started: Instant, success: bool) {
 struct ObservedObjects(Arc<dyn ObjectStore>);
 #[async_trait::async_trait]
 impl ObjectStore for ObservedObjects {
-    async fn get(&self, s: &Scope, p: &str) -> virtuus_store::Result<Option<StoredObject>> {
-        let t = Instant::now();
-        let r = self.0.get(s, p).await;
-        timing("storage", "get", t, r.is_ok());
-        r
+    async fn get(&self, scope: &Scope, path: &str) -> virtuus_store::Result<Option<StoredObject>> {
+        let started = Instant::now();
+        let outcome = self.0.get(scope, path).await;
+        timing("storage", "get", started, outcome.is_ok());
+        outcome
     }
     async fn get_bounded(
         &self,
-        s: &Scope,
-        p: &str,
-        n: usize,
+        scope: &Scope,
+        path: &str,
+        max_bytes: usize,
     ) -> virtuus_store::Result<Option<StoredObject>> {
-        let t = Instant::now();
-        let r = self.0.get_bounded(s, p, n).await;
-        timing("storage", "get_bounded", t, r.is_ok());
-        r
+        let started = Instant::now();
+        let outcome = self.0.get_bounded(scope, path, max_bytes).await;
+        timing("storage", "get_bounded", started, outcome.is_ok());
+        outcome
     }
     async fn list(
         &self,
-        s: &Scope,
-        p: &str,
-        c: Option<&str>,
-        n: usize,
+        scope: &Scope,
+        prefix: &str,
+        cursor: Option<&str>,
+        limit: usize,
     ) -> virtuus_store::Result<ObjectPage> {
-        let t = Instant::now();
-        let r = self.0.list(s, p, c, n).await;
-        timing("storage", "list", t, r.is_ok());
-        r
+        let started = Instant::now();
+        let outcome = self.0.list(scope, prefix, cursor, limit).await;
+        timing("storage", "list", started, outcome.is_ok());
+        outcome
     }
     async fn put(
         &self,
-        s: &Scope,
-        p: &str,
-        b: &[u8],
-        t: &str,
-        c: WriteCondition,
-        o: Option<&str>,
+        scope: &Scope,
+        path: &str,
+        bytes: &[u8],
+        content_type: &str,
+        condition: WriteCondition,
+        operation_id: Option<&str>,
     ) -> virtuus_store::Result<StoredObject> {
         let started = Instant::now();
-        let r = self.0.put(s, p, b, t, c, o).await;
-        timing("storage", "put", started, r.is_ok());
-        r
+        let outcome = self
+            .0
+            .put(scope, path, bytes, content_type, condition, operation_id)
+            .await;
+        timing("storage", "put", started, outcome.is_ok());
+        outcome
     }
-    async fn delete(&self, s: &Scope, p: &str, r: &str) -> virtuus_store::Result<()> {
-        let t = Instant::now();
-        let result = self.0.delete(s, p, r).await;
-        timing("storage", "delete", t, result.is_ok());
-        result
+    async fn delete(
+        &self,
+        scope: &Scope,
+        path: &str,
+        expected_revision: &str,
+    ) -> virtuus_store::Result<()> {
+        let started = Instant::now();
+        let outcome = self.0.delete(scope, path, expected_revision).await;
+        timing("storage", "delete", started, outcome.is_ok());
+        outcome
     }
-    async fn get_control(&self, s: &Scope, p: &str) -> virtuus_store::Result<Option<StoredObject>> {
-        let t = Instant::now();
-        let r = self.0.get_control(s, p).await;
-        timing("storage", "get_control", t, r.is_ok());
-        r
+    async fn get_control(
+        &self,
+        scope: &Scope,
+        path: &str,
+    ) -> virtuus_store::Result<Option<StoredObject>> {
+        let started = Instant::now();
+        let outcome = self.0.get_control(scope, path).await;
+        timing("storage", "get_control", started, outcome.is_ok());
+        outcome
     }
     async fn put_control(
         &self,
-        s: &Scope,
-        p: &str,
-        b: &[u8],
-        c: WriteCondition,
+        scope: &Scope,
+        path: &str,
+        bytes: &[u8],
+        condition: WriteCondition,
     ) -> virtuus_store::Result<StoredObject> {
-        let t = Instant::now();
-        let r = self.0.put_control(s, p, b, c).await;
-        timing("storage", "put_control", t, r.is_ok());
-        r
+        let started = Instant::now();
+        let outcome = self.0.put_control(scope, path, bytes, condition).await;
+        timing("storage", "put_control", started, outcome.is_ok());
+        outcome
     }
 }
 
@@ -121,80 +133,104 @@ struct InterruptibleFiles {
 }
 #[async_trait::async_trait]
 impl ObjectStore for InterruptibleFiles {
-    async fn get(&self, s: &Scope, p: &str) -> virtuus_store::Result<Option<StoredObject>> {
-        self.inner.get(s, p).await
+    async fn get(&self, scope: &Scope, path: &str) -> virtuus_store::Result<Option<StoredObject>> {
+        self.inner.get(scope, path).await
     }
     async fn get_bounded(
         &self,
-        s: &Scope,
-        p: &str,
-        n: usize,
+        scope: &Scope,
+        path: &str,
+        max_bytes: usize,
     ) -> virtuus_store::Result<Option<StoredObject>> {
-        self.inner.get_bounded(s, p, n).await
+        self.inner.get_bounded(scope, path, max_bytes).await
     }
     async fn list(
         &self,
-        s: &Scope,
-        p: &str,
-        c: Option<&str>,
-        n: usize,
+        scope: &Scope,
+        prefix: &str,
+        cursor: Option<&str>,
+        limit: usize,
     ) -> virtuus_store::Result<ObjectPage> {
-        self.inner.list(s, p, c, n).await
+        self.inner.list(scope, prefix, cursor, limit).await
     }
     async fn put(
         &self,
-        s: &Scope,
-        p: &str,
-        b: &[u8],
-        t: &str,
-        c: WriteCondition,
-        o: Option<&str>,
+        scope: &Scope,
+        path: &str,
+        bytes: &[u8],
+        content_type: &str,
+        condition: WriteCondition,
+        operation_id: Option<&str>,
     ) -> virtuus_store::Result<StoredObject> {
         if self.fault.as_deref() == Some("before_publication") {
             std::process::exit(86);
         }
-        let stored = self.inner.put(s, p, b, t, c, o).await?;
+        let stored = self
+            .inner
+            .put(scope, path, bytes, content_type, condition, operation_id)
+            .await?;
         if self.fault.as_deref() == Some("after_publication") {
             std::process::exit(86);
         }
         Ok(stored)
     }
-    async fn delete(&self, s: &Scope, p: &str, r: &str) -> virtuus_store::Result<()> {
-        self.inner.delete(s, p, r).await
+    async fn delete(
+        &self,
+        scope: &Scope,
+        path: &str,
+        expected_revision: &str,
+    ) -> virtuus_store::Result<()> {
+        self.inner.delete(scope, path, expected_revision).await
     }
-    async fn get_control(&self, s: &Scope, p: &str) -> virtuus_store::Result<Option<StoredObject>> {
-        self.inner.get_control(s, p).await
+    async fn get_control(
+        &self,
+        scope: &Scope,
+        path: &str,
+    ) -> virtuus_store::Result<Option<StoredObject>> {
+        self.inner.get_control(scope, path).await
     }
     async fn put_control(
         &self,
-        s: &Scope,
-        p: &str,
-        b: &[u8],
-        c: WriteCondition,
+        scope: &Scope,
+        path: &str,
+        bytes: &[u8],
+        condition: WriteCondition,
     ) -> virtuus_store::Result<StoredObject> {
-        self.inner.put_control(s, p, b, c).await
+        self.inner.put_control(scope, path, bytes, condition).await
     }
+}
+
+fn path_belongs_to_project(kind: &str, project: &str) -> bool {
+    match project {
+        "accounts" => ["accounts", "members"].contains(&kind),
+        "identities" => ["google", "aliases", "people", "logins", "sessions"].contains(&kind),
+        _ => true,
+    }
+}
+
+fn path_segment_is_canonical(part: &str) -> bool {
+    let segment = part.strip_suffix(".json").unwrap_or(part);
+    !segment.is_empty()
+        && segment.len() <= 128
+        && segment
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
 }
 
 fn valid_path(path: &str, prefix: bool, project: &str) -> bool {
     let Some((kind, rest)) = path.split_once('/') else {
         return false;
     };
-    if (project == "accounts" && !["accounts", "members"].contains(&kind))
-        || (project == "identities"
-            && !["google", "aliases", "people", "logins", "sessions"].contains(&kind))
-    {
+    if !path_belongs_to_project(kind, project) {
         return false;
     }
     if prefix && rest.is_empty() {
         return true;
     }
-    rest.split('/').filter(|part| !part.is_empty()).all(|part| {
-        let segment = part.strip_suffix(".json").unwrap_or(part);
-        !segment.is_empty()
-            && segment.len() <= 128
-            && segment.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
-    }) && !rest.contains("//")
+    rest.split('/')
+        .filter(|part| !part.is_empty())
+        .all(path_segment_is_canonical)
+        && !rest.contains("//")
         && (prefix || rest.ends_with(".json"))
 }
 
@@ -356,6 +392,24 @@ impl aws_sdk_s3::config::Intercept for ExpectedBucketOwnerInterceptor {
 }
 
 #[cfg(feature = "aws")]
+fn bucket_name_is_valid(bucket: &str) -> bool {
+    (3..=63).contains(&bucket.len())
+        && bucket.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'.'
+        })
+}
+
+#[cfg(feature = "aws")]
+fn bucket_owner_is_valid(owner: &str) -> bool {
+    owner.len() == 12 && owner.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+#[cfg(feature = "aws")]
+fn project_is_supported(project: &str) -> bool {
+    ["identities", "accounts"].contains(&project)
+}
+
+#[cfg(feature = "aws")]
 async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
     use aws_sdk_s3::config::ProvideCredentials;
     let setting = |name: &str| {
@@ -372,17 +426,19 @@ async fn s3_store() -> Result<(Arc<dyn ObjectStore>, Scope), StoreError> {
     let owner = setting("PROSPECTUS_IDENTITY_EXPECTED_OWNER")?;
     let tenant = setting("PROSPECTUS_IDENTITY_TENANT")?;
     let project = setting("PROSPECTUS_IDENTITY_PROJECT")?;
-    if bucket.len() < 3
-        || bucket.len() > 63
-        || !bucket
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
-        || region != "us-east-1"
-        || owner.len() != 12
-        || !owner.bytes().all(|b| b.is_ascii_digit())
-        || !["identities", "accounts"].contains(&project.as_str())
-    {
-        return Err(StoreError::Invalid("invalid fixed S3 configuration".into()));
+    let invalid =
+        |reason: &str| StoreError::Invalid(format!("invalid fixed S3 configuration: {reason}"));
+    if !bucket_name_is_valid(&bucket) {
+        return Err(invalid("bucket name"));
+    }
+    if region != "us-east-1" {
+        return Err(invalid("region"));
+    }
+    if !bucket_owner_is_valid(&owner) {
+        return Err(invalid("expected bucket owner"));
+    }
+    if !project_is_supported(&project) {
+        return Err(invalid("project"));
     }
     let scope = Scope::new(tenant, project)?;
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())

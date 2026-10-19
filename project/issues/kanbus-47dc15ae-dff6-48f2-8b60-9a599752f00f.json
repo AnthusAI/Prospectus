@@ -22,10 +22,34 @@
       "text": "STUBS: open items named by the coordinator whose details live in other threads or boards and were NOT re-verified in this session. Whoever picks these up should read the original thread/board first.\n\n2. Prospectus intake activation: Prospectus PR #19 plus production endpoint configuration.\n\nStub caveat: details live in other threads or boards and were NOT re-verified; read the original thread/board first.\n\nSource: Claude Code Projects handoff, 2026-10-19.",
       "created_at": "2026-10-19T16:42:52.567127Z",
       "comment_type": "default"
+    },
+    {
+      "id": "f3ad31c1-a0c7-4761-a841-0f16f971bdab",
+      "author": "home",
+      "text": "2026-10-19 reconcile: the public site is AnthusAI/Anth.us-Papyrus; the Gatsby repo AnthusAI/Anth.us is superseded and its PR 83 does not count. The form-wiring PR in Anth.us-Papyrus is being prepared.",
+      "created_at": "2026-10-19T17:28:05.343435Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-reconcile-2026-10-19"
+      }
+    },
+    {
+      "id": "836d9501-d152-436f-a656-8f9fdc13aeea",
+      "author": "home",
+      "text": "Re-applied from PR 40 (2026-10-19): the Gatsby engage page PR (Anth.us-legacy-Gatsby 83) targeted the wrong repo; public anth.us is AnthusAI/Anth.us-Papyrus. Next step, blocked only by the endpoint check in kanbus-67ae2d: open the Anth.us-Papyrus PR that points the inquiry form at the production Prospectus intake endpoint with notice contact-v1, and retire the Google Form. Priority 3.",
+      "created_at": "2026-10-19T17:28:12.088289Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-reconcile-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-17T12:16:51.022069Z",
-  "updated_at": "2026-10-19T16:42:52.567147Z",
+  "updated_at": "2026-10-19T17:28:12.088309Z",
   "closed_at": null,
   "agent": {
     "platform": "claude-code",

@@ -40,10 +40,22 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "bf637f28-2e05-4d66-a7e5-552186c084c0",
+      "author": "home",
+      "text": "2026-10-19 reconcile: PR 13 is merged (2026-10-17T07:36:30Z), so the receipt copy saying follow-up request, not a booked appointment, is on main. Left in_progress: the recorded remaining acceptance also includes owner-scoped hosted receipt verification, which has not been done.",
+      "created_at": "2026-10-19T17:28:05.523848Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-reconcile-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.548108Z",
-  "updated_at": "2026-10-17T06:22:48.040488Z",
+  "updated_at": "2026-10-19T17:28:05.523874Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",

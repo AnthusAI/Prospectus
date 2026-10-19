@@ -15,7 +15,7 @@ test(
     const root = await mkdtemp(join(tmpdir(), "accounts-native-session-"));
     const marker = join(root, "starts"),
       wrapper = join(root, "native");
-    const quote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'";
+    const quote = (argument: string) => "'" + argument.replaceAll("'", "'\\''") + "'";
     await writeFile(wrapper, `#!/bin/sh\nprintf x >> ${quote(marker)}\nexec ${quote(executable)}\n`, {
       mode: 0o700,
     });

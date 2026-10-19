@@ -10,9 +10,22 @@
   "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "a2d0d95c-df66-43fd-89c3-2d45d1e05977",
+      "author": "unknown",
+      "text": "2026-10-19 status: merged: f1ffd7 (PR 20), 70e9e5 (PR 22), d44d5a (PR 23), 62b03e (PR 25). Open PRs: 2c3ea8 (26), b2a6b3 (21), 829a99 (24). Not started: dc58ab, 2eda9d. Full handoff: /mnt/project-files/handoff/handoff-2026-10-19.md in the Claude project.",
+      "created_at": "2026-10-19T16:45:21.899060969Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
+    }
+  ],
   "created_at": "2026-10-17T14:49:24.976353159Z",
-  "updated_at": "2026-10-17T16:32:52.910958394Z",
+  "updated_at": "2026-10-19T16:45:21.899135798Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

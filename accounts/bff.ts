@@ -1,11 +1,39 @@
 import { cognitoClaims, type ProductRegistration, type KeyResolver } from "./auth";
 import { AccountsError, fail, UUID_PATTERN } from "./model";
 import { jsonResponse, lowerCaseHeaders, parseJsonRequest } from "./request";
+import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
 import { AccountsClientError, type AccountsClient } from "../packages/accounts-client/src/client";
 const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+const loginChallengeRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule((body) => Object.keys(body).length === 1, "Only a login state digest is accepted."),
+  rule((body) => typeof body.loginStateDigest === "string", "A login state digest is required."),
+  rule(
+    (body) => LOGIN_STATE_DIGEST_PATTERN.test(body.loginStateDigest),
+    "The login state digest must be lowercase SHA-256 hexadecimal.",
+  ),
+];
+
+const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule(
+    (body) => Object.keys(body).every((key) => ["challengeId", "idToken", "loginState"].includes(key)),
+    "Only a challenge ID, ID token and login state are accepted.",
+  ),
+  rule((body) => UUID_PATTERN.test(body.challengeId), "The challenge ID must be a UUID."),
+  rule(
+    (body) => body.loginState === undefined || typeof body.loginState === "string",
+    "The login state must be a string.",
+  ),
+  rule(
+    (body) => body.loginState === undefined || LOGIN_STATE_PATTERN.test(body.loginState),
+    "The login state is malformed.",
+  ),
+  rule((body) => typeof body.idToken === "string", "An ID token is required."),
+  rule((body) => body.idToken.length <= 16384, "The ID token is too long."),
+];
 
 export interface BffEvent {
   rawPath: string;
@@ -31,12 +59,11 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         // Do not add other unauthenticated routes here.
         const { headers, body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
         if (headers.origin !== options.origin) fail(403, "origin", "Request origin is not permitted.");
-        if (
-          Object.keys(body).length !== 1 ||
-          typeof body.loginStateDigest !== "string" ||
-          !LOGIN_STATE_DIGEST_PATTERN.test(body.loginStateDigest)
-        )
-          fail(400, "body", "A login state digest is required.");
+        requireRules(
+          body,
+          loginChallengeRequestRules,
+          failWith(400, "body", "The login challenge request is invalid"),
+        );
         return jsonResponse(200, await options.client().challenge(body.loginStateDigest));
       }
       const headers = lowerCaseHeaders(event.headers);
@@ -69,15 +96,11 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         return jsonResponse(200, await options.client(access!).challenge());
       }
       if (method === "POST" && event.rawPath === "/api/saas/identity/resolve") {
-        if (
-          Object.keys(body).some((key) => !["challengeId", "idToken", "loginState"].includes(key)) ||
-          !UUID_PATTERN.test(body.challengeId) ||
-          (body.loginState !== undefined &&
-            (typeof body.loginState !== "string" || !LOGIN_STATE_PATTERN.test(body.loginState))) ||
-          typeof body.idToken !== "string" ||
-          body.idToken.length > 16384
-        )
-          fail(400, "body", "Fresh challenge and ID evidence required.");
+        requireRules(
+          body,
+          resolveRequestRules,
+          failWith(400, "body", "Fresh challenge and ID evidence required"),
+        );
         const identity = await cognitoClaims(
           body.idToken,
           options.registration,

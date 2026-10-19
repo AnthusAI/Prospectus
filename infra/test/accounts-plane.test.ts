@@ -90,14 +90,9 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
   const policies = newResources
     .filter((value) => value.Type === "AWS::IAM::Policy")
     .flatMap((value) => value.Properties.PolicyDocument.Statement);
-  assert.ok(
-    !policies.some(
-      (value) =>
-        JSON.stringify(value.Action).includes("dynamodb") ||
-        JSON.stringify(value.Action).includes("cognito-idp") ||
-        JSON.stringify(value.Action).includes("s3:Delete"),
-    ),
-  );
+  assert.ok(!policies.some((value) => JSON.stringify(value.Action).includes("dynamodb")));
+  assert.ok(!policies.some((value) => JSON.stringify(value.Action).includes("cognito-idp")));
+  assert.ok(!policies.some((value) => JSON.stringify(value.Action).includes("s3:Delete")));
   assert.ok(!JSON.stringify(newResources).includes("test-invoke-stage"));
   const logWrites = policies.filter((value) => JSON.stringify(value.Action).includes("logs:PutLogEvents"));
   assert.equal(logWrites.length, 2);

@@ -34,14 +34,10 @@ test("a reviewed Papyrus site becomes a directory-capable product registration w
     },
   });
   assert.ok(!registration.capabilities.includes("members:write"));
-  assert.ok(
-    papyrusSiteRoutes.includes("GET/v1/account-directory") &&
-      papyrusSiteRoutes.includes("POST/v1/accounts/*/authorize"),
-  );
-  assert.ok(
-    !papyrusSiteRoutes.includes("POST/v1/accounts") &&
-      !papyrusSiteRoutes.some((route) => route.includes("memberships")),
-  );
+  assert.ok(papyrusSiteRoutes.includes("GET/v1/account-directory"));
+  assert.ok(papyrusSiteRoutes.includes("POST/v1/accounts/*/authorize"));
+  assert.ok(!papyrusSiteRoutes.includes("POST/v1/accounts"));
+  assert.ok(!papyrusSiteRoutes.some((route) => route.includes("memberships")));
 });
 
 test("the checked-in Papyrus site registry is valid reviewed configuration", () => {

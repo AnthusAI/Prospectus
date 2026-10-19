@@ -9,102 +9,160 @@ import { VirtuusIdentityFiles, VirtuusAccountFiles } from "./identity-files";
 import { accountsBffHandler } from "./bff";
 import { AccountsClient, decode } from "../packages/accounts-client/src/client";
 test("canonical directory filters organizations by membership, never CRM admin or product alone", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
-    const request = (actor: typeof x.ownerDirectory, path: string) =>
-      x.handler()(x.f.event(actor.index, path, {}, actor.proof, "GET"));
-    const listed = await request(x.ownerDirectory, "/v1/account-directory");
+    const request = (actor: typeof environment.ownerDirectory, path: string) =>
+      environment.handler()(environment.identityFixture.event(actor.index, path, {}, actor.proof, "GET"));
+    const listed = await request(environment.ownerDirectory, "/v1/account-directory");
     assert.equal(listed.statusCode, 200);
-    assert.equal(JSON.parse(listed.body).accounts[0].id, x.account.id);
+    assert.equal(JSON.parse(listed.body).accounts[0].id, environment.account.id);
     assert.equal(JSON.parse(listed.body).accounts[0].products[0].product, "papyrus");
-    assert.deepEqual(JSON.parse((await request(x.outsider, "/v1/account-directory")).body).accounts, []);
-    assert.equal((await request(x.outsider, `/v1/account-directory/${x.account.id}`)).statusCode, 403);
-    assert.equal((await request(x.owner, `/v1/account-directory/${x.account.id}`)).statusCode, 403); // normal console runtime cannot use directory routes
-    assert.equal((await request(x.ownerDirectory, `/v1/accounts/${x.account.id}`)).statusCode, 403); // directory visibility grants no product entitlement
+    assert.deepEqual(
+      JSON.parse((await request(environment.outsider, "/v1/account-directory")).body).accounts,
+      [],
+    );
+    assert.equal(
+      (await request(environment.outsider, `/v1/account-directory/${environment.account.id}`)).statusCode,
+      403,
+    );
+    assert.equal(
+      (await request(environment.owner, `/v1/account-directory/${environment.account.id}`)).statusCode,
+      403,
+    ); // normal console runtime cannot use directory routes
+    assert.equal(
+      (await request(environment.ownerDirectory, `/v1/accounts/${environment.account.id}`)).statusCode,
+      403,
+    ); // directory visibility grants no product entitlement
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });
 test("owner and admin see memberships; members and viewers see only themselves; restart and revocation persist", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
-    const detail = async (actor: typeof x.ownerDirectory) => {
-      const response = await x.handler()(
-        x.f.event(actor.index, `/v1/account-directory/${x.account.id}`, {}, actor.proof, "GET"),
+    const detail = async (actor: typeof environment.ownerDirectory) => {
+      const response = await environment.handler()(
+        environment.identityFixture.event(
+          actor.index,
+          `/v1/account-directory/${environment.account.id}`,
+          {},
+          actor.proof,
+          "GET",
+        ),
       );
       assert.equal(response.statusCode, 200);
       return JSON.parse(response.body).account;
     };
-    assert.equal((await detail(x.ownerDirectory)).memberships.length, 2);
+    assert.equal((await detail(environment.ownerDirectory)).memberships.length, 2);
     for (const role of ["member", "viewer", "admin"] as const) {
-      await x.service.setMembership(x.owner.context, x.account.id, x.member.person.id, role, "active");
-      const account = await detail(x.memberDirectory);
+      await environment.service.setMembership(
+        environment.owner.context,
+        environment.account.id,
+        environment.member.person.id,
+        role,
+        "active",
+      );
+      const account = await detail(environment.memberDirectory);
       assert.equal(account.membershipsVisible, role === "admin");
       assert.equal(account.memberships.length, role === "admin" ? 2 : 1);
       assert.equal(account.role, role);
     }
     const restarted = canonicalAccountsHandler(
-      new VirtuusIdentityFiles(x.root),
-      new VirtuusAccountFiles(x.root),
-      x.products,
-      x.f.keys,
-      () => x.f.now,
+      new VirtuusIdentityFiles(environment.root),
+      new VirtuusAccountFiles(environment.root),
+      environment.products,
+      environment.identityFixture.keys,
+      () => environment.identityFixture.now,
     );
     assert.equal(
       JSON.parse(
         (
           await restarted(
-            x.f.event(0, `/v1/account-directory/${x.account.id}`, {}, x.memberDirectory.proof, "GET"),
+            environment.identityFixture.event(
+              0,
+              `/v1/account-directory/${environment.account.id}`,
+              {},
+              environment.memberDirectory.proof,
+              "GET",
+            ),
           )
         ).body,
       ).account.name,
       "Persisted Papyrus organization",
     );
-    await x.service.setMembership(x.owner.context, x.account.id, x.member.person.id, "admin", "revoked");
+    await environment.service.setMembership(
+      environment.owner.context,
+      environment.account.id,
+      environment.member.person.id,
+      "admin",
+      "revoked",
+    );
     assert.equal(
       (
         await restarted(
-          x.f.event(0, `/v1/account-directory/${x.account.id}`, {}, x.memberDirectory.proof, "GET"),
+          environment.identityFixture.event(
+            0,
+            `/v1/account-directory/${environment.account.id}`,
+            {},
+            environment.memberDirectory.proof,
+            "GET",
+          ),
         )
       ).statusCode,
       403,
     );
     const list = JSON.parse(
-      (await restarted(x.f.event(0, "/v1/account-directory", {}, x.memberDirectory.proof, "GET"))).body,
+      (
+        await restarted(
+          environment.identityFixture.event(
+            0,
+            "/v1/account-directory",
+            {},
+            environment.memberDirectory.proof,
+            "GET",
+          ),
+        )
+      ).body,
     );
     assert.deepEqual(list.accounts, []);
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });
 test("JWT BFF returns actual persisted accounts and rejects browser authority or write paths", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   let forwarded = 0;
   try {
     const bff = accountsBffHandler({
       origin: "https://prospectus.anth.us",
-      registration: x.products[0],
-      keys: x.f.keys,
-      nowSeconds: () => x.f.now,
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
       client: (access, id) =>
         new AccountsClient(async (path, method, body) => {
           forwarded++;
-          const event = x.f.event(0, path, body ?? {}, x.ownerDirectory.proof, method);
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
           event.headers!["x-prospectus-human-token"] = access;
           if (id) event.headers!["x-prospectus-identity-token"] = id;
-          const response = await x.handler()(event);
+          const response = await environment.handler()(event);
           return decode(new Response(response.body, { status: response.statusCode }));
         }),
     });
     const event = {
       rawPath: "/api/saas/accounts",
       requestContext: { http: { method: "GET" } },
-      headers: { authorization: `Bearer ${x.ownerDirectory.proof.access}` },
+      headers: { authorization: `Bearer ${environment.ownerDirectory.proof.access}` },
     };
     const list = await bff(event);
     assert.equal(list.statusCode, 200);
-    assert.equal(JSON.parse(list.body).accounts[0].id, x.account.id);
-    const detail = await bff({ ...event, rawPath: `/api/saas/accounts/${x.account.id}` });
+    assert.equal(JSON.parse(list.body).accounts[0].id, environment.account.id);
+    const detail = await bff({ ...event, rawPath: `/api/saas/accounts/${environment.account.id}` });
     assert.equal(JSON.parse(detail.body).account.membershipsVisible, true);
     const before = forwarded;
     assert.equal((await bff({ ...event, headers: {} })).statusCode, 401);
@@ -147,23 +205,29 @@ test("JWT BFF returns actual persisted accounts and rejects browser authority or
       400,
     );
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });
 test("BFF fresh Google confirmation requires independent signed ID evidence and frozen challenge", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
     const bff = accountsBffHandler({
       origin: "https://prospectus.anth.us",
-      registration: x.products[0],
-      keys: x.f.keys,
-      nowSeconds: () => x.f.now,
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
       client: (access, id) =>
         new AccountsClient(async (path, method, body) => {
-          const event = x.f.event(0, path, body ?? {}, x.ownerDirectory.proof, method);
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
           event.headers!["x-prospectus-human-token"] = access;
           if (id) event.headers!["x-prospectus-identity-token"] = id;
-          const response = await x.handler()(event);
+          const response = await environment.handler()(event);
           return decode(new Response(response.body, { status: response.statusCode }));
         }),
     });
@@ -171,7 +235,7 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
       rawPath: "/api/saas/identity/challenge",
       requestContext: { http: { method: "POST" } },
       headers: {
-        authorization: `Bearer ${x.ownerDirectory.proof.access}`,
+        authorization: `Bearer ${environment.ownerDirectory.proof.access}`,
         origin: "https://prospectus.anth.us",
         "content-type": "application/json",
       },
@@ -180,7 +244,7 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
     const challengeResponse = await bff(event);
     assert.equal(challengeResponse.statusCode, 200);
     const challenge = JSON.parse(challengeResponse.body);
-    const fresh = x.f.pair(
+    const fresh = environment.identityFixture.pair(
       0,
       challenge.nonce,
       "synthetic-google-owner",
@@ -203,10 +267,10 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
     };
     const confirmed = await bff(resolve);
     assert.equal(confirmed.statusCode, 200);
-    assert.equal(JSON.parse(confirmed.body).person.id, x.owner.person.id);
+    assert.equal(JSON.parse(confirmed.body).person.id, environment.owner.person.id);
     const afterEnrollment = await bff(directoryRead);
     assert.equal(afterEnrollment.statusCode, 200);
-    assert.equal(JSON.parse(afterEnrollment.body).accounts[0].id, x.account.id);
+    assert.equal(JSON.parse(afterEnrollment.body).accounts[0].id, environment.account.id);
     assert.equal(
       (
         await bff({
@@ -217,24 +281,30 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
       401,
     );
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });
 
 test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bound to the login state", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
     const bff = accountsBffHandler({
       origin: "https://prospectus.anth.us",
-      registration: x.products[0],
-      keys: x.f.keys,
-      nowSeconds: () => x.f.now,
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
       client: (access, id) =>
         new AccountsClient(async (path, method, body) => {
-          const event = x.f.event(0, path, body ?? {}, x.ownerDirectory.proof, method);
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
           event.headers!["x-prospectus-human-token"] = access;
           if (id) event.headers!["x-prospectus-identity-token"] = id;
-          const response = await x.handler()(event);
+          const response = await environment.handler()(event);
           return decode(new Response(response.body, { status: response.statusCode }));
         }),
     });
@@ -259,7 +329,7 @@ test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bo
     const issued = await bff(publicRequest({ loginStateDigest: digest }));
     assert.equal(issued.statusCode, 200);
     const challenge = JSON.parse(issued.body);
-    const fresh = x.f.pair(
+    const fresh = environment.identityFixture.pair(
       0,
       challenge.nonce,
       "synthetic-google-owner",
@@ -282,67 +352,72 @@ test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bo
     assert.equal((await resolve({ loginState: "bad state!" })).statusCode, 400);
     const confirmed = await resolve({ loginState });
     assert.equal(confirmed.statusCode, 200);
-    assert.equal(JSON.parse(confirmed.body).person.id, x.owner.person.id);
+    assert.equal(JSON.parse(confirmed.body).person.id, environment.owner.person.id);
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });
 test("explicit central operator reads cross-organization records without membership or CRM-admin inheritance", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
     const grants = [
       {
-        product: x.outsider.context.product,
-        issuer: x.outsider.context.human.issuer,
-        subjectHash: operatorSubjectHash(x.outsider.context.human.subject),
+        product: environment.outsider.context.product,
+        issuer: environment.outsider.context.human.issuer,
+        subjectHash: operatorSubjectHash(environment.outsider.context.human.subject),
         permission: "accounts:admin:read" as const,
         reviewedGrantId: "synthetic-approval-v1",
       },
     ];
     const operator = canonicalAccountsHandler(
-      new VirtuusIdentityFiles(x.root),
-      new VirtuusAccountFiles(x.root),
-      x.products,
-      x.f.keys,
-      () => x.f.now,
+      new VirtuusIdentityFiles(environment.root),
+      new VirtuusAccountFiles(environment.root),
+      environment.products,
+      environment.identityFixture.keys,
+      () => environment.identityFixture.now,
       grants,
     );
-    const event = (path: string, proof = x.outsider.proof) => x.f.event(0, path, {}, proof, "GET");
+    const event = (path: string, proof = environment.outsider.proof) =>
+      environment.identityFixture.event(0, path, {}, proof, "GET");
     const listPath = "/v1/account-directory/operator/accounts",
-      detailPath = `${listPath}/${x.account.id}`;
+      detailPath = `${listPath}/${environment.account.id}`;
     assert.equal(
-      (await x.handler()(event(listPath))).statusCode,
+      (await environment.handler()(event(listPath))).statusCode,
       403,
       "CRM admin alone never grants operator access",
     );
-    assert.equal((await x.handler()(event(detailPath))).statusCode, 403);
+    assert.equal((await environment.handler()(event(detailPath))).statusCode, 403);
     const personal = JSON.parse((await operator(event("/v1/account-directory"))).body);
     assert.deepEqual(personal.accounts, []);
     assert.equal(personal.operatorAccess, true);
     assert.equal(
-      (await operator(event(`/v1/account-directory/${x.account.id}`))).statusCode,
+      (await operator(event(`/v1/account-directory/${environment.account.id}`))).statusCode,
       403,
       "operator does not become an account member",
     );
     const list = await operator(event(listPath));
     assert.equal(list.statusCode, 200);
-    assert.equal(JSON.parse(list.body).accounts[0].id, x.account.id);
+    assert.equal(JSON.parse(list.body).accounts[0].id, environment.account.id);
     assert.equal(JSON.parse(list.body).accounts[0].activeMembers, 2);
     const detail = JSON.parse((await operator(event(detailPath))).body).account;
     assert.equal(detail.memberships.length, 2);
     assert.equal(detail.entitlements[0].product, "papyrus");
     assert.equal(detail.role, undefined);
     assert.equal(
-      (await operator(x.f.event(0, listPath, {}, x.memberDirectory.proof, "GET"))).statusCode,
+      (
+        await operator(
+          environment.identityFixture.event(0, listPath, {}, environment.memberDirectory.proof, "GET"),
+        )
+      ).statusCode,
       403,
       "a different linked person cannot borrow the grant",
     );
-    const newSession = x.f.pair(
+    const newSession = environment.identityFixture.pair(
       0,
       "synthetic-unconfirmed",
       "synthetic-google-outsider",
-      { sub: x.outsider.context.human.subject, origin_jti: "new-unconfirmed-family" },
-      { sub: x.outsider.context.human.subject, origin_jti: "new-unconfirmed-family" },
+      { sub: environment.outsider.context.human.subject, origin_jti: "new-unconfirmed-family" },
+      { sub: environment.outsider.context.human.subject, origin_jti: "new-unconfirmed-family" },
     );
     assert.equal(
       (await operator(event(listPath, newSession))).statusCode,
@@ -355,11 +430,11 @@ test("explicit central operator reads cross-organization records without members
       "operator surface is read-only",
     );
     const revoked = canonicalAccountsHandler(
-      new VirtuusIdentityFiles(x.root),
-      new VirtuusAccountFiles(x.root),
-      x.products,
-      x.f.keys,
-      () => x.f.now,
+      new VirtuusIdentityFiles(environment.root),
+      new VirtuusAccountFiles(environment.root),
+      environment.products,
+      environment.identityFixture.keys,
+      () => environment.identityFixture.now,
       [],
     );
     assert.equal(
@@ -369,6 +444,6 @@ test("explicit central operator reads cross-organization records without members
     );
     assert.equal((await operator(event(`${listPath}/00000000-0000-4000-8000-000000000000`))).statusCode, 404);
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });

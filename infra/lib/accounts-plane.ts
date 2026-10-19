@@ -61,11 +61,11 @@ export class AccountsPlane extends Construct {
         conditions: { StringLike: { "s3:prefix": prefixes } },
       }),
     );
-    const keys = cdk.Stack.of(this);
+    const stack = cdk.Stack.of(this);
     const registration = {
       product: "prospectus-directory",
       roleArn: bffRole.roleArn,
-      issuer: `https://cognito-idp.${keys.region}.amazonaws.com/${pool.userPoolId}`,
+      issuer: `https://cognito-idp.${stack.region}.amazonaws.com/${pool.userPoolId}`,
       clientIds: [client.userPoolClientId],
       capabilities: ["console:read", "members:read"],
       enabled: true,
@@ -143,7 +143,7 @@ export class AccountsPlane extends Construct {
       environment: {
         PROSPECTUS_CANONICAL_ACCOUNTS: "enabled",
         PROSPECTUS_ACCOUNTS_BUCKET: bucket.bucketName,
-        PROSPECTUS_ACCOUNTS_OWNER: keys.account,
+        PROSPECTUS_ACCOUNTS_OWNER: stack.account,
         PROSPECTUS_PRODUCTS: cdk.Stack.of(this).toJsonString(products),
       },
     });
@@ -252,7 +252,7 @@ export class AccountsPlane extends Construct {
       timeout: cdk.Duration.seconds(29),
       environment: {
         PROSPECTUS_CENTRAL_ENDPOINT: api.url,
-        PROSPECTUS_DIRECTORY_REGISTRATION: keys.toJsonString(registration),
+        PROSPECTUS_DIRECTORY_REGISTRATION: stack.toJsonString(registration),
       },
     });
     this.endpoint = api.url;
