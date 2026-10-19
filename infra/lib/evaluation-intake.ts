@@ -11,6 +11,7 @@ import {
   waitlistRoutePath,
   type IntakeFormConfig,
 } from "../../server/intake-forms";
+import { throttleRoutes } from "./throttle-routes";
 import { PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 export type IntakeContactMode = "synthetic-only" | "real-contacts";
@@ -103,22 +104,25 @@ export class EvaluationIntake extends Construct {
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration("SyntheticSubmission", handler),
     });
-    const waitlistRoutes = forms.flatMap((form, index) =>
-      api.addRoutes({
+    const waitlistRoutes = forms.map((form, index) => ({
+      form,
+      route: api.addRoutes({
         path: waitlistRoutePath(form),
         methods: [apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration(`WaitlistSubmission${index}`, handler),
-      }),
-    );
+      })[0],
+    }));
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 2, throttlingRateLimit: 1 };
-    for (const route of waitlistRoutes) stage.addDependency(route.node.defaultChild as apigw.CfnRoute);
-    if (forms.length)
-      stage.routeSettings = Object.fromEntries(
-        forms.map((form) => [
-          `POST ${waitlistRoutePath(form)}`,
-          { ThrottlingBurstLimit: form.throttle.burst, ThrottlingRateLimit: form.throttle.rate },
-        ]),
+    if (waitlistRoutes.length)
+      throttleRoutes(
+        api.defaultStage!,
+        waitlistRoutes.map(({ form, route }) => ({
+          routeKey: `POST ${waitlistRoutePath(form)}`,
+          route,
+          burstLimit: form.throttle.burst,
+          rateLimit: form.throttle.rate,
+        })),
       );
     this.url = `${api.apiEndpoint}/intake/demo`;
     this.waitlistBaseUrl = forms.length ? `${api.apiEndpoint}/intake/waitlist` : undefined;
