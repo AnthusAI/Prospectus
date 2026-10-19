@@ -49,7 +49,7 @@ Error contract: `400` malformed input or raw authority fields, `401` invalid tok
 
 - The S3 bucket is private, versioned, TLS only and retained on stack deletion. Releases never rewrite or delete canonical paths.
 - The central accounts runtime role may `GetObject` and `PutObject` only under the four `prospectus-central/` scopes listed in [ARCHITECTURE.md](ARCHITECTURE.md#storage), plus bucket-level `s3:ListBucket` limited by a `StringLike s3:prefix` condition to those same four scopes. It has no delete, DynamoDB, Cognito management or deploy rights.
-- The intake runtime may invoke only `prospectus-api` and read and write only the intake identity and receipt prefixes. It has no listing, deletion, catalog, Cognito, Secrets Manager or IAM rights, and request bodies and contact data are not logged.
+- The intake runtime may invoke only `prospectus-api` and read and write only the intake identity and receipt prefixes. It has no listing, deletion, catalog, Cognito, Secrets Manager or IAM rights, and request bodies and contact data are not logged; an unconfirmed submission logs only an error class and transport outcome. Intake claims are created first with an absent-only conditional write and read only when they already exist, so no listing right is needed.
 - The Kanbus runtime role is limited to the CRM namespace prefixes and to catalog rows whose leading key is that namespace.
 - No persistent access keys exist. Runtime credentials come from Lambda roles.
 - Server-only SigV4 code lives in `server/` and `@anthus/prospectus-accounts-client/server`; never import it into a browser bundle, and never forward an arbitrary browser token in place of a verified session.

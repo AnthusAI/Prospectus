@@ -66,6 +66,10 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
       "s3:PutObject",
     ].sort(),
   );
+  assert.ok(
+    !JSON.stringify(statements).includes("s3:ListBucket"),
+    "intake claims are created first, so reading an absent claim never needs bucket listing",
+  );
   const invoke = statements.find((statement: any) => statement.Action === "lambda:InvokeFunction");
   assert.equal(invoke.Resource, "arn:aws:lambda:us-east-1:712236451410:function:prospectus-api");
   const s3 = statements.find(
