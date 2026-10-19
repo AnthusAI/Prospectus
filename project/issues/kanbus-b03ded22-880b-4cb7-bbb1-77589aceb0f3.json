@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-b03ded22-880b-4cb7-bbb1-77589aceb0f3",
+  "title": "Anthus One Google sign-in with its own Cognito pool, registered in Prospectus",
+  "description": "Own pool and Google OAuth client, registered as product anthus-one through reviewed configuration like accounts/papyrus-sites.json. Same canonical person as other sites.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-18T19:47:23.371314Z",
+  "updated_at": "2026-10-18T19:47:23.371538Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": null,
+  "agent_assignment": null
+}

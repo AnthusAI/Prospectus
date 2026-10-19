@@ -12,7 +12,7 @@ import {
   type IdentityFiles,
 } from "./identity-files";
 import { DurableGoogleIdentities } from "./durable-google-identities";
-import { registrations } from "./registration";
+import { registrations, type ValidatedRegistrations } from "./registration";
 import { context, type ProductRegistration, type RestEvent } from "./auth";
 import { googleFixture } from "./testing/google-fixture";
 const roots: string[] = [];
@@ -20,7 +20,7 @@ after(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true });
 });
 const worker = "arn:aws:iam::111111111111:role/SyntheticWorker";
-function paired(base: ProductRegistration[]): ProductRegistration[] {
+function paired(base: readonly ProductRegistration[]): ValidatedRegistrations {
   const products = structuredClone(base),
     p = products[0];
   p.capabilities = ["console:read", "console:write", "members:read", "members:write"];
@@ -218,9 +218,9 @@ test("unlisted, disabled and removed pairs fail closed on the next request", asy
   ];
   for (const [name, change] of variants)
     await t.test(name, async () => {
-      const p = structuredClone(x.products);
+      const p = structuredClone([...x.products]);
       change(p);
-      const handler = x.make(p);
+      const handler = x.make(registrations(p));
       for (const event of [x.event(), x.authorize()]) {
         const result = await x.run(event, handler);
         assert.ok(result.status >= 400 || result.body.person === null);
@@ -237,8 +237,9 @@ test("unlisted, disabled and removed pairs fail closed on the next request", asy
       e.requestContext!.identity = { userArn: arn, accountId };
       assert.equal((await x.run(e)).status, 403);
     });
-  const readonly = structuredClone(x.products);
-  readonly[0].capabilities = ["console:read"];
+  const readonlyProducts = structuredClone([...x.products]);
+  readonlyProducts[0].capabilities = ["console:read"];
+  const readonly = registrations(readonlyProducts);
   assert.equal((await x.run(x.authorize("console:write"), x.make(readonly))).status, 403);
   assert.equal((await x.run(x.authorize(), x.make(readonly))).status, 200);
   assert.equal(
@@ -408,7 +409,7 @@ test("registry rejects ambiguous/transitive/unreviewed or mismatched pairs", asy
   ];
   for (const [name, change] of changes)
     await t.test(name, () => {
-      const p = structuredClone(base);
+      const p = structuredClone([...base]);
       change(p);
       assert.throws(() => registrations(p));
     });

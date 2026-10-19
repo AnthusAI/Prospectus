@@ -27,11 +27,7 @@ export class EvaluationIntake extends Construct {
   ) {
     super(scope, id);
     const formOrigins = intakeFormOriginsForMode(contactMode);
-    const logGroup = new logs.LogGroup(this, "Logs", {
-      logGroupName: "/aws/lambda/prospectus-intake-evaluation",
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
+    const logGroup = logs.LogGroup.fromLogGroupName(this, "Logs", "/aws/lambda/prospectus-intake-evaluation");
     const role = new iam.Role(this, "Role", {
       roleName: "prospectus-intake-evaluation",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -71,7 +67,6 @@ export class EvaluationIntake extends Construct {
       logGroup,
       memorySize: 512,
       timeout: cdk.Duration.seconds(60),
-      reservedConcurrentExecutions: 2,
       environment: {
         PROSPECTUS_INTAKE_ALLOWED_ORIGINS: formOrigins.join(","),
         PROSPECTUS_INTAKE_CONTACT_MODE: contactMode,

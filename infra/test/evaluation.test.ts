@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import { Template } from "aws-cdk-lib/assertions";
 import { EvaluationIntake } from "../lib/evaluation-intake";
+import { ProspectusBackend } from "../lib/prospectus-backend";
 
 const lambdaEnvironment = (template: Template) =>
   (Object.values(template.findResources("AWS::Lambda::Function"))[0] as any).Properties.Environment.Variables;
@@ -25,11 +27,25 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.resourceCountIs("AWS::S3::Bucket", 0);
   template.resourceCountIs("AWS::DynamoDB::Table", 0);
   template.resourceCountIs("AWS::Lambda::Function", 1);
+  template.resourceCountIs("AWS::Logs::LogGroup", 0);
   template.hasResourceProperties("AWS::Lambda::Function", {
     FunctionName: "prospectus-intake-evaluation",
-    ReservedConcurrentExecutions: 2,
     Runtime: "nodejs24.x",
   });
+  const intakeFunction = Object.values(template.findResources("AWS::Lambda::Function"))[0] as any;
+  assert.equal(
+    intakeFunction.Properties.ReservedConcurrentExecutions,
+    undefined,
+    "the account has no spare concurrency to reserve; throttling comes from the API stage",
+  );
+  const reservedConcurrencyByFunction = Object.values(template.findResources("AWS::Lambda::Function")).map(
+    (resource: any) => resource.Properties.ReservedConcurrentExecutions,
+  );
+  assert.deepEqual(
+    reservedConcurrencyByFunction,
+    [undefined],
+    "the target account allows 10 concurrent Lambda executions in total, so no function may reserve any",
+  );
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "POST /intake/demo" });
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
     DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
@@ -93,4 +109,33 @@ test("real-contact intake adds only the anth.us form origins and keeps the same 
       "s3:PutObject",
     ].sort(),
   );
+});
+
+test("the backend passes the deployment's real-contact mode through to the intake API", () => {
+  const stack = new cdk.Stack(new cdk.App(), "BackendRealContactReview", {
+    env: { account: "712236451410", region: "us-east-1" },
+  });
+  const reviewedCrmCode = lambda.Code.fromBucket(
+    s3.Bucket.fromBucketName(stack, "ReviewedArtifact", "review-only-artifact"),
+    "review-only.zip",
+  );
+  const intakeCode = lambda.Code.fromInline("exports.handler=async()=>({statusCode:503})");
+  const backend = new ProspectusBackend(
+    stack,
+    "Prospectus",
+    reviewedCrmCode,
+    intakeCode,
+    undefined,
+    "real-contacts",
+  );
+  const template = Template.fromStack(stack);
+  assert.ok(backend.outputs.EvaluationIntakeUrl);
+  const intakeApi = Object.values(template.findResources("AWS::ApiGatewayV2::Api")).find(
+    (resource: any) => resource.Properties.Name === "prospectus-intake-evaluation",
+  ) as any;
+  assert.deepEqual(intakeApi.Properties.CorsConfiguration.AllowOrigins, [
+    "https://prospectus.anth.us",
+    "https://anth.us",
+    "https://www.anth.us",
+  ]);
 });

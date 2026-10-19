@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-a0c83d64-118c-4586-b0ce-b0035e0900c4",
+  "title": "Customer BFF in Prospectus for the portal",
+  "description": "Customer-scoped routes beside accounts/bff.ts: own accounts only, no operator routes. List and detail first, matching the CRM Accounts tab.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-18T19:47:25.436599Z",
+  "updated_at": "2026-10-18T19:47:25.436903Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": null,
+  "agent_assignment": null
+}

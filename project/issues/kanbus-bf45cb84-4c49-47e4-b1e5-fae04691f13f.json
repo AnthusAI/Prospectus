@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-bf45cb84-4c49-47e4-b1e5-fae04691f13f",
+  "title": "Product registry with launch links",
+  "description": "Display name and launch URL per registered product so the portal shows Cyclotron Lab and Papyrus sites only for products the account has.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-18T19:47:33.789225Z",
+  "updated_at": "2026-10-18T19:47:33.789491Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": null,
+  "agent_assignment": null
+}
