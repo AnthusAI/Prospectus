@@ -10,9 +10,17 @@
   "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "4faa0d0c-d0ec-48ef-9156-cf5133b61160",
+      "author": "home",
+      "text": "PLATFORM DECISIONS (thread \"Platform decisions\", 2026-10-17; source report /mnt/project-files/platform-decisions.md).\n\nPROSPECTUS integration (epic d6b6dce6, PPY-58f107): merge Prospectus PR #14 (site registry), answer #15 (four questions), then register the first Papyrus site. Open: product grants, invitations, the 256-account limit. Conflict: sites still authorize editors via Cognito groups, which the decision rules out.\n\nSource: Claude Code Projects handoff, 2026-10-19.",
+      "created_at": "2026-10-19T16:42:52.547864Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T07:14:27.025925205Z",
-  "updated_at": "2026-10-17T07:14:27.025978667Z",
+  "updated_at": "2026-10-19T16:42:52.547886Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
