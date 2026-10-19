@@ -5,7 +5,7 @@ import type { IssueRecord } from "../src/client";
 import type { ConditionalControlStore } from "./control-store";
 import { IdentityClaims, SharedReceiptConflict } from "./identity";
 import { SYNTHETIC_CONTACT_POLICY, type IntakeContactPolicy } from "./intake-contact-policy";
-import { waitlistLabels, type IntakeFormConfig } from "./intake-forms";
+import { matchesAttributePattern, waitlistLabels, type IntakeFormConfig } from "./intake-forms";
 
 export const NOTICE_VERSION = SYNTHETIC_CONTACT_POLICY.noticeVersion;
 export class IntakeError extends Error {
@@ -212,7 +212,7 @@ export function validateWaitlistSubmission(
     const rule = form.attributes[name];
     if (!rule) throw new IntakeError(400, "Unknown attribute.");
     if (typeof value !== "string" || value.length > 80) throw new IntakeError(400, `Invalid ${name}.`);
-    const matches = rule.values ? rule.values.includes(value) : new RegExp(rule.pattern!).test(value);
+    const matches = rule.values ? rule.values.includes(value) : matchesAttributePattern(rule.pattern!, value);
     if (!matches) throw new IntakeError(400, `Invalid ${name}.`);
     attributes[name] = value;
   }
@@ -519,12 +519,19 @@ export class IntakeService {
             "Contact identity changed and needs private review.",
             "identity_changed",
           );
+        const latestWaitlist =
+          receipt.inquiry.kind === "waitlist"
+            ? [...inquiries]
+                .reverse()
+                .find(
+                  (item: Inquiry) =>
+                    item.kind === "waitlist" && item.source?.site_id === receipt.inquiry.source.site_id,
+                )
+            : undefined;
         if (
-          receipt.inquiry.kind === "waitlist" &&
-          inquiries.some(
-            (item: Inquiry) =>
-              item.kind === "waitlist" && item.source?.site_id === receipt.inquiry.source.site_id,
-          )
+          latestWaitlist &&
+          latestWaitlist.marketing_opt_in === receipt.inquiry.marketing_opt_in &&
+          latestWaitlist.notice_version === receipt.inquiry.notice_version
         ) {
           receipt.complete = true;
           await this.save();

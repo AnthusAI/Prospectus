@@ -40,6 +40,18 @@ Feature: Other Anthus apps send waitlist signups to Prospectus as leads
     And a different app may still add its own waitlist inquiry for that email
     And reusing a receipt for different content returns 409
 
+  Scenario: Record consent changes on repeat signups
+    Given a person already on the Babulus waitlist
+    When they submit again with a different marketing preference or a different notice version
+    Then the new inquiry is appended so the latest choice is recorded and earlier consent is preserved
+    And no next action or follow-up is added
+    And a repeat with the same preference and notice stays deduplicated even if name or attributes differ
+
+  Scenario: Reject unsafe registry entries
+    Given a registry entry with a coerced non-string field, an unanchored attribute pattern, or origins shared with another form or the demo
+    When the registry is loaded
+    Then loading fails before any route or origin is configured
+
   Scenario: Honeypot
     Given the Babulus waitlist form
     When the hidden website field is filled

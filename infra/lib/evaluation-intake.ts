@@ -5,7 +5,12 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
-import { enabledIntakeForms, waitlistRoutePath, type IntakeFormConfig } from "../../server/intake-forms";
+import {
+  assertDistinctFormOrigins,
+  enabledIntakeForms,
+  waitlistRoutePath,
+  type IntakeFormConfig,
+} from "../../server/intake-forms";
 import { PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 export type IntakeContactMode = "synthetic-only" | "real-contacts";
@@ -30,6 +35,7 @@ export class EvaluationIntake extends Construct {
   ) {
     super(scope, id);
     const forms = enabledIntakeForms(registryForms);
+    assertDistinctFormOrigins(registryForms);
     if (forms.length && contactMode !== "real-contacts")
       throw new Error("Registry waitlist forms collect real contacts and need the real-contacts runtime.");
     const formOrigins = intakeFormOriginsForMode(contactMode);

@@ -4,8 +4,8 @@ import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Template } from "aws-cdk-lib/assertions";
-import { EvaluationIntake } from "../lib/evaluation-intake";
-import { parseIntakeForm, parseIntakeFormRegistry } from "../../server/intake-forms";
+import { EvaluationIntake, intakeFormOriginsForMode } from "../lib/evaluation-intake";
+import { RESERVED_DEMO_ORIGINS, parseIntakeForm, parseIntakeFormRegistry } from "../../server/intake-forms";
 import { ProspectusBackend } from "../lib/prospectus-backend";
 
 const lambdaEnvironment = (template: Template) =>
@@ -275,5 +275,39 @@ test("the shipped registry file leaves the synthesized intake identical to havin
       shipped,
     ).waitlistBaseUrl,
     undefined,
+  );
+});
+
+test("a disabled registry form leaves routes, environment, stage settings and CORS exactly as before", () => {
+  const { template } = synthesize([{ ...babulusWaitlist, enabled: false }], "real-contacts");
+  assert.deepEqual(routeKeys(template), ["POST /intake/demo"]);
+  assert.equal("PROSPECTUS_INTAKE_FORMS" in lambdaEnvironment(template), false);
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  assert.equal(stage.Properties.RouteSettings, undefined);
+  assert.deepEqual(stage.Properties.DefaultRouteSettings, {
+    ThrottlingBurstLimit: 2,
+    ThrottlingRateLimit: 1,
+  });
+  assert.deepEqual(corsOrigins(template), [
+    "https://prospectus.anth.us",
+    "https://anth.us",
+    "https://www.anth.us",
+  ]);
+  assert.equal(
+    lambdaEnvironment(template).PROSPECTUS_INTAKE_ALLOWED_ORIGINS,
+    "https://prospectus.anth.us,https://anth.us,https://www.anth.us",
+  );
+});
+
+test("the registry's reserved demo origins match the real-contact demo origin list", () => {
+  assert.deepEqual([...RESERVED_DEMO_ORIGINS].sort(), intakeFormOriginsForMode("real-contacts").sort());
+});
+
+test("the synthesized intake refuses forms whose origins overlap another form or the demo origins", () => {
+  const overlapping = { ...babulusWaitlist, formId: "other-waitlist-v1", siteId: "other" };
+  assert.throws(() => synthesize([babulusWaitlist, overlapping], "real-contacts"), /more than one form/);
+  assert.throws(
+    () => synthesize([{ ...babulusWaitlist, origins: ["https://anth.us"] }], "real-contacts"),
+    /demo origin/,
   );
 });

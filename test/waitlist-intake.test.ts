@@ -563,3 +563,152 @@ test("demo intake still creates exactly the fields it created before the registr
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("registry fields are never coerced from arrays, numbers or objects into strings", () => {
+  for (const field of ["formId", "siteId", "noticeVersion", "owner", "defaultPagePath", "approval"])
+    assert.throws(
+      () => parseIntakeForm({ ...babulusEntry, [field]: [(babulusEntry as Record<string, unknown>)[field]] }),
+      /Intake form/,
+      `${field} as an array`,
+    );
+  assert.throws(() => parseIntakeForm({ ...babulusEntry, formId: 12345 }), /Intake form/);
+  assert.throws(
+    () => parseIntakeForm({ ...babulusEntry, approval: { text: "x".repeat(30) } }),
+    /Intake form/,
+  );
+});
+
+test("attribute patterns must be fully anchored so no arbitrary text can be stored as an attribute", () => {
+  const withPattern = (pattern: string) =>
+    parseIntakeForm({ ...babulusEntry, attributes: { source: { pattern } } });
+  for (const pattern of ["[a-z]+", "^[a-z]+", "[a-z]+$", "^[a-z]+\\$", ".*"])
+    assert.throws(() => withPattern(pattern), /anchored/, pattern);
+  assert.doesNotThrow(() => withPattern("^[a-z]+$"));
+  const alternation = withPattern("^a|b$");
+  assert.throws(
+    () =>
+      validateWaitlistSubmission(
+        signup({ attributes: { source: "personal text b" } }),
+        alternation,
+        waitlistContactPolicy(alternation),
+      ),
+    IntakeError,
+  );
+  assert.equal(
+    validateWaitlistSubmission(
+      signup({ attributes: { source: "a" } }),
+      alternation,
+      waitlistContactPolicy(alternation),
+    ).attributes.source,
+    "a",
+  );
+});
+
+test("a form may not reuse another form's origins or the anth.us demo origins", () => {
+  const second = {
+    ...babulusEntry,
+    siteId: "papyrus",
+    formId: "papyrus-waitlist-v1",
+    noticeVersion: "papyrus-waitlist-v1",
+  };
+  assert.throws(
+    () => parseIntakeFormRegistry({ forms: [babulusEntry, second] }),
+    /origin .* more than one form/,
+  );
+  for (const reserved of ["https://anth.us", "https://www.anth.us", "https://prospectus.anth.us"])
+    assert.throws(
+      () => parseIntakeFormRegistry({ forms: [{ ...babulusEntry, origins: [reserved] }] }),
+      /demo origin/,
+      reserved,
+    );
+  assert.doesNotThrow(() =>
+    parseIntakeFormRegistry({
+      forms: [babulusEntry, { ...second, origins: ["https://papyrus.example.org"] }],
+    }),
+  );
+});
+
+const consentSignup = (marketing_opt_in: boolean, changes: Record<string, unknown> = {}) =>
+  signup({ marketing_opt_in, ...changes });
+const waitlistInquiries = (crm: ReturnType<typeof fakeCrm>) =>
+  ([...crm.records.values()][0].issue.custom!.inquiries as any[]).filter(
+    (inquiry) => inquiry.kind === "waitlist",
+  );
+
+test("opting in after an earlier opt-out appends the new consent as a second inquiry with no follow-up", async () => {
+  const shared = await mkdtemp(join(tmpdir(), "prospectus-waitlist-shared-"));
+  const crm = fakeCrm();
+  const { service, close } = await openWaitlist(babulus, crm.request, shared);
+  try {
+    await service.submit(consentSignup(false));
+    await service.submit(consentSignup(true));
+    assert.deepEqual(
+      waitlistInquiries(crm).map((inquiry) => inquiry.marketing_opt_in),
+      [false, true],
+    );
+    const { issue } = [...crm.records.values()][0];
+    assert.equal("next_action" in issue.custom!, false);
+    assert.equal("next_follow_up_at" in issue.custom!, false);
+  } finally {
+    await close();
+    await rm(shared, { recursive: true, force: true });
+  }
+});
+
+test("opting out after an earlier opt-in appends the opt-out so the latest choice is recorded", async () => {
+  const shared = await mkdtemp(join(tmpdir(), "prospectus-waitlist-shared-"));
+  const crm = fakeCrm();
+  const { service, close } = await openWaitlist(babulus, crm.request, shared);
+  try {
+    await service.submit(consentSignup(true));
+    await service.submit(consentSignup(false));
+    assert.deepEqual(
+      waitlistInquiries(crm).map((inquiry) => inquiry.marketing_opt_in),
+      [true, false],
+    );
+  } finally {
+    await close();
+    await rm(shared, { recursive: true, force: true });
+  }
+});
+
+test("a repeat with identical consent stays deduplicated even when name or attributes differ, and compares against the latest inquiry", async () => {
+  const shared = await mkdtemp(join(tmpdir(), "prospectus-waitlist-shared-"));
+  const crm = fakeCrm();
+  const { service, close } = await openWaitlist(babulus, crm.request, shared);
+  try {
+    await service.submit(consentSignup(false));
+    await service.submit(consentSignup(false, { name: "Other Name", attributes: { persona: "agency" } }));
+    assert.equal(waitlistInquiries(crm).length, 1);
+    await service.submit(consentSignup(true));
+    await service.submit(consentSignup(true, { name: "Another" }));
+    await service.submit(consentSignup(false));
+    assert.deepEqual(
+      waitlistInquiries(crm).map((inquiry) => inquiry.marketing_opt_in),
+      [false, true, false],
+    );
+  } finally {
+    await close();
+    await rm(shared, { recursive: true, force: true });
+  }
+});
+
+test("a changed notice version for the same app appends a new inquiry even when the opt-in is unchanged", async () => {
+  const shared = await mkdtemp(join(tmpdir(), "prospectus-waitlist-shared-"));
+  const crm = fakeCrm();
+  const { service, close } = await openWaitlist(babulus, crm.request, shared);
+  const revised = { ...babulus, noticeVersion: "babulus-waitlist-v2" };
+  const revisedOpen = await openWaitlist(revised, crm.request, shared);
+  try {
+    await service.submit(consentSignup(true));
+    await revisedOpen.service.submit(consentSignup(true, { notice_version: "babulus-waitlist-v2" }));
+    assert.deepEqual(
+      waitlistInquiries(crm).map((inquiry) => inquiry.notice_version),
+      ["babulus-waitlist-v1", "babulus-waitlist-v2"],
+    );
+  } finally {
+    await close();
+    await revisedOpen.close();
+    await rm(shared, { recursive: true, force: true });
+  }
+});

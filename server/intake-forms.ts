@@ -25,6 +25,7 @@ export interface IntakeFormConfig {
 }
 
 export const DEMO_ROUTE_PATH = "/intake/demo";
+export const RESERVED_DEMO_ORIGINS = ["https://prospectus.anth.us", "https://anth.us", "https://www.anth.us"];
 export const DEFAULT_FORM_THROTTLE: IntakeFormThrottle = { rate: 1, burst: 2 };
 
 const identifier = /^[a-z0-9][a-z0-9-]{1,63}$/;
@@ -49,6 +50,23 @@ export function waitlistContactPolicy(form: IntakeFormConfig): IntakeContactPoli
   };
 }
 
+function anchoredAttributePattern(pattern: string): string | null {
+  const trailingBackslashes = pattern.slice(0, -1).match(/\\*$/)![0].length;
+  if (
+    !pattern.startsWith("^") ||
+    !pattern.endsWith("$") ||
+    pattern.length < 2 ||
+    trailingBackslashes % 2 === 1
+  )
+    return null;
+  return `^(?:${pattern.slice(1, -1)})$`;
+}
+
+export function matchesAttributePattern(pattern: string, value: string): boolean {
+  const anchored = anchoredAttributePattern(pattern);
+  return anchored !== null && new RegExp(anchored).test(value);
+}
+
 function invalid(formId: string, reason: string): never {
   throw new Error(`Intake form ${formId || "(unnamed)"} is invalid: ${reason}.`);
 }
@@ -56,7 +74,7 @@ function invalid(formId: string, reason: string): never {
 export function parseIntakeForm(raw: unknown): IntakeFormConfig {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) invalid("", "an entry must be an object");
   const entry = raw as Record<string, unknown>;
-  const formId = String(entry.formId ?? "");
+  const formId = typeof entry.formId === "string" ? entry.formId : "";
   const allowedKeys = [
     "enabled",
     "approval",
@@ -71,6 +89,9 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     "throttle",
   ];
   if (Object.keys(entry).some((key) => !allowedKeys.includes(key))) invalid(formId, "unknown setting");
+  if (typeof entry.formId !== "string") invalid(formId, "formId must be a string");
+  if (entry.approval !== undefined && typeof entry.approval !== "string")
+    invalid(formId, "approval must be a string");
   if (typeof entry.enabled !== "boolean") invalid(formId, "enabled must be true or false");
   if (entry.kind !== "waitlist") invalid(formId, "kind must be waitlist");
   if (!identifier.test(formId)) invalid(formId, "formId must be a lowercase slug");
@@ -88,6 +109,8 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     invalid(formId, "origins must be https origins without paths");
   const origins = entry.origins as string[];
   if (new Set(origins).size !== origins.length) invalid(formId, "origins must be unique");
+  const reserved = origins.find((item) => RESERVED_DEMO_ORIGINS.includes(item));
+  if (reserved) invalid(formId, `${reserved} is a demo origin`);
   const defaultPagePath = entry.defaultPagePath ?? "/";
   if (typeof defaultPagePath !== "string" || !/^\/[a-z0-9/_-]*$/i.test(defaultPagePath))
     invalid(formId, "defaultPagePath must be a path");
@@ -107,8 +130,10 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     )
       invalid(formId, `attribute ${name} has an invalid value`);
     if (hasPattern) {
+      const anchored = anchoredAttributePattern(candidate.pattern!);
+      if (anchored === null) invalid(formId, `attribute ${name} pattern must be anchored with ^ and $`);
       try {
-        new RegExp(candidate.pattern!);
+        new RegExp(anchored!);
       } catch {
         invalid(formId, `attribute ${name} has an invalid pattern`);
       }
@@ -142,6 +167,18 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
   };
 }
 
+export function assertDistinctFormOrigins(forms: readonly IntakeFormConfig[]): void {
+  const owners = new Map<string, string>();
+  for (const form of forms)
+    for (const item of form.origins) {
+      if (RESERVED_DEMO_ORIGINS.includes(item)) invalid(form.formId, `${item} is a demo origin`);
+      const other = owners.get(item);
+      if (other && other !== form.formId)
+        invalid(form.formId, `origin ${item} is used by more than one form (${other})`);
+      owners.set(item, form.formId);
+    }
+}
+
 export function parseIntakeFormRegistry(raw: unknown): IntakeFormConfig[] {
   const forms = (raw as { forms?: unknown })?.forms;
   if (!Array.isArray(forms)) throw new Error("Intake form registry needs a forms list.");
@@ -151,6 +188,7 @@ export function parseIntakeFormRegistry(raw: unknown): IntakeFormConfig[] {
     if (seen.has(form.formId)) throw new Error(`Intake form ${form.formId} is declared twice.`);
     seen.add(form.formId);
   }
+  assertDistinctFormOrigins(parsed);
   return parsed;
 }
 
