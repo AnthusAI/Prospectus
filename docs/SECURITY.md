@@ -4,12 +4,12 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 
 ## Principals and authentication
 
-| Surface | Who can call | How it is checked |
-| --- | --- | --- |
-| CRM Kanbus API (`/api/{proxy+}`) | Invited staff | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group |
-| Accounts BFF (`/api/saas/*`) | Any signed-in person | Same JWT authorizer; the BFF verifies the token again and signs central requests itself |
-| Central accounts service | Registered product roles only | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal |
-| Inquiry intake (`POST /intake/demo`) | The public, from allowed origins | Origin and notice checks, throttling and a fixed intake actor; no read access |
+| Surface                              | Who can call                     | How it is checked                                                                                                           |
+| ------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| CRM Kanbus API (`/api/{proxy+}`)     | Invited staff                    | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group                          |
+| Accounts BFF (`/api/saas/*`)         | Any signed-in person             | Same JWT authorizer; the BFF verifies the token again and signs central requests itself                                     |
+| Central accounts service             | Registered product roles only    | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal |
+| Inquiry intake (`POST /intake/demo`) | The public, from allowed origins | Origin and notice checks, throttling and a fixed intake actor; no read access                                               |
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 
@@ -43,7 +43,15 @@ Central verification of Google-backed sign-in requires, for both the access and 
 
 A product registration with no `googleFederation` policy is denied the identity routes. The declaration is an operational approval input, not an inspection of AWS settings, so a reviewed policy ID must be re-reviewed when any of these change: the Google provider and client, Google-only client login, disabled alternative login paths, absence of linked profiles, administrator linking and pre-token customization, callback and logout URLs, and nonce, PKCE and state handling.
 
-The pre-sign-in route `POST /api/saas/identity/login-challenge` is the only BFF route without a JWT authorizer. It requires the exact configured `Origin`, accepts only a 64-character lowercase hexadecimal `loginStateDigest`, reads no account data and is throttled by API Gateway (1 request per second, burst 2, for all callers together, so it can be exhausted; sign-in then falls back to a plain login). Each call writes a pending challenge file to the identity prefix of the canonical bucket. Those files are not expired automatically.
+The pre-sign-in route `POST /api/saas/identity/login-challenge` is the only BFF route without a JWT authorizer. It requires the exact configured `Origin`, accepts only a 64-character lowercase hexadecimal `loginStateDigest`, reads no account data and is throttled by API Gateway (1 request per second, burst 2, for all callers together, so it can be exhausted; sign-in then falls back to a plain login). It stores nothing, so an attacker can create no durable data by calling it.
+
+Login challenges are stateless signed tokens (`v1.<payload>.<mac>`). Central signs them with one AWS KMS HMAC key (`HMAC_256`, `GENERATE_VERIFY_MAC`, alias `alias/prospectus-central-login-challenge-mac`, retained on stack deletion, 30-day deletion window). Only the central accounts runtime role may use it, and only for `kms:GenerateMac` and `kms:VerifyMac` on that key ARN with the condition `kms:MacAlgorithm = HMAC_SHA_256`; the key policy is the account-root default so no other principal is named. There is no secret in code, environment or Secrets Manager; the environment holds only the key ARN. The payload is a fixed-position JSON array (domain tag, challenge ID, nonce, `issuedAt`, `expiresAt`, login state digest, product, principal, issuer, client ID, policy revision), so key order and whitespace cannot vary, and the MAC covers the exact payload bytes. Verification runs `VerifyMac` before the payload is interpreted and only after the caller and both Cognito tokens have verified, so unauthenticated input never reaches KMS. Expiry (300 seconds), nonce equality with the ID token, binding and login state are then checked exactly as for a stored challenge.
+
+- Token theft: a token is useless without a fresh ID token carrying its nonce, Cognito login time within 300 seconds, a matching binding and, for the pre-sign-in path, the raw login state whose digest it carries. The browser keeps it in `sessionStorage` next to the nonce and state it already keeps.
+- Replay: the first successful resolve creates the login receipt at `logins/<challengeId>.json` (a conditional create with the existing operation identity). The same evidence returns the same Person; changed evidence returns `409 challenge_replay`. After expiry the existing freshness rules reject it.
+- Rotation: the `v1` prefix selects the key. Rotating means adding a second key and a `v2` prefix, verifying both during the 300-second overlap and then retiring `v1`. HMAC keys do not rotate automatically.
+- Outage: a KMS failure at issue returns `503` and the browser falls back to a plain sign-in; at resolve it returns `503` and the retry rule applies ("retry identical evidence before challenge expiry"). Invalid MACs and malformed tokens return `401 challenge_invalid` and write nothing.
+- Rollout: stored challenges issued before the change still resolve by `challengeId`; with no key ARN configured the service issues stored challenges as before.
 
 Error contract: `400` malformed input or raw authority fields, `401` invalid token, session or nonce or an expired challenge, `403` wrong caller, product, client or policy, `409` consumed challenge with changed proof or an identity mapping conflict, `429` capacity, `503` repository unavailable.
 

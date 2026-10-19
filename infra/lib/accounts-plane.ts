@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as gateway from "aws-cdk-lib/aws-apigateway";
 import type * as cognito from "aws-cdk-lib/aws-cognito";
@@ -110,6 +111,22 @@ export class AccountsPlane extends Construct {
         },
       });
     }
+    const challengeMacKey = new kms.Key(this, "ChallengeMacKey", {
+      alias: "alias/prospectus-central-login-challenge-mac",
+      description:
+        "HMAC_256 key that signs stateless pre-sign-in login challenges for the central Accounts service.",
+      keySpec: kms.KeySpec.HMAC_256,
+      keyUsage: kms.KeyUsage.GENERATE_VERIFY_MAC,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pendingWindow: cdk.Duration.days(30),
+    });
+    runtime.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["kms:GenerateMac", "kms:VerifyMac"],
+        resources: [challengeMacKey.keyArn],
+        conditions: { StringEquals: { "kms:MacAlgorithm": "HMAC_SHA_256" } },
+      }),
+    );
     const centralLogs = new logs.LogGroup(this, "Logs", {
       logGroupName: "/aws/lambda/prospectus-central-accounts",
       retention: logs.RetentionDays.ONE_MONTH,
@@ -144,6 +161,7 @@ export class AccountsPlane extends Construct {
         PROSPECTUS_CANONICAL_ACCOUNTS: "enabled",
         PROSPECTUS_ACCOUNTS_BUCKET: bucket.bucketName,
         PROSPECTUS_ACCOUNTS_OWNER: stack.account,
+        PROSPECTUS_CHALLENGE_MAC_KEY_ARN: challengeMacKey.keyArn,
         PROSPECTUS_PRODUCTS: cdk.Stack.of(this).toJsonString(products),
       },
     });

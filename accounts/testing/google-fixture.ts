@@ -3,11 +3,12 @@ import { googleIdentityHandler } from "../google-identity";
 import { MemoryGoogleIdentities } from "./memory-google-identities";
 import { registrations } from "../registration";
 import type { RestEvent } from "../auth";
+import type { ChallengeMacSigner } from "../challenge-token";
 
 const accessKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const idKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 /** Synthetic cryptographic fixture, never production credentials or IAM proof. */
-export function googleFixture() {
+export function googleFixture(challengeSigner?: ChallengeMacSigner) {
   let now = 1900000000;
   const products = registrations(
     ["cyclotron", "papyrus"].map((product, index) => ({
@@ -33,7 +34,7 @@ export function googleFixture() {
       throw new Error("Unknown synthetic key");
     return (kid === "synthetic-id" ? idKeys : accessKeys).publicKey.export({ format: "jwk" });
   };
-  const handler = googleIdentityHandler(repository, products, keys, () => now);
+  const handler = googleIdentityHandler(repository, products, keys, () => now, challengeSigner);
   function token(claims: Record<string, unknown>, purpose: "access" | "id") {
     const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: `synthetic-${purpose}` })).toString(
       "base64url",
@@ -119,14 +120,24 @@ export function googleFixture() {
     const response = await handler(event(index, path, body, proof, method));
     return { status: response.statusCode, body: JSON.parse(response.body) };
   }
-  const challenge = async (index = 0) =>
-    (await request(index, "/v1/identities/google/challenge")).body as {
+  const challenge = async (index = 0, body: unknown = {}) =>
+    (await request(index, "/v1/identities/google/challenge", body)).body as {
       challengeId: string;
       nonce: string;
       expiresAt: number;
+      challengeToken?: string;
     };
-  const resolve = (index: number, challengeId: string, proof: { access: string; id: string }) =>
-    request(index, "/v1/identities/google/resolve", { challengeId }, proof);
+  const resolve = (
+    index: number,
+    challenge: string | { challengeToken: string },
+    proof: { access: string; id: string },
+  ) =>
+    request(
+      index,
+      "/v1/identities/google/resolve",
+      typeof challenge === "string" ? { challengeId: challenge } : challenge,
+      proof,
+    );
   return {
     products,
     repository,

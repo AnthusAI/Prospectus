@@ -15,11 +15,21 @@ export class DirectoryError extends Error {
     super(message);
   }
 }
+export interface AccountsChallenge {
+  challengeId: string;
+  nonce: string;
+  challengeToken?: string;
+}
 export interface AccountsBrowser extends DirectoryReader, OperatorReader {
   configured: boolean;
-  challenge(): Promise<{ challengeId: string; nonce: string }>;
-  loginChallenge(loginStateDigest: string): Promise<{ challengeId: string; nonce: string }>;
-  resolve(challengeId: string, idToken: string, accessToken: string, loginState?: string): Promise<void>;
+  challenge(): Promise<AccountsChallenge>;
+  loginChallenge(loginStateDigest: string): Promise<AccountsChallenge>;
+  resolve(
+    challenge: AccountsChallenge,
+    idToken: string,
+    accessToken: string,
+    loginState?: string,
+  ): Promise<void>;
 }
 export function accountsBrowser(
   base: string | undefined,
@@ -125,13 +135,23 @@ export function accountsBrowser(
       const value = await response.json().catch(() => null);
       if (!response.ok || typeof value?.challengeId !== "string" || typeof value?.nonce !== "string")
         throw new DirectoryError(response.status || 503, "A sign-in challenge could not be issued.");
-      return { challengeId: value.challengeId, nonce: value.nonce };
+      return {
+        challengeId: value.challengeId,
+        nonce: value.nonce,
+        ...(typeof value.challengeToken === "string" ? { challengeToken: value.challengeToken } : {}),
+      };
     },
-    resolve: async (challengeId, idToken, access, loginState) => {
+    resolve: async (challenge, idToken, access, loginState) => {
       await request(
         "/identity/resolve",
         "POST",
-        { challengeId, idToken, ...(loginState ? { loginState } : {}) },
+        {
+          ...(challenge.challengeToken
+            ? { challengeToken: challenge.challengeToken }
+            : { challengeId: challenge.challengeId }),
+          idToken,
+          ...(loginState ? { loginState } : {}),
+        },
         access,
       );
     },

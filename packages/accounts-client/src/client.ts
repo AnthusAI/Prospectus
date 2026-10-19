@@ -73,16 +73,21 @@ export class AccountsClient {
       account: DirectoryDetail;
     }>;
   }
-  challenge(loginStateDigest?: string): Promise<{ challengeId: string; nonce: string; expiresAt: number }> {
+  challenge(
+    loginStateDigest?: string,
+  ): Promise<{ challengeId: string; nonce: string; expiresAt: number; challengeToken?: string }> {
     return this.transport(
       "/v1/identities/google/challenge",
       "POST",
       loginStateDigest ? { loginStateDigest } : {},
     ) as any;
   }
-  resolveGoogle(challengeId: string, loginState?: string): Promise<{ person: Person }> {
+  resolveGoogle(
+    challenge: string | { challengeToken: string },
+    loginState?: string,
+  ): Promise<{ person: Person }> {
     return this.transport("/v1/identities/google/resolve", "POST", {
-      challengeId,
+      ...(typeof challenge === "string" ? { challengeId: challenge } : challenge),
       ...(loginState ? { loginState } : {}),
     }) as Promise<{
       person: Person;

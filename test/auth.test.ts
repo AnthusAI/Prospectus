@@ -353,3 +353,30 @@ test("sign-in falls back to a plain login when the challenge request hangs past 
   assert.equal(url.searchParams.has("prompt"), false);
   assert.equal(hasAttemptedAccountsConfirmation(), false);
 });
+
+test("a signed challenge token is kept for the redirect and sent instead of the challenge ID", async (context) => {
+  const environment = browser(context);
+  context.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      challengeId: "11111111-1111-4111-8111-111111111111",
+      nonce: "central-nonce",
+      challengeToken: "v1.payload.mac",
+    }),
+  );
+  await signIn(bffConfiguration);
+  const login = JSON.parse(environment.values.get("prospectus.login")!);
+  assert.equal(login.accounts.challengeToken, "v1.payload.mac");
+  const completed = browser(context, `?code=fresh-code&state=${login.state}`);
+  completed.values.set("prospectus.login", JSON.stringify(login));
+  let resolved: any;
+  context.mock.method(globalThis, "fetch", async (input: any, init: any) => {
+    if (String(input).includes("oauth2/token"))
+      return Response.json({ access_token: "access", id_token: "id", expires_in: 3600 });
+    resolved = JSON.parse(init.body);
+    return new Response("{}");
+  });
+  await finishSignIn(bffConfiguration);
+  assert.equal(resolved.challengeToken, "v1.payload.mac");
+  assert.equal(resolved.challengeId, undefined);
+  assert.equal(resolved.loginState, login.state);
+});

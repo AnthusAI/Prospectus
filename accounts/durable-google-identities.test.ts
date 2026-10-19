@@ -803,3 +803,67 @@ test("durable canonical files keep the login state digest and reject a different
   assert.equal(accepted.statusCode, 200);
   assert.equal((await resolve(loginState)).body, accepted.body);
 });
+
+test("a signed challenge writes nothing until resolved, then creates the login receipt once at the existing path", async () => {
+  const environment = await fixture();
+  const repository = environment.repository();
+  const path = `logins/${environment.challenge.challengeId}.json`;
+  const signed = { ...environment.proof, challenge: environment.challenge };
+  assert.deepEqual(await environment.files.list("logins/"), []);
+  await assert.rejects(
+    repository.associate({ ...signed, nonce: "another-nonce" }),
+    (error: any) => error.status === 401,
+  );
+  await assert.rejects(
+    repository.associate({ ...signed, now: environment.challenge.expiresAt }),
+    (error: any) => error.status === 401,
+  );
+  assert.deepEqual(await environment.files.list("logins/"), [], "rejected evidence leaves no file");
+  const person = await repository.associate(signed);
+  const record = await environment.files.get(path);
+  assert.deepEqual(await environment.files.list("logins/"), [path]);
+  assert.equal(record!.value.version, 1);
+  assert.equal(record!.value.kind, "login");
+  assert.equal(record!.value.state, "committed");
+  assert.deepEqual(record!.value.challenge, environment.challenge);
+  assert.deepEqual(await environment.repository().associate(signed), person);
+  await assert.rejects(
+    environment.repository().associate({ ...signed, fingerprint: hash("another evidence") }),
+    (error: any) => error.status === 409 && error.code === "challenge_replay",
+  );
+  assert.deepEqual(await environment.files.list("logins/"), [path]);
+});
+
+test("a signed challenge cannot take over a stored login record whose challenge differs", async () => {
+  const environment = await fixture();
+  await environment.repository().issue(environment.challenge);
+  await assert.rejects(
+    environment.repository().associate({
+      ...environment.proof,
+      challenge: { ...environment.challenge, nonce: "forged" },
+    }),
+    (error: any) => error.status === 401,
+  );
+  const person = await environment
+    .repository()
+    .associate({ ...environment.proof, challenge: environment.challenge });
+  assert.ok(person.id);
+});
+
+test("concurrent first resolves of one signed challenge converge on one login record", async () => {
+  const environment = await fixture();
+  const signed = { ...environment.proof, challenge: environment.challenge };
+  const results = await Promise.allSettled([
+    retry(() => environment.repository().associate(signed)),
+    retry(() => environment.repository().associate(signed)),
+    retry(() => environment.repository().associate({ ...signed, fingerprint: hash("rival evidence") })),
+  ]);
+  const people = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result: any) => result.value.id);
+  assert.ok(people.length >= 1);
+  assert.equal(new Set(people).size, 1);
+  for (const result of results.filter((result) => result.status === "rejected"))
+    assert.equal((result as any).reason.status, 409);
+  assert.equal((await environment.files.list("logins/")).length, 1);
+});

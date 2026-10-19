@@ -10,6 +10,7 @@ import reviewedDeployment from "./deployment.json";
 import { membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
+import { KmsChallengeMacSigner } from "./challenge-token";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
   throw new Error("Canonical accounts runtime not enabled.");
 const bucket = process.env.PROSPECTUS_ACCOUNTS_BUCKET ?? "",
@@ -31,6 +32,9 @@ const products = registrations([
   membershipLookup = membershipLookupMode(
     (reviewedDeployment as { membershipLookup?: unknown }).membershipLookup,
   );
+const challengeSigner = process.env.PROSPECTUS_CHALLENGE_MAC_KEY_ARN
+  ? new KmsChallengeMacSigner(process.env.PROSPECTUS_CHALLENGE_MAC_KEY_ARN)
+  : undefined;
 let activeRequestId = "unavailable";
 const timingForProject = (project: "identities" | "accounts") => (value: NativeTiming) =>
   console.info(JSON.stringify({ event: "accounts.native", requestId: activeRequestId, project, ...value }));
@@ -74,6 +78,7 @@ export const handler = async (
       () => Date.now() / 1000,
       reviewedGrants,
       membershipLookup,
+      challengeSigner,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

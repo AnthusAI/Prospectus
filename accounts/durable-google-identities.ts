@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { IdentityFileError, type IdentityFiles, type IdentityObject } from "./identity-files";
 import {
@@ -295,9 +296,13 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
   async associate(proof: GoogleAssociation): Promise<Person> {
     const path = `logins/${proof.challengeId}.json`;
     let stored = await this.files.get<LoginRecord>(path);
-    if (!stored) fail(401, "challenge_invalid", "Challenge does not exist.");
-    this.loginValid(stored.value, proof.challengeId);
-    const prior = stored.value;
+    if (!stored && !proof.challenge) fail(401, "challenge_invalid", "Challenge does not exist.");
+    if (stored) this.loginValid(stored.value, proof.challengeId);
+    const prior: LoginRecord = stored
+      ? stored.value
+      : { version: 1, kind: "login", state: "pending", challenge: structuredClone(proof.challenge!) };
+    if (stored && proof.challenge && !isDeepStrictEqual(prior.challenge, proof.challenge))
+      fail(401, "challenge_invalid", "Challenge expired or does not match evidence.");
     requireRules(
       { challenge: prior.challenge, proof },
       challengeFreshnessRules,
@@ -319,7 +324,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
       };
       try {
         stored = await this.step("prepare", () =>
-          this.write(path, `identity:${proof.challengeId}:prepare`, prepared, stored!.revision, {
+          this.write(path, `identity:${proof.challengeId}:prepare`, prepared, stored?.revision ?? null, {
             fingerprint: proof.fingerprint,
           }),
         );
@@ -329,7 +334,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
         throw error;
       }
     }
-    return this.finish(stored);
+    return this.finish(stored!);
   }
   /** Trusted internal repair only. Never accepts JWTs or authorizes an API caller.
    * Prepared decisions survive expiry; the API still requires fresh valid proofs.

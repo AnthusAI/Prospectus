@@ -19,10 +19,26 @@ const loginChallengeRequestRules: ValidationRule<Record<string, any>>[] = [
 
 const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
   rule(
-    (body) => Object.keys(body).every((key) => ["challengeId", "idToken", "loginState"].includes(key)),
+    (body) =>
+      Object.keys(body).every((key) =>
+        ["challengeId", "challengeToken", "idToken", "loginState"].includes(key),
+      ),
     "Only a challenge ID, ID token and login state are accepted.",
   ),
-  rule((body) => UUID_PATTERN.test(body.challengeId), "The challenge ID must be a UUID."),
+  rule(
+    (body) => (body.challengeId === undefined) !== (body.challengeToken === undefined),
+    "Exactly one of a challenge ID or a challenge token is required.",
+  ),
+  rule(
+    (body) => body.challengeId === undefined || UUID_PATTERN.test(body.challengeId),
+    "The challenge ID must be a UUID.",
+  ),
+  rule(
+    (body) =>
+      body.challengeToken === undefined ||
+      (typeof body.challengeToken === "string" && body.challengeToken.length <= 2048),
+    "The challenge token must be a string of at most 2048 characters.",
+  ),
   rule(
     (body) => body.loginState === undefined || typeof body.loginState === "string",
     "The login state must be a string.",
@@ -112,7 +128,12 @@ export function accountsBffHandler(options: AccountsBffOptions) {
           fail(401, "invalid_human", "Identity evidence does not match session.");
         return jsonResponse(
           200,
-          await options.client(access!, body.idToken).resolveGoogle(body.challengeId, body.loginState),
+          await options
+            .client(access!, body.idToken)
+            .resolveGoogle(
+              body.challengeToken === undefined ? body.challengeId : { challengeToken: body.challengeToken },
+              body.loginState,
+            ),
         );
       }
       fail(404, "route", "Account route not found.");

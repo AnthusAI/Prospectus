@@ -90,3 +90,37 @@ Feature: Verified Google identities across independently branded pools
     Given a bound challenge and matching login state
     When the login evidence authentication time is older than 300 seconds
     Then resolution fails with a session binding error
+
+  Scenario: A login challenge is a signed token and nothing is stored until it is resolved
+    Given the central service holds a KMS HMAC key it can only use to generate and verify MACs
+    When a product requests a login challenge before or after sign-in
+    Then the response carries an opaque versioned challenge token with the ID, nonce, binding, login state digest and a 300-second lifetime
+    And no file is written for the challenge
+    And a challenge that is never resolved leaves no trace
+
+  Scenario: A signed challenge resolves under the same checks as a stored one
+    Given a signed challenge token and fresh matching login evidence
+    When the product resolves the token
+    Then the MAC, expiry, nonce, binding and login state are verified before any login receipt is written
+    And the first resolve writes the login receipt at the existing logins path as a conditional create
+    And a second resolve with the same evidence returns the same Person
+    And a second resolve with different evidence is rejected with a replay conflict
+
+  Scenario Outline: A signed challenge that is altered or cannot be verified is rejected
+    Given a signed challenge token
+    When <change>
+    Then resolution fails with an invalid challenge error and writes nothing
+    Examples:
+      | change |
+      | any payload field is altered |
+      | the MAC is replaced or truncated |
+      | the version prefix is unknown |
+      | the token is signed by another key |
+      | the token is resolved by another product |
+      | the token has expired |
+
+  Scenario: A key service outage never blocks sign-in
+    Given the key service is unavailable
+    When a login challenge is requested
+    Then the request fails with an unavailable error
+    And the browser falls back to a plain sign-in with no Accounts challenge

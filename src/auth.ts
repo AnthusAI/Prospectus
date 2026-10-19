@@ -1,3 +1,4 @@
+import type { AccountsChallenge } from "./accounts-client";
 const SESSION_KEY = "prospectus.session";
 const LOGIN_KEY = "prospectus.login";
 const ACCOUNTS_CONFIRMATION_ATTEMPTED_KEY = "prospectus.accounts-confirmation-attempted";
@@ -16,7 +17,7 @@ interface Session {
 interface Login {
   state: string;
   verifier: string;
-  accounts?: { challengeId: string; nonce: string };
+  accounts?: AccountsChallenge;
   accountsChallengeBoundToLoginState?: boolean;
 }
 export interface AuthenticationConfiguration {
@@ -66,7 +67,7 @@ export function hasAttemptedAccountsConfirmation(): boolean {
 
 export async function signIn(
   configuration: AuthenticationConfiguration,
-  accounts?: { challengeId: string; nonce: string },
+  accounts?: AccountsChallenge,
 ): Promise<void> {
   const state = encode(crypto.getRandomValues(new Uint8Array(32)));
   const verifier = encode(crypto.getRandomValues(new Uint8Array(64)));
@@ -161,7 +162,7 @@ export async function finishSignIn(configuration: AuthenticationConfiguration): 
         throw new Error("Accounts sign-in evidence is unavailable.");
       const { accountsBrowser } = await import("./accounts-client");
       await accountsBrowser(configuration.accountsBffUrl).resolve(
-        login.accounts.challengeId,
+        login.accounts,
         result.id_token,
         result.access_token,
         login.accountsChallengeBoundToLoginState ? login.state : undefined,

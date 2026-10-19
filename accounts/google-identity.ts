@@ -3,11 +3,12 @@ import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
+import { issueChallengeToken, verifyChallengeToken, type ChallengeMacSigner } from "./challenge-token";
 import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
-const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 1024;
+const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 4096;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const sha256Hex = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -42,6 +43,7 @@ export interface GoogleAssociation {
   lineageHash: string;
   now: number;
   loginStateDigest?: string;
+  challenge?: LoginChallenge;
 }
 export interface GoogleAlias {
   personId: string;
@@ -215,11 +217,23 @@ const challengeRequestRules: ValidationRule<Record<string, any>>[] = [
 
 const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
   rule(
-    (body) => Object.keys(body).every((key) => key === "challengeId" || key === "loginState"),
-    "Only a challenge ID and login state are accepted.",
+    (body) => Object.keys(body).every((key) => ["challengeId", "challengeToken", "loginState"].includes(key)),
+    "Only a challenge reference and login state are accepted.",
   ),
-  rule((body) => typeof body.challengeId === "string", "A challenge ID is required."),
-  rule((body) => UUID_PATTERN.test(body.challengeId), "The challenge ID must be a UUID."),
+  rule(
+    (body) => (body.challengeId === undefined) !== (body.challengeToken === undefined),
+    "Exactly one of a challenge ID or a challenge token is required.",
+  ),
+  rule(
+    (body) =>
+      body.challengeId === undefined ||
+      (typeof body.challengeId === "string" && UUID_PATTERN.test(body.challengeId)),
+    "The challenge ID must be a UUID.",
+  ),
+  rule(
+    (body) => body.challengeToken === undefined || typeof body.challengeToken === "string",
+    "The challenge token must be a string.",
+  ),
   rule(
     (body) => body.loginState === undefined || typeof body.loginState === "string",
     "The login state must be a string.",
@@ -238,6 +252,7 @@ export function googleIdentityHandler(
   products: ValidatedRegistrations,
   keys: KeyResolver,
   nowSeconds = () => Math.floor(Date.now() / 1000),
+  challengeSigner?: ChallengeMacSigner,
 ) {
   return async (event: RestEvent) => {
     try {
@@ -262,11 +277,15 @@ export function googleIdentityHandler(
           binding: scope,
           ...(body.loginStateDigest ? { loginStateDigest: body.loginStateDigest } : {}),
         };
-        await repository.issue(challenge);
+        const challengeToken = challengeSigner
+          ? await issueChallengeToken(challengeSigner, challenge)
+          : undefined;
+        if (!challengeToken) await repository.issue(challenge);
         return jsonResponse(200, {
           challengeId: challenge.challengeId,
           nonce: challenge.nonce,
           expiresAt: challenge.expiresAt,
+          ...(challengeToken ? { challengeToken } : {}),
         });
       }
       if (event.path === "/v1/identities/google/resolve" && event.httpMethod === "POST") {
@@ -287,8 +306,15 @@ export function googleIdentityHandler(
           googleIdentityRules,
           failWith(401, "google_identity", "One unambiguous trusted Google identity is required"),
         );
+        const signedChallenge =
+          body.challengeToken === undefined
+            ? undefined
+            : challengeSigner
+              ? await verifyChallengeToken(challengeSigner, body.challengeToken)
+              : fail(401, "challenge_invalid", "Signed challenges are not accepted by this service.");
         const person = await repository.associate({
-          challengeId: body.challengeId,
+          challengeId: signedChallenge?.challengeId ?? body.challengeId,
+          ...(signedChallenge ? { challenge: signedChallenge } : {}),
           nonce: id.nonce,
           fingerprint: digest([headers["x-prospectus-human-token"], headers["x-prospectus-identity-token"]]),
           binding: scope,

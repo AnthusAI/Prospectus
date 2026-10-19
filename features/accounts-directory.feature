@@ -88,3 +88,10 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     Then it accepts only a same-origin POST containing a login state digest
     And it never reads or returns account data
     And the API stage throttles that single route while every CRM route keeps its JWT authorizer
+    And it stores nothing because the challenge it returns is a signed token
+
+  Scenario: The signed challenge token travels through the BFF unchanged
+    Given central returns a signed challenge token
+    When the browser resolves with the token and the original login state
+    Then the BFF forwards exactly the token and the login state
+    And a request carrying both a challenge ID and a token is rejected

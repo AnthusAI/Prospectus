@@ -322,3 +322,51 @@ test("the largest reviewed Papyrus site registry keeps the deployed API access p
   );
   assert.throws(() => syntheticPapyrusSites(41));
 });
+
+test("the login challenge MAC key is an HMAC_256 generate-verify key and only the central runtime may use it", () => {
+  const after = template(true),
+    before = template(false);
+  const added = Object.entries(after.Resources as Record<string, any>).filter(
+    ([id]) => !before.Resources[id],
+  );
+  const keys = added.filter(([, resource]) => resource.Type === "AWS::KMS::Key");
+  assert.equal(keys.length, 1);
+  const [keyId, key] = keys[0];
+  assert.equal(key.Properties.KeySpec, "HMAC_256");
+  assert.equal(key.Properties.KeyUsage, "GENERATE_VERIFY_MAC");
+  assert.equal(key.DeletionPolicy, "Retain");
+  assert.equal(key.Properties.PendingWindowInDays, 30);
+  assert.equal(key.Properties.EnableKeyRotation, undefined);
+  const statements = key.Properties.KeyPolicy.Statement;
+  assert.equal(statements.length, 1);
+  assert.equal(statements[0].Action, "kms:*");
+  assert.equal(statements[0].Resource, "*");
+  assert.ok(JSON.stringify(statements[0].Principal).includes(":iam::712236451410:root"));
+  assert.equal(added.filter(([, resource]) => resource.Type === "AWS::KMS::Alias").length, 1);
+  const keyArn = { "Fn::GetAtt": [keyId, "Arn"] };
+  const policies = added.filter(([, resource]) => resource.Type === "AWS::IAM::Policy");
+  const usages = policies.filter(([, resource]) =>
+    JSON.stringify(resource.Properties.PolicyDocument).includes("kms:"),
+  );
+  assert.equal(usages.length, 1);
+  const kmsStatements = usages[0][1].Properties.PolicyDocument.Statement.filter((statement: any) =>
+    JSON.stringify(statement.Action).includes("kms:"),
+  );
+  assert.equal(kmsStatements.length, 1);
+  assert.deepEqual(kmsStatements[0].Action, ["kms:GenerateMac", "kms:VerifyMac"]);
+  assert.deepEqual(kmsStatements[0].Resource, keyArn);
+  assert.deepEqual(kmsStatements[0].Condition, { StringEquals: { "kms:MacAlgorithm": "HMAC_SHA_256" } });
+  const centralRole = added.find(
+    ([, resource]) =>
+      resource.Type === "AWS::IAM::Role" &&
+      resource.Properties.RoleName === "prospectus-central-accounts-runtime",
+  )![0];
+  assert.deepEqual(usages[0][1].Properties.Roles, [{ Ref: centralRole }]);
+  const central = added.find(
+    ([, resource]) =>
+      resource.Type === "AWS::Lambda::Function" &&
+      resource.Properties.FunctionName === "prospectus-central-accounts",
+  )![1];
+  assert.deepEqual(central.Properties.Environment.Variables.PROSPECTUS_CHALLENGE_MAC_KEY_ARN, keyArn);
+  assert.ok(!JSON.stringify(central.Properties.Environment.Variables).includes("secret"));
+});
