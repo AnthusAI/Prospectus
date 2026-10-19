@@ -42,3 +42,26 @@ test("contact correction normalizes email while preserving inquiry and conversio
   assert.deepEqual(custom.inquiries, inquiries);
   assert.equal(custom.converted_at, "2026-10-14");
 });
+
+test("follow-ups bucket by local date and interests round-trip through the form", async () => {
+  const { followUpBucket, addDays, interestChanges, prospectInterests, initials } = await import(
+    "../src/prospect"
+  );
+  assert.equal(followUpBucket("2026-10-18", "2026-10-19"), "overdue");
+  assert.equal(followUpBucket("2026-10-19", "2026-10-19"), "today");
+  assert.equal(followUpBucket("2026-10-25", "2026-10-19"), "week");
+  assert.equal(followUpBucket("2026-10-26", "2026-10-19"), "later");
+  assert.equal(followUpBucket("", "2026-10-19"), null);
+  assert.equal(addDays("2026-12-31", 1), "2027-01-01");
+  const fields = new FormData();
+  assert.deepEqual(interestChanges(fields), {});
+  fields.set("interests_field", "1");
+  fields.append("interests", "papyrus");
+  fields.append("interests", "papyrus");
+  assert.deepEqual(interestChanges(fields), { interests: ["papyrus"] });
+  assert.deepEqual(prospectInterests({ custom: { interests: ["cyclotron", 4] } } as unknown as Issue), [
+    "cyclotron",
+  ]);
+  assert.equal(initials("Ryan Porter"), "RP");
+  assert.equal(initials("customer-success"), "CS");
+});

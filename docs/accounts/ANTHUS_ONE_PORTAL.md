@@ -4,7 +4,7 @@ Status: proposal for review. No code or infrastructure is changed by this docume
 
 ## What it is
 
-Anthus One is one place, at `1.anth.us`, where a customer has one account for every Anthus system: Papyrus sites, Cyclotron Lab and whatever comes next. Customers sign up, sign in, create and manage accounts, manage members, and launch into the products their account has. It is a customer-facing application, separate from the Prospectus CRM, which is for Anthus staff.
+Anthus One is one place, at `one.anth.us`, where a customer has one account for every Anthus system: Papyrus sites, Cyclotron Lab and whatever comes next. Customers sign up, sign in, create and manage accounts, manage members, and launch into the products their account has. It is a customer-facing application, separate from the Prospectus CRM, which is for Anthus staff.
 
 ## What exists today
 
@@ -15,7 +15,7 @@ The CRM web app (`src/`) carries a first, partial customer view that should not 
 - The "View SaaS accounts" button on the CRM's "Workspace access pending" screen and the `?view=accounts` entry in `src/App.tsx`.
 - `docs/accounts/ACCOUNTS_UI_SLICE.md`, which describes that slice.
 
-`src/OperatorAccountsView.tsx` (all organizations, entitlements, memberships for an approved operator) is staff tooling and stays in the CRM.
+The operator directory in `src/AccountsView.tsx` (all organizations, entitlements, memberships for an approved operator, shown under Account administration) is staff tooling and stays in the CRM.
 
 The backend that Anthus One needs mostly exists: `accounts/` implements people keyed on Google subject, accounts, memberships with roles owner, admin, member and viewer, per-product entitlements, the read directory, the BFF (`accounts/bff.ts`, routes under `/api/saas`), the membership index (PR 18) and Papyrus site registration (`accounts/papyrus-sites.json`). `packages/accounts-client` already offers browser and server clients, including `create(name, requestKey)`.
 
@@ -30,7 +30,7 @@ The backend that Anthus One needs mostly exists: `accounts/` implements people k
 
 ### Where it lives
 
-A new repository, `AnthusAI/Anthus-One` (name to be confirmed), deployed as its own Amplify app in papyrus-production with `1.anth.us` as its domain. It is not a route inside Prospectus and shares no build with it. Same stack as the CRM (Vite, React, TypeScript) so `@anthus/prospectus-accounts-client` and the Kanbus UI components are reusable. Public repository question: the CRM is MIT and public; the portal can be too, since it holds no secrets.
+A new repository, `AnthusAI/Anthus-One` (name to be confirmed), deployed as its own Amplify app in papyrus-production with `one.anth.us` as its domain. It is not a route inside Prospectus and shares no build with it. Same stack as the CRM (Vite, React, TypeScript) so `@anthus/prospectus-accounts-client` and the Kanbus UI components are reusable. Public repository question: the CRM is MIT and public; the portal can be too, since it holds no secrets.
 
 ### Sign-in
 
@@ -58,11 +58,11 @@ New customer-facing capabilities, all added to Prospectus and not to the portal:
 
 ### What moves out of the CRM
 
-After the portal covers the same ground: delete `AccountsView.tsx`, the customer half of `accounts-client.ts`, the "View SaaS accounts" button and the `?view=accounts` handling; keep `OperatorAccountsView` under an Accounts tab shown only to operators. Link the pending-access screen to `1.anth.us`.
+After the portal covers the same ground: delete `AccountsView.tsx`, the customer half of `accounts-client.ts`, the "View SaaS accounts" button and the `?view=accounts` handling; keep the operator directory on the admin Accounts page, shown only to operators. Link the pending-access screen to `one.anth.us`.
 
 ## Sequence
 
-1. Create the repo and a deployed shell at `1.anth.us` with Google sign-in (needs Ryan's Mac for AWS and DNS).
+1. Create the repo and a deployed shell at `one.anth.us` with Google sign-in (needs Ryan's Mac for AWS and DNS).
 2. Customer BFF read routes plus the account list, switcher and detail views (feature parity with what the CRM tab does now).
 3. Self-service account creation.
 4. Member management.

@@ -37,3 +37,57 @@ export function contactChanges(
     next_follow_up_at: String(fields.get("followup") ?? "") || null,
   };
 }
+
+/** Interests are app ids from the Anthus app catalog, stored on the prospect as `custom.interests`. */
+export function prospectInterests(issue: Issue): string[] {
+  const value = issue.custom?.interests;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+export function interestChanges(fields: FormData): { interests?: string[] } {
+  if (!fields.has("interests_field")) return {};
+  return { interests: [...new Set(fields.getAll("interests").map(String))] };
+}
+
+export function websiteInquiries(issue: Issue): Array<Record<string, unknown>> {
+  const value = issue.custom?.inquiries;
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    : [];
+}
+
+export type FollowUpBucket = "overdue" | "today" | "week" | "later";
+
+/** Buckets a `YYYY-MM-DD` follow-up date against today; "week" is the next six days. */
+export function followUpBucket(date: string, today: string): FollowUpBucket | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (date < today) return "overdue";
+  if (date === today) return "today";
+  const days = (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000;
+  return days <= 6 ? "week" : "later";
+}
+
+export function localDate(now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+export function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export function initials(name: string): string {
+  const words = name
+    .replace(/@.*/, "")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  return (
+    words
+      .slice(0, 2)
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}

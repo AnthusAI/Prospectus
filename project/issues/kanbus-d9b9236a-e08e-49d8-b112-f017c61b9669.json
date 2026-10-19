@@ -1,7 +1,7 @@
 {
   "id": "kanbus-d9b9236a-e08e-49d8-b112-f017c61b9669",
-  "title": "Create the Anthus One repository and deployed shell at 1.anth.us",
-  "description": "New repo, Vite/React shell, Amplify app and 1.anth.us domain in papyrus-production. AWS and DNS steps run on Ryan's Mac. Needs Ryan's repo name decision.",
+  "title": "Create the Anthus One repository and deployed shell at one.anth.us",
+  "description": "New repo, Vite/React shell, Amplify app and one.anth.us domain in papyrus-production. AWS and DNS steps run on Ryan's Mac. Needs Ryan's repo name decision.",
   "type": "story",
   "status": "open",
   "priority": 2,
@@ -25,7 +25,7 @@
     }
   ],
   "created_at": "2026-10-18T19:47:21.401401Z",
-  "updated_at": "2026-10-19T16:45:21.864588648Z",
+  "updated_at": "2026-10-19T21:59:30.240913Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

@@ -85,7 +85,7 @@ test(
         const style = getComputedStyle(element);
         return { border: style.borderTopWidth, padding: style.paddingLeft, minHeight: style.minHeight };
       });
-      assert.deepEqual(styles, { border: "2px", padding: "16px", minHeight: "44px" });
+      assert.deepEqual(styles, { border: "1px", padding: "14px", minHeight: "44px" });
       await expect(page.locator(".account-empty p")).toHaveCSS("user-select", "text");
       let connectCalls = 0,
         releaseConnect: (() => void) | undefined;
@@ -113,16 +113,23 @@ test(
             exact: true,
           }),
         ).toBeVisible();
-        await expect(page.getByRole("heading", { name: "Product entitlements" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Apps and access" })).toBeVisible();
+        await expect(page.getByText("console:read", { exact: true })).toBeVisible();
+        await page
+          .getByRole("navigation", { name: "Breadcrumb" })
+          .getByRole("button", { name: "Accounts" })
+          .click();
       }
       mode = "loading";
       await page.getByRole("button", { name: /Synthetic Alpha/ }).click();
       await expect(page.getByRole("status")).toHaveText("Loading account details…");
       mode = "admin";
-      await page.getByRole("button", { name: "Refresh accounts" }).click();
-      await expect(page.getByText("Select an account to see details.")).toBeVisible();
       release!();
-      await expect(page.getByText("Select an account to see details.")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Memberships", exact: true })).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .getByRole("button", { name: "Accounts" })
+        .click();
       await page.goto(`${url}?mode=unconfigured`);
       await expect(page.getByRole("alert")).toContainText("not been configured");
       assert.deepEqual(errors, []);
@@ -203,6 +210,11 @@ test(
       await page.getByRole("button", { name: /Synthetic customer organization/ }).click();
       await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
+      await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .getByRole("button", { name: "Accounts" })
+        .click();
       await page.getByRole("button", { name: "My memberships", exact: true }).click();
       await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
       await expect(page.getByText("Synthetic customer organization")).toHaveCount(0);

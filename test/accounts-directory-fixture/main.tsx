@@ -14,7 +14,7 @@ const client = accountsBrowser(
   () => new URLSearchParams(location.search).get("person") ?? "synthetic",
 );
 createRoot(document.getElementById("root")!).render(
-  <div className="application kb-theme-organizer">
+  <div className="one kb-theme-organizer">
     <AccountsView
       client={client}
       onConnect={async () => {
