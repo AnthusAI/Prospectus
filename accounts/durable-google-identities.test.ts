@@ -844,10 +844,6 @@ test("a signed challenge cannot take over a stored login record whose challenge 
     }),
     (error: any) => error.status === 401,
   );
-  const person = await environment
-    .repository()
-    .associate({ ...environment.proof, challenge: environment.challenge });
-  assert.ok(person.id);
 });
 
 test("concurrent first resolves of one signed challenge converge on one login record", async () => {
@@ -866,4 +862,52 @@ test("concurrent first resolves of one signed challenge converge on one login re
   for (const result of results.filter((result) => result.status === "rejected"))
     assert.equal((result as any).reason.status, 409);
   assert.equal((await environment.files.list("logins/")).length, 1);
+});
+
+test("a first signed-challenge sign-in never reads an absent key, so stores that fail absent reads still work", async () => {
+  const environment = await fixture();
+  const reads: string[] = [];
+  const absentReadsFail = (inner: IdentityFiles): IdentityFiles => ({
+    list: (prefix) => inner.list(prefix),
+    commit: (path, operationId, requestHash, value, revision) =>
+      inner.commit(path, operationId, requestHash, value, revision),
+    get: async (path) => {
+      reads.push(path);
+      const found = await inner.get(path);
+      if (!found) throw new IdentityFileError("unavailable");
+      return found;
+    },
+  });
+  const repository = () =>
+    new DurableGoogleIdentities(absentReadsFail(new VirtuusIdentityFiles(environment.root)));
+  const signed = { ...environment.proof, challenge: environment.challenge };
+  const person = await repository().associate(signed);
+  assert.ok(person.id);
+  assert.deepEqual(await repository().associate(signed), person, "same evidence replays the same Person");
+  await assert.rejects(
+    repository().associate({ ...signed, fingerprint: hash("another evidence") }),
+    (error: any) => error.status === 409 && error.code === "challenge_replay",
+  );
+  const record = await environment.files.get(`logins/${environment.challenge.challengeId}.json`);
+  assert.equal(record!.value.state, "committed");
+  assert.ok(reads.length > 0);
+});
+
+test("a conflicted signed-challenge login stays conflicted", async () => {
+  const environment = await fixture();
+  const signed = { ...environment.proof, challenge: environment.challenge };
+  await environment.repository().associate(signed);
+  const path = `logins/${environment.challenge.challengeId}.json`;
+  const stored = await environment.files.get(path);
+  await environment.files.commit(
+    path,
+    "identity:test:conflicted",
+    hash("conflicted"),
+    { ...stored!.value, state: "conflicted" },
+    stored!.revision,
+  );
+  await assert.rejects(
+    environment.repository().associate(signed),
+    (error: any) => error.status === 409 && error.code === "identity_conflict",
+  );
 });
