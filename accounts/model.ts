@@ -1,19 +1,5 @@
 import type { Role, Operation, Person, AccountSummary } from "../packages/accounts-client/src/client";
 export type { Role, Operation, Person, AccountSummary } from "../packages/accounts-client/src/client";
-export interface ExternalIdentity {
-  issuer: string;
-  subject: string;
-  personId: string;
-  createdAt: string;
-}
-export interface Account {
-  id: string;
-  name: string;
-  createdAt: string;
-  revision: number;
-  owners: number;
-  members: number;
-}
 export interface Membership {
   accountId: string;
   personId: string;
@@ -21,6 +7,15 @@ export interface Membership {
   status: "active" | "revoked";
 }
 export type Entitlement = AccountSummary["entitlement"];
+export interface AccountAuthorization {
+  allowed: true;
+  accountId: string;
+  personId: string;
+  product: string;
+  role: Role;
+  operation: Operation;
+  revision: number;
+}
 export interface Human {
   issuer: string;
   subject: string;

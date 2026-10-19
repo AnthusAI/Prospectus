@@ -1,6 +1,6 @@
 # Durable account and membership slice — local contract
 
-Central identity already has recoverable canonical files. The previous account proof uses MemoryAccountStore (and an older disabled transactional DynamoDB prototype); neither is production membership authority. This slice persists account authorization locally through pinned Virtuus without simulating an atomic multi-file transaction.
+Central identity already has recoverable canonical files. The earlier memory-backed account proof and an older disabled transactional DynamoDB prototype were not production membership authority; the memory service has been removed. This slice persists account authorization locally through pinned Virtuus without simulating an atomic multi-file transaction.
 
 ## Behavior specifications written before implementation
 
@@ -42,7 +42,7 @@ Verified:16 durable account tests and29 durable identity tests passed together (
 
 ## Console integration handoff through parent
 
-The synthetic JSON-lines harness keeps existing memory fixture semantics unchanged. To opt into durable identity **and accounts**, configure:
+The synthetic JSON-lines harness serves identity only unless durable accounts are enabled. To opt into durable identity **and accounts**, configure:
 
 ```json
 {
@@ -55,9 +55,9 @@ The synthetic JSON-lines harness keeps existing memory fixture semantics unchang
 }
 ```
 
-The strings for products/keys above are explanatory placeholders, not executable fixture values; supply the same actual arrays/mappings used by the existing console proof. Do **not** set `accountsFixture:true` in this mode; mixed modes are rejected. Tokens remain synthetic, only public RSA keys enter configuration, and the harness opens no HTTP listener or AWS credential chain.
+The strings for products/keys above are explanatory placeholders, not executable fixture values; supply the same actual arrays/mappings used by the existing console proof. Tokens remain synthetic, only public RSA keys enter configuration, and the harness opens no HTTP listener or AWS credential chain.
 
-The earlier console proof at7a8abe2 uses MemoryAccountStore and deliberately expects accounts to disappear on restart; it remains valid for that fixture. On 2026-10-15 the console owner independently reported PASS for `--filesystem --durable-accounts` against central commit `bf655d5e4ac6c3775fdecbc9aa07bb79af9072f5`. Its configuration sends `durableAccounts:true` without `accountsFixture`.
+The earlier console proof at7a8abe2 used a memory account store, since removed. On 2026-10-15 the console owner independently reported PASS for `--filesystem --durable-accounts` against central commit `bf655d5e4ac6c3775fdecbc9aa07bb79af9072f5`. Its configuration sends `durableAccounts:true`.
 
 The actual Python BFF -> canonicalAccountsHandler -> Virtuus identity/accounts chain retains account lists, names, roles, entitlements, selected account and GraphQL authorization across central restart. Two Persons with the same email but different Google subjects remain separate. Two Cyclotron accounts prove many-to-many owner/viewer/member behavior: viewer writes denied; member writes reach only the selected store; nonmembers and random accounts denied. Revocation removes selected access and remains effective after a second central restart. Product1 still cannot access product0 accounts. Exact account-create retry across restart keeps the ID; changed input is refused; identical membership update leaves the revision unchanged. Existing JWT/proof/session-family checks remain.
 
@@ -76,3 +76,23 @@ Before production, review the explicit scan/audit capacity and absence of strict
 
 
 For the current main-based UI/BFF integration, activation gate and exact API/export handoff, see [Accounts UI](ACCOUNTS_UI.md). Historical proof results above remain local evidence; no cloud activation is implied.
+
+## Membership index
+
+Listing a person's accounts used to read every canonical account document, with a hard limit of 256 accounts. Each active membership now also has a create-only marker at `members/<personId>/<accountId>.json`, written before the account document publishes. With `membershipLookup: "indexed"` in `accounts/deployment.json`, `GET /v1/accounts` and `GET /v1/account-directory` list only the person's markers and read only those accounts. Markers never grant anything: every candidate is checked against its account document, so a revoked membership or an account that never published is not listed. Revocation leaves the marker in place. The operator listing still reads every account.
+
+Rollout, with each AWS step run from Ryan's Mac:
+
+1. Deploy with `membershipLookup: "scan"` (the current setting). New accounts and memberships start writing markers; listings still use the full scan.
+2. Build the bridge with S3 support (`PROSPECTUS_BUILD_IDENTITY_S3=true npm run build:identity-files`) and backfill markers for older accounts. Without `--write` the script only counts accounts and active memberships:
+   `PROSPECTUS_ACCOUNTS_BUCKET=<bucket> PROSPECTUS_ACCOUNTS_OWNER=<account> node --import tsx scripts/rebuild-membership-index.ts`
+   then with `PROSPECTUS_MEMBERSHIP_INDEX_APPROVAL=<account>/<bucket>` and `--write`. Rerunning it is harmless.
+3. Change `membershipLookup` to `"indexed"` and deploy.
+
+The runtime role already covers `prospectus-central/accounts/*`, which includes the markers, so no IAM change is needed.
+
+## Product access
+
+An account starts with only the product it was created from. An operator can grant or disable another registered product with `POST /v1/account-directory/operator/accounts/<accountId>/entitlements/<product>` and the body `{"status":"active"}` or `{"status":"disabled"}`. A grant gives the product its registered capabilities, which members still use only within their role. Disabling denies that product's authorize calls and keeps memberships and all account data. Each change is an `entitlement.changed` audit event under the same revision check as membership changes.
+
+Only a person holding a reviewed `accounts:admin:entitlements` grant in `accounts/operator-grants.json` can call the route. Operator read access is not enough, and account owners cannot grant products to themselves. No such grant exists yet. The directory BFF's API Gateway policy still allows only `GET` on the account directory, so making the route reachable also needs that policy change, which is held for approval.

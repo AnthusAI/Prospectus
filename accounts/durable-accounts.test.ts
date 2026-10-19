@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { registrations } from "./registration";
 import { DurableAccountsService, createdAccountId, type AccountDocument } from "./durable-accounts";
 import {
   VirtuusAccountFiles,
@@ -433,7 +434,9 @@ test("malformed canonical permissions and audit capacity fail closed", async () 
 test("real RSA identity and actual REST account handlers share durable Person/account state after restart", async () => {
   const x = await fixture(),
     f = googleFixture();
-  const products = f.products.map((product) => ({ ...product, capabilities: [...roleOperations.owner] }));
+  const products = registrations(
+    f.products.map((product) => ({ ...product, capabilities: [...roleOperations.owner] })),
+  );
   const handlers = () => {
     const repository = new DurableGoogleIdentities(new VirtuusIdentityFiles(x.root)),
       directory = googlePersonDirectory(repository, products);

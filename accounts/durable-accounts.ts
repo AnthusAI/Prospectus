@@ -4,10 +4,10 @@ import {
   fail,
   roleOperations,
   UUID_PATTERN,
+  type AccountAuthorization,
   type AccountSummary,
   type Context,
   type Entitlement,
-  type Human,
   type Membership,
   type Operation,
   type Person,
@@ -18,6 +18,7 @@ import type { PersonDirectory } from "./person-directory";
 import type { AccountsApi } from "./handler";
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const path = (id: string) => `accounts/${id}.json`;
+const membershipMarkerPath = (personId: string, accountId: string) => `members/${personId}/${accountId}.json`;
 const record = (value: unknown): value is Record<string, any> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const timestamp = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
@@ -28,6 +29,12 @@ export function createdAccountId(personId: string, product: string, requestId: s
   const value = hex.join("");
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20, 32)}`;
 }
+export type MembershipLookup = "scan" | "indexed";
+export function membershipLookupMode(value: unknown): MembershipLookup {
+  if (value === undefined) return "scan";
+  if (value !== "scan" && value !== "indexed") throw new Error("Membership lookup must be scan or indexed.");
+  return value;
+}
 export interface AccountDocument {
   version: 1;
   kind: "account";
@@ -36,7 +43,7 @@ export interface AccountDocument {
   memberships: Record<string, Membership>;
   entitlements: Record<string, Entitlement>;
   audit: Array<{
-    type: "account.created" | "membership.changed";
+    type: "account.created" | "membership.changed" | "entitlement.changed";
     revision: number;
     actor: string;
     product: string;
@@ -44,17 +51,21 @@ export interface AccountDocument {
     at: string;
     target?: string;
     role?: Role;
-    status?: Membership["status"];
+    status?: Membership["status"] | Entitlement["status"];
   }>;
 }
 /** A single canonical aggregate owns each account's permissions. No reciprocal
  * membership authority, distributed transaction emulation, DDB or process lock.
+ * Membership markers under members/<person>/ only narrow discovery: they are
+ * written before the account publishes, never removed, and every candidate is
+ * rechecked against its canonical account document.
  */
 export class DurableAccountsService implements AccountsApi {
   constructor(
     private files: IdentityFiles,
     private directory: PersonDirectory,
     private now: () => string = () => new Date().toISOString(),
+    private membershipLookup: MembershipLookup = "scan",
   ) {}
   private async publish<T>(
     location: string,
@@ -158,7 +169,7 @@ export class DurableAccountsService implements AccountsApi {
       if (
         !record(event) ||
         event.revision !== index + 1 ||
-        !["account.created", "membership.changed"].includes(event.type) ||
+        !["account.created", "membership.changed", "entitlement.changed"].includes(event.type) ||
         !UUID_PATTERN.test(event.actor) ||
         !timestamp(event.at) ||
         typeof event.product !== "string" ||
@@ -174,13 +185,22 @@ export class DurableAccountsService implements AccountsApi {
         bad();
       if (
         index > 0 &&
-        (event.type !== "membership.changed" ||
-          !UUID_PATTERN.test(event.target ?? "") ||
+        event.type === "membership.changed" &&
+        (!UUID_PATTERN.test(event.target ?? "") ||
           !event.role ||
           !Object.hasOwn(roleOperations, event.role) ||
           !["active", "revoked"].includes(event.status ?? ""))
       )
         bad();
+      if (
+        index > 0 &&
+        event.type === "entitlement.changed" &&
+        (!Object.hasOwn(value.entitlements, event.target ?? "") ||
+          event.role !== undefined ||
+          !["active", "disabled"].includes(event.status ?? ""))
+      )
+        bad();
+      if (index > 0 && event.type === "account.created") bad();
     }
   }
   async read(id: string): Promise<IdentityObject<AccountDocument> | null> {
@@ -225,9 +245,6 @@ export class DurableAccountsService implements AccountsApi {
   async resolve(context: Context) {
     return this.person(context);
   }
-  async link(_context: Context, _proof: Human): Promise<Person> {
-    fail(409, "explicit_link_required", "Canonical linking requires separately verified reconciliation.");
-  }
   async list(context: Context): Promise<{ person: Person | null; accounts: AccountSummary[] }> {
     // Same current directory check as resolve; no automatic identity enrollment.
     let person: Person;
@@ -238,28 +255,81 @@ export class DurableAccountsService implements AccountsApi {
         return { person: null, accounts: [] };
       throw error;
     }
-    const candidates = await this.files.list("accounts/");
-    if (candidates.length > 256) fail(503, "account_read_budget", "Account discovery budget exceeded.");
     const accounts: AccountSummary[] = [];
-    for (let offset = 0; offset < candidates.length; offset += 4) {
-      const batch = await Promise.all(
-        candidates.slice(offset, offset + 4).map(async (candidate) => {
-          const match = /^accounts\/([a-f0-9-]{36})\.json$/.exec(candidate);
-          if (!match) fail(503, "account_inconsistent", "Unexpected canonical account path.");
-          const stored = await this.read(match[1]);
-          if (!stored) fail(503, "account_inconsistent", "Account disappeared during discovery.");
-          return stored;
-        }),
-      );
-      for (const stored of batch) {
-        try {
-          accounts.push(this.summary(context, person.id, stored.value, "console:read"));
-        } catch (error) {
-          if (!(error instanceof AccountsError && error.status === 403)) throw error;
-        }
+    for (const document of await this.candidateAccounts(person.id)) {
+      try {
+        accounts.push(this.summary(context, person.id, document, "console:read"));
+      } catch (error) {
+        if (!(error instanceof AccountsError && error.status === 403)) throw error;
       }
     }
     return { person, accounts: accounts.sort((a, b) => a.id.localeCompare(b.id)) };
+  }
+  private async listedAccountIds(prefix: string, pattern: RegExp) {
+    const paths = await this.files.list(prefix);
+    if (paths.length > 256) fail(503, "account_read_budget", "Account discovery budget exceeded.");
+    return paths.map((candidate) => {
+      const match = pattern.exec(candidate);
+      if (!match) fail(503, "account_inconsistent", "Unexpected canonical account path.");
+      return match[1];
+    });
+  }
+  private async readAccountsInBatchesOfFour(accountIds: string[], skipMissingAccounts: boolean) {
+    const documents: AccountDocument[] = [];
+    for (let offset = 0; offset < accountIds.length; offset += 4) {
+      const batch = await Promise.all(
+        accountIds.slice(offset, offset + 4).map((accountId) => this.read(accountId)),
+      );
+      for (const stored of batch) {
+        if (stored) documents.push(stored.value);
+        else if (!skipMissingAccounts)
+          fail(503, "account_inconsistent", "Account disappeared during discovery.");
+      }
+    }
+    return documents;
+  }
+  async allAccounts() {
+    return this.readAccountsInBatchesOfFour(
+      await this.listedAccountIds("accounts/", /^accounts\/([a-f0-9-]{36})\.json$/),
+      false,
+    );
+  }
+  /** Candidates may include accounts the person has since left; callers check the membership. */
+  async candidateAccounts(personId: string) {
+    if (this.membershipLookup === "scan") return this.allAccounts();
+    if (!UUID_PATTERN.test(personId)) fail(400, "invalid_person", "UUID person ID required.");
+    const accountIds = await this.listedAccountIds(
+      `members/${personId}/`,
+      new RegExp(`^members/${personId}/([a-f0-9-]{36})\\.json$`),
+    );
+    return this.readAccountsInBatchesOfFour(accountIds, true);
+  }
+  private async recordMembershipMarker(personId: string, accountId: string) {
+    const logical = ["account-membership-marker-v1", personId, accountId];
+    try {
+      await this.publish(
+        membershipMarkerPath(personId, accountId),
+        `membership-marker:${personId}:${accountId}`,
+        hash(logical),
+        { version: 1, kind: "membership-marker", personId, accountId },
+        null,
+      );
+    } catch (error) {
+      if (!(error instanceof IdentityFileError && ["conflict", "operation_mismatch"].includes(error.code)))
+        throw error;
+    }
+  }
+  /** Backfills markers for accounts published before markers existed. Idempotent. */
+  async rebuildMembershipIndex() {
+    const documents = await this.allAccounts();
+    let markers = 0;
+    for (const document of documents)
+      for (const member of Object.values(document.memberships))
+        if (member.status === "active") {
+          await this.recordMembershipMarker(member.personId, document.account.id);
+          markers++;
+        }
+    return { accounts: documents.length, markers };
   }
   async create(context: Context, name: string, requestId: string): Promise<AccountSummary> {
     if (!UUID_PATTERN.test(requestId) || typeof name !== "string" || !name.trim() || name.trim().length > 150)
@@ -309,6 +379,7 @@ export class DurableAccountsService implements AccountsApi {
       ],
     };
     this.validate(document, id);
+    await this.recordMembershipMarker(person.id, id);
     try {
       await this.publish(
         path(id),
@@ -337,12 +408,12 @@ export class DurableAccountsService implements AccountsApi {
   async get(context: Context, id: string) {
     return (await this.allowed(context, id, "console:read")).summary;
   }
-  async authorize(context: Context, id: string, operation: Operation) {
+  async authorize(context: Context, id: string, operation: Operation): Promise<AccountAuthorization> {
     if (!roleOperations.owner.includes(operation))
       fail(400, "invalid_operation", "Unknown account operation.");
     const state = await this.allowed(context, id, operation);
     return {
-      allowed: true as const,
+      allowed: true,
       accountId: id,
       personId: state.person.id,
       product: context.product,
@@ -415,6 +486,7 @@ export class DurableAccountsService implements AccountsApi {
         role,
         status,
       ];
+      if (status === "active") await this.recordMembershipMarker(personId, id);
       try {
         await this.publish(
           path(id),
@@ -424,6 +496,82 @@ export class DurableAccountsService implements AccountsApi {
           state.stored.revision,
         );
         return membership;
+      } catch (error) {
+        if (!(error instanceof IdentityFileError && error.code === "conflict")) throw error;
+      }
+    }
+    fail(409, "busy", "Concurrent account change; retry.");
+  }
+  /** Operator-only. The caller must already hold a reviewed entitlements grant; disabling keeps all account data. */
+  async setEntitlement(
+    operator: Context,
+    id: string,
+    grantedProduct: { product: string; capabilities: readonly Operation[] },
+    status: Entitlement["status"],
+  ): Promise<Entitlement> {
+    if (!["active", "disabled"].includes(status) || !/^[a-z][a-z0-9-]{0,39}$/.test(grantedProduct.product))
+      fail(400, "invalid_entitlement", "Registered product and active or disabled status required.");
+    const capabilities = roleOperations.owner.filter((operation) =>
+      grantedProduct.capabilities.includes(operation),
+    );
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const person = await this.person(operator),
+        stored = await this.read(id);
+      if (!stored) fail(404, "account_missing", "Account not found.");
+      const document = structuredClone(stored.value),
+        prior = Object.hasOwn(document.entitlements, grantedProduct.product)
+          ? document.entitlements[grantedProduct.product]
+          : null;
+      const capabilitiesKeptWhileDisabled = prior ? prior.capabilities : capabilities;
+      const entitlement: Entitlement = {
+        accountId: id,
+        product: grantedProduct.product,
+        status,
+        capabilities: [...(status === "active" ? capabilities : capabilitiesKeptWhileDisabled)],
+      };
+      if (
+        prior &&
+        prior.status === entitlement.status &&
+        JSON.stringify(prior.capabilities) === JSON.stringify(entitlement.capabilities)
+      )
+        return structuredClone(prior);
+      if (document.audit.length >= 128)
+        fail(409, "account_capacity", "Account audit capacity reached; no history is discarded.");
+      document.entitlements[grantedProduct.product] = entitlement;
+      document.account.revision++;
+      document.audit.push({
+        type: "entitlement.changed",
+        revision: document.account.revision,
+        actor: person.id,
+        target: grantedProduct.product,
+        status,
+        product: operator.product,
+        principal: operator.principal,
+        at: this.now(),
+      });
+      if (Buffer.byteLength(JSON.stringify(document)) > 65536)
+        fail(409, "account_capacity", "Account canonical byte capacity reached.");
+      this.validate(document, id);
+      const logical = [
+        "account-entitlement-v1",
+        id,
+        stored.revision,
+        person.id,
+        operator.product,
+        operator.principal,
+        grantedProduct.product,
+        status,
+        entitlement.capabilities,
+      ];
+      try {
+        await this.publish(
+          path(id),
+          `account:${id}:entitlement:${hash(logical)}`,
+          hash(logical),
+          document,
+          stored.revision,
+        );
+        return entitlement;
       } catch (error) {
         if (!(error instanceof IdentityFileError && error.code === "conflict")) throw error;
       }
