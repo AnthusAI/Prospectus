@@ -587,3 +587,50 @@ test("repeated committed sessions share bounded reads only within one canonical 
     "A later lookup must reread canonical authority",
   );
 });
+
+test("person lookup reads session pointers in bounded batches and stops at the first committed login", async () => {
+  const x = await fixture();
+  await x.repository().issue(x.challenge);
+  const person = await x.repository().associate(x.proof);
+  for (let index = 1; index < 9; index++) {
+    const challenge = { ...x.challenge, challengeId: randomUUID(), nonce: randomUUID() };
+    await x.repository().issue(challenge);
+    await x.repository().associate({
+      ...x.proof,
+      challengeId: challenge.challengeId,
+      nonce: challenge.nonce,
+      authTime: x.f.now + index,
+      lineageHash: hash(["family", index]),
+      fingerprint: hash(["proof", index]),
+    });
+  }
+  const readCounts = new Map<string, number>();
+  let active = 0,
+    maximum = 0;
+  const files: IdentityFiles = {
+    get: async (path) => {
+      readCounts.set(path, (readCounts.get(path) ?? 0) + 1);
+      active++;
+      maximum = Math.max(maximum, active);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        return await x.files.get(path);
+      } finally {
+        active--;
+      }
+    },
+    list: x.files.list.bind(x.files),
+    commit: async () => {
+      throw new Error("Lookup must never write");
+    },
+  };
+  const found = await new DurableGoogleIdentities(files).getPerson(person.id);
+  assert.deepEqual(found, person);
+  const sessionPointerReads = [...readCounts.keys()].filter((path) => path.startsWith("sessions/"));
+  assert.ok(sessionPointerReads.length <= 4, `Expected one batch, read ${sessionPointerReads.length}`);
+  assert.ok(
+    [...readCounts.values()].every((count) => count === 1),
+    "Each canonical record must be read once per lookup",
+  );
+  assert.ok(maximum > 1 && maximum <= 4, `Expected bounded overlap, observed ${maximum}`);
+});
