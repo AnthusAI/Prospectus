@@ -15,9 +15,22 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "a3d6dc6a-5fda-4612-8a0a-52c9190e94da",
+      "author": "unknown",
+      "text": "2026-10-19 status: PR 21 open, CI green on the first (cold cache) run at about 16 minutes. The under-10-minute target needs a second cached run. Waiting on Ryan's direction to merge.",
+      "created_at": "2026-10-19T16:45:21.710584705Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
+    }
+  ],
   "created_at": "2026-10-17T14:50:13.243740194Z",
-  "updated_at": "2026-10-17T16:32:37.060481546Z",
+  "updated_at": "2026-10-19T16:45:21.710615066Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

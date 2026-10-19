@@ -22,10 +22,22 @@
       "text": "PR https://github.com/AnthusAI/Prospectus/pull/25 open against claude/project-thread-3r1x8t; awaiting CI and first deploy verification of head_bucket removal.",
       "created_at": "2026-10-17T16:47:41.479660180Z",
       "comment_type": "default"
+    },
+    {
+      "id": "47a31f6f-8d78-4497-832f-b5e476bef379",
+      "author": "unknown",
+      "text": "2026-10-19 status: PR 25 merged (virtuus bridge kept warm, ListBucket prefix-scoped). Still open: first deploy from Ryan's Mac must confirm head_bucket is gone from the request timing log. Close after that check.",
+      "created_at": "2026-10-19T16:45:21.636409442Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
     }
   ],
   "created_at": "2026-10-17T14:50:12.368369215Z",
-  "updated_at": "2026-10-17T16:47:56.622927759Z",
+  "updated_at": "2026-10-19T16:45:21.636561660Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

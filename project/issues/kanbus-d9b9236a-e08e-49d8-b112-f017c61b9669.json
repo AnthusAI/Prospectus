@@ -10,13 +10,24 @@
   "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "d2322fee-acb3-4dae-8c05-4f3fd721cfec",
+      "author": "unknown",
+      "text": "2026-10-19 status: AnthusAI/Anthus-One created and shell with Google sign-in is PR 1 (open; typecheck, tests, build pass). AWS side (Amplify app for 1.anth.us, Cognito pool Google-only, DNS) not started: the Mac Remote Control session went offline 2026-10-19 14:15 UTC and cloud threads cannot message it. Ryan must send the go-ahead message from the Anthus One portal app thread and create a Google OAuth client for 1.anth.us, giving its ID and secret to the Mac session.",
+      "created_at": "2026-10-19T16:45:21.864560381Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "status-handoff-2026-10-19"
+      }
+    }
+  ],
   "created_at": "2026-10-18T19:47:21.401401Z",
-  "updated_at": "2026-10-18T19:47:21.401658Z",
+  "updated_at": "2026-10-19T16:45:21.864588648Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
-  "custom": {},
-  "agent": null,
-  "agent_assignment": null
+  "custom": {}
 }
