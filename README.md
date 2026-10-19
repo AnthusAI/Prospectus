@@ -1,36 +1,49 @@
 # Prospectus
 
-MIT-licensed Anthus CRM built with the same exported Kanbus board used by the standalone console and embedded hosts. Prospects retain one issue identity from sales through customer-success follow-up. The shared application is https://prospectus.anth.us/ in papyrus-production, deployed from `main` through Amplify app `d15sc1sptohtqb`.
+MIT-licensed Anthus AI Solutions CRM and central account service. The CRM is built on the same exported Kanbus board used by the standalone console and embedded hosts, so a prospect keeps one issue identity from sales through customer-success follow-up. The shared application runs at https://prospectus.anth.us/ in the papyrus-production AWS account, deployed from `main` through Amplify.
 
-The CRM includes configured sales stages, board/list search, owner and dated next actions, contact correction, conversation notes, due follow-ups and customer-success handoff. Google sign-in and explicit workspace membership protect private CRM requests. Signing in alone grants no staff access.
+Prospectus does two jobs:
 
-Canonical records remain ordinary Kanbus files in S3 under the existing `cyclotron/prospectus` namespace. DynamoDB contains only rebuildable query metadata. The namespace is retained data identity, not a second Cyclotron application. The old dedicated hosting endpoint is retired; Cyclotron and other products use the central Prospectus service.
+- **CRM.** Configured sales stages, board and list search, owners and dated next actions, contact correction, conversation notes, due follow-ups, customer-success handoff, and a public inquiry intake endpoint. Google sign-in plus explicit workspace membership protect private CRM requests; signing in alone grants no staff access.
+- **Account service.** One central service holds people, organization accounts, memberships with roles, and per-product entitlements for the hosted Papyrus newsroom sites and Cyclotron Lab. Products sign people in with their own Google clients and then ask Prospectus which accounts the person belongs to.
 
-## Development and verification
+Canonical records are ordinary Kanbus and JSON files in a private S3 bucket. DynamoDB holds only rebuildable query metadata and is never authority.
+
+## Documents
+
+| Document | Contents |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data model, the account model decision, identity and account APIs, storage, intake |
+| [docs/SECURITY.md](docs/SECURITY.md) | Authentication and authorization rules, the Google sign-in secret, operator grants, data handling, known limits |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Deployment, activation flags, verification, rollback, tracking, dated proof history |
+| [docs/accounts/PAPYRUS_SITES.md](docs/accounts/PAPYRUS_SITES.md) | Registering a Papyrus site with the account service |
+| [packages/accounts-client/README.md](packages/accounts-client/README.md) | The browser, React and server SDK for hosts |
+| [AGENTS.md](AGENTS.md) | Rules for people and agents changing this repository |
+
+Behavior specifications live in `features/` and `accounts/*.feature`.
+
+## Development
 
 ```sh
 node infra/scripts/checkout-kanbus.mjs
 npm ci --prefix .build/kanbus-ui/packages/ui
 npm run build --prefix .build/kanbus-ui/packages/ui
 npm ci
-npm run build
+npm ci --prefix packages/accounts-client
+npm run lint
+npm run typecheck
 npm test
+npm run build
 ```
 
-`source-lock.json` independently pins the shared Kanbus UI and Kanbus API, plus the API's Virtuus dependency. A UI-only release cannot silently replace the deployed API. The checkout helper refuses dirty or mismatched dependency checkouts. Do not substitute a moving branch or modify shared source inside this application.
+`source-lock.json` pins the shared Kanbus UI, the Kanbus API and the API's Virtuus dependency independently. The checkout helper refuses dirty or mismatched checkouts. Do not substitute a moving branch or edit shared source inside this application.
 
-Build `kanbus-api-local` from the API pin with its declared Rust toolchain. Set `KANBUS_API_BINARY` to that executable, then `npm run preview:local` for a loopback-only synthetic form and workspace. Local credentials and records remain in ignored `local-data/`; never publish them. For an explicitly selected private LAN review, set `PROSPECTUS_LAN_ADDRESS` and use `npm run preview:lan`. Use made-up names/messages and `.invalid` emails only.
+Tests that exercise the native identity and account files need the Rust bridge: `npm run build:identity-files` (requires the Rust toolchain named in `scripts/build-identity-files.sh`). Infrastructure checks: `npm ci --prefix infra && npm run check --prefix infra`. See [OPERATIONS.md](docs/OPERATIONS.md#verification) for the full list.
 
-`npm run test:intake:integration` uses the actual local API and disposable synthetic data. `npm run test:control-binding` verifies Virtuus conditional control writes and deterministic S3 transport fault cases. Browser acceptance exercises inquiry capture, retries, contact correction, follow-up, customer handoff and shared column collapse. See `features/` for behavior criteria.
+### Local preview
 
-## Synthetic inquiry evaluation
+Build `kanbus-api-local` from the API pin, set `KANBUS_API_BINARY` to that executable, then run `npm run preview:local` for a loopback-only synthetic form and workspace. Local credentials and records stay in the ignored `local-data/` directory. For an explicitly chosen private LAN review set `PROSPECTUS_LAN_ADDRESS` and run `npm run preview:lan`. Use made-up names and messages and `.invalid` addresses only.
 
-The inquiry implementation accepts only `.invalid` contacts. It preserves normalized-email identity, independent receipt IDs, trusted source, separate simulated marketing preference and prior sales state. Repeated deliveries recover the original operation; distinct inquiries append without replacing notes, owner or stage.
+## Tracking
 
-Hosted evaluation is additive and disabled until the concrete scope in [the runtime review](infra/EVALUATION_INTAKE_REVIEW.md) is approved. No real-contact intake, outbound email, booking, invitation, account creation, billing or new customer permission follows from submitting a synthetic inquiry. Private records remain accessible only to authorized CRM members.
-
-Shared conditional claims must survive rollback/catalog rebuild. Manual create/import/email-edit paths do not acquire intake claims; this evaluation is not a global uniqueness guarantee across every writer. Real-contact capture requires reviewed privacy/retention, abuse controls, operating ownership and real-cloud failure acceptance.
-
-## Deployment and rollback
-
-Use the existing Amplify main pipeline and standard account bootstrap. No manual content sync or separate branch deployment is needed. Shared-board parity and CRM checks must pass before merging. Prior central checkpoint `13155d7` is a frontend rollback reference; preserve accepted data and intake-control objects when rolling back application code. Full cleanup of the obsolete dedicated deployment is separately scoped to verified old resources; central/shared resources must remain intact.
+Development work is tracked in Kanbus under `project/`, configured by the root `.kanbus.yml`. Change issue state with Kanbus commands, never by editing issue JSON. The operational CRM board configuration is `config/prospectus.kanbus.yml`.
