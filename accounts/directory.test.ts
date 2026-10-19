@@ -7,7 +7,7 @@ import { directoryFixture } from "./testing/directory-fixture";
 import { canonicalAccountsHandler } from "./canonical-handler";
 import { VirtuusIdentityFiles, VirtuusAccountFiles } from "./identity-files";
 import { accountsBffHandler } from "./bff";
-import { FakeChallengeMacSigner } from "./testing/fake-challenge-signer";
+import { FakeChallengeSigner } from "./testing/fake-challenge-signer";
 import { AccountsClient, decode } from "../packages/accounts-client/src/client";
 test("canonical directory filters organizations by membership, never CRM admin or product alone", async () => {
   const environment = await directoryFixture();
@@ -462,7 +462,7 @@ test("explicit central operator reads cross-organization records without members
 });
 
 test("BFF carries a signed login challenge token end to end and nothing is stored until it resolves", async () => {
-  const signer = new FakeChallengeMacSigner();
+  const signer = new FakeChallengeSigner();
   const environment = await directoryFixture(signer);
   try {
     const bff = accountsBffHandler({

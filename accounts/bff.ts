@@ -7,7 +7,7 @@ const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-const CHALLENGE_TOKEN_PATTERN = /^v1\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
+const CHALLENGE_TOKEN_PATTERN = /^v1\.[a-z0-9]{1,16}\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
 
 const loginChallengeRequestRules: ValidationRule<Record<string, any>>[] = [
   rule((body) => Object.keys(body).length === 1, "Only a login state digest is accepted."),

@@ -3,14 +3,15 @@ import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
-import { issueChallengeToken, verifyChallengeToken, type ChallengeMacSigner } from "./challenge-token";
+import { issueChallengeToken, verifyChallengeToken } from "./challenge-token";
+import type { ChallengeSigner } from "./challenge-signer";
 import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
 const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 4096;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
-const CHALLENGE_TOKEN_PATTERN = /^v1\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
+const CHALLENGE_TOKEN_PATTERN = /^v1\.[a-z0-9]{1,16}\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const sha256Hex = (value: string) => createHash("sha256").update(value).digest("hex");
 const MAXIMUM_ORIGIN_JTI_LENGTH = 256;
@@ -254,7 +255,7 @@ export function googleIdentityHandler(
   products: ValidatedRegistrations,
   keys: KeyResolver,
   nowSeconds = () => Math.floor(Date.now() / 1000),
-  challengeSigner?: ChallengeMacSigner,
+  challengeSigner?: ChallengeSigner,
 ) {
   return async (event: RestEvent) => {
     try {

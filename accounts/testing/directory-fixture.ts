@@ -10,9 +10,9 @@ import { googlePersonDirectory } from "../person-directory";
 import { canonicalAccountsHandler } from "../canonical-handler";
 import { registrations } from "../registration";
 import { context } from "../auth";
-import type { ChallengeMacSigner } from "../challenge-token";
+import type { ChallengeSigner } from "../challenge-signer";
 /** Real RSA + pinned Virtuus files, disposable synthetic only. */
-export async function directoryFixture(challengeSigner?: ChallengeMacSigner) {
+export async function directoryFixture(challengeSigner?: ChallengeSigner) {
   const root = await mkdtemp(join(tmpdir(), "accounts-directory-")),
     identityFixture = googleFixture(challengeSigner);
   const products = registrations(

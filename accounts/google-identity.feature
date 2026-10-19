@@ -92,9 +92,9 @@ Feature: Verified Google identities across independently branded pools
     Then resolution fails with a session binding error
 
   Scenario: A login challenge is a signed token and nothing is stored until it is resolved
-    Given the central service holds a KMS HMAC key it can only use to generate and verify MACs
+    Given the central service holds a signing secret or key chosen by the deployment configuration
     When a product requests a login challenge before or after sign-in
-    Then the response carries an opaque versioned challenge token with the ID, nonce, binding, login state digest and a 300-second lifetime
+    Then the response carries an opaque versioned challenge token naming its key ID with the ID, nonce, binding, login state digest and a 300-second lifetime
     And no file is written for the challenge
     And a challenge that is never resolved leaves no trace
 
@@ -124,3 +124,25 @@ Feature: Verified Google identities across independently branded pools
     When a login challenge is requested
     Then the request fails with an unavailable error
     And the browser falls back to a plain sign-in with no Accounts challenge
+
+  Scenario: The deployment chooses the challenge signer
+    Given the deployment configuration selects the parameter-store or the kms signer
+    Then the parameter-store signer computes HMAC-SHA-256 in process with a secret of at least 32 bytes read from an encrypted parameter and cached for a bounded time
+    And the kms signer uses one HMAC key that exists only when it is selected
+    And both signers satisfy the same token contract
+
+  Scenario Outline: A signer that cannot sign fails closed
+    Given the configured signer <fault>
+    When a login challenge is requested
+    Then the request fails with an unavailable error and nothing is stored
+    And the browser falls back to a plain sign-in
+    Examples:
+      | fault |
+      | cannot read its parameter |
+      | holds a secret shorter than 32 bytes |
+
+  Scenario: Rotation keeps sign-ins in flight valid
+    Given a token signed with the previous key ID
+    When the previous key is still configured for verification
+    Then the token verifies but new tokens are signed with the current key ID
+    And a token naming an unknown key ID is rejected without reading any secret

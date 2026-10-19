@@ -7,11 +7,18 @@ import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
+import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
+const parameterStoreSigner = {
+  kind: "parameter-store",
+  parameterPrefix: "/prospectus/central-accounts/login-challenge-mac/",
+  currentKeyId: "v1",
+} as const;
 function template(
   enabled: boolean,
   consoleClientEnabled = false,
   consolePairEnabled = false,
   papyrusSites: ProductRegistration[] = [],
+  loginChallengeSigner: LoginChallengeSignerConfiguration = parameterStoreSigner,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -31,6 +38,7 @@ function template(
           consoleFederationReviewId: "cyclotron-google-only-unlinked-v1-20261015",
           consolePairReviewId: "cyclotron-execution-pair-v1-20261015",
           papyrusSites,
+          loginChallengeSigner,
         }
       : undefined,
   );
@@ -324,7 +332,7 @@ test("the largest reviewed Papyrus site registry keeps the deployed API access p
 });
 
 test("the login challenge MAC key is an HMAC_256 generate-verify key and only the central runtime may use it", () => {
-  const after = template(true),
+  const after = template(true, false, false, [], { kind: "kms" }),
     before = template(false);
   const added = Object.entries(after.Resources as Record<string, any>).filter(
     ([id]) => !before.Resources[id],
@@ -369,4 +377,65 @@ test("the login challenge MAC key is an HMAC_256 generate-verify key and only th
   )![1];
   assert.deepEqual(central.Properties.Environment.Variables.PROSPECTUS_CHALLENGE_MAC_KEY_ARN, keyArn);
   assert.ok(!JSON.stringify(central.Properties.Environment.Variables).includes("secret"));
+});
+
+test("the parameter-store signer creates no KMS resource and grants only ssm:GetParameter on the exact parameters", () => {
+  for (const [signer, names] of [
+    [parameterStoreSigner, ["/prospectus/central-accounts/login-challenge-mac/v1"]],
+    [
+      { ...parameterStoreSigner, currentKeyId: "v2", previousKeyId: "v1" },
+      [
+        "/prospectus/central-accounts/login-challenge-mac/v2",
+        "/prospectus/central-accounts/login-challenge-mac/v1",
+      ],
+    ],
+  ] as const) {
+    const after = template(true, false, false, [], signer),
+      before = template(false);
+    const added = Object.entries(after.Resources as Record<string, any>).filter(
+      ([id]) => !before.Resources[id],
+    );
+    assert.ok(!JSON.stringify(after.Resources).includes('"AWS::KMS::'), "no KMS key or alias");
+    assert.ok(!JSON.stringify(after.Resources).includes("kms:"), "no KMS permission");
+    assert.ok(!JSON.stringify(after.Resources).includes("AWS::SSM::Parameter"), "no parameter is created");
+    const statements = added
+      .filter(([, resource]) => resource.Type === "AWS::IAM::Policy")
+      .flatMap(([, resource]) => resource.Properties.PolicyDocument.Statement)
+      .filter((statement: any) => JSON.stringify(statement.Action).includes("ssm:"));
+    assert.equal(statements.length, 1);
+    assert.deepEqual(statements[0].Action, "ssm:GetParameter");
+    assert.equal(statements[0].Effect, "Allow");
+    assert.equal(statements[0].Condition, undefined);
+    const resources = Array.isArray(statements[0].Resource)
+      ? statements[0].Resource
+      : [statements[0].Resource];
+    assert.deepEqual(
+      resources.map((arn: any) =>
+        typeof arn === "string"
+          ? arn
+          : arn["Fn::Join"][1].map((part: any) => (part.Ref === "AWS::Partition" ? "aws" : part)).join(""),
+      ),
+      names.map((name) => `arn:aws:ssm:us-east-1:712236451410:parameter${name}`),
+    );
+    const central = added.find(
+      ([, resource]) =>
+        resource.Type === "AWS::Lambda::Function" &&
+        resource.Properties.FunctionName === "prospectus-central-accounts",
+    )![1];
+    const environment = central.Properties.Environment.Variables;
+    assert.deepEqual(JSON.parse(environment.PROSPECTUS_LOGIN_CHALLENGE_SIGNER), signer);
+    assert.equal(environment.PROSPECTUS_CHALLENGE_MAC_KEY_ARN, undefined);
+    assert.ok(!JSON.stringify(environment).toLowerCase().includes("secret"));
+    const centralRole = added.find(
+      ([, resource]) =>
+        resource.Type === "AWS::IAM::Role" &&
+        resource.Properties.RoleName === "prospectus-central-accounts-runtime",
+    )![0];
+    const policyWithSsm = added.find(
+      ([, resource]) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties).includes("ssm:GetParameter"),
+    )![1];
+    assert.deepEqual(policyWithSsm.Properties.Roles, [{ Ref: centralRole }]);
+  }
 });

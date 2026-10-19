@@ -8,6 +8,7 @@ import type * as cognito from "aws-cdk-lib/aws-cognito";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import type { ProductRegistration } from "../../accounts/auth";
+import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
 import { papyrusSiteRoutes } from "../../accounts/papyrus-sites";
 export interface AccountsPlaneOptions {
   code: lambda.Code;
@@ -19,6 +20,7 @@ export interface AccountsPlaneOptions {
   consoleFederationReviewId?: string;
   consolePairReviewId?: string;
   papyrusSites?: readonly ProductRegistration[];
+  loginChallengeSigner: LoginChallengeSignerConfiguration;
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
@@ -111,22 +113,41 @@ export class AccountsPlane extends Construct {
         },
       });
     }
-    const challengeMacKey = new kms.Key(this, "ChallengeMacKey", {
-      alias: "alias/prospectus-central-login-challenge-mac",
-      description:
-        "HMAC_256 key that signs stateless pre-sign-in login challenges for the central Accounts service.",
-      keySpec: kms.KeySpec.HMAC_256,
-      keyUsage: kms.KeyUsage.GENERATE_VERIFY_MAC,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      pendingWindow: cdk.Duration.days(30),
-    });
-    runtime.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["kms:GenerateMac", "kms:VerifyMac"],
-        resources: [challengeMacKey.keyArn],
-        conditions: { StringEquals: { "kms:MacAlgorithm": "HMAC_SHA_256" } },
-      }),
-    );
+    const signer = options.loginChallengeSigner;
+    let challengeSignerEnvironment: Record<string, string>;
+    if (signer.kind === "kms") {
+      const challengeMacKey = new kms.Key(this, "ChallengeMacKey", {
+        alias: "alias/prospectus-central-login-challenge-mac",
+        description:
+          "HMAC_256 key that signs stateless pre-sign-in login challenges for the central Accounts service.",
+        keySpec: kms.KeySpec.HMAC_256,
+        keyUsage: kms.KeyUsage.GENERATE_VERIFY_MAC,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+        pendingWindow: cdk.Duration.days(30),
+      });
+      runtime.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["kms:GenerateMac", "kms:VerifyMac"],
+          resources: [challengeMacKey.keyArn],
+          conditions: { StringEquals: { "kms:MacAlgorithm": "HMAC_SHA_256" } },
+        }),
+      );
+      challengeSignerEnvironment = {
+        PROSPECTUS_LOGIN_CHALLENGE_SIGNER: JSON.stringify(signer),
+        PROSPECTUS_CHALLENGE_MAC_KEY_ARN: challengeMacKey.keyArn,
+      };
+    } else {
+      runtime.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["ssm:GetParameter"],
+          resources: [signer.currentKeyId, ...(signer.previousKeyId ? [signer.previousKeyId] : [])].map(
+            (keyId) =>
+              `arn:${stack.partition}:ssm:${stack.region}:${stack.account}:parameter${signer.parameterPrefix}${keyId}`,
+          ),
+        }),
+      );
+      challengeSignerEnvironment = { PROSPECTUS_LOGIN_CHALLENGE_SIGNER: JSON.stringify(signer) };
+    }
     const centralLogs = new logs.LogGroup(this, "Logs", {
       logGroupName: "/aws/lambda/prospectus-central-accounts",
       retention: logs.RetentionDays.ONE_MONTH,
@@ -161,7 +182,7 @@ export class AccountsPlane extends Construct {
         PROSPECTUS_CANONICAL_ACCOUNTS: "enabled",
         PROSPECTUS_ACCOUNTS_BUCKET: bucket.bucketName,
         PROSPECTUS_ACCOUNTS_OWNER: stack.account,
-        PROSPECTUS_CHALLENGE_MAC_KEY_ARN: challengeMacKey.keyArn,
+        ...challengeSignerEnvironment,
         PROSPECTUS_PRODUCTS: cdk.Stack.of(this).toJsonString(products),
       },
     });

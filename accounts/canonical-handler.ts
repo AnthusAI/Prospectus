@@ -8,7 +8,7 @@ import { googleIdentityHandler } from "./google-identity";
 import { accountDirectoryHandler } from "./directory-handler";
 import { operatorGrants, type OperatorGrant } from "./operator-policy";
 import { accountHandler } from "./handler";
-import type { ChallengeMacSigner } from "./challenge-token";
+import type { ChallengeSigner } from "./challenge-signer";
 /** Trusted runtime composition, intentionally no AWS configuration, resource
  * provisioning. Deployment bootstrap is separate. File adapters/namespaces are server-owned.
  */
@@ -20,7 +20,7 @@ export function canonicalAccountsHandler(
   nowSeconds = () => Date.now() / 1000,
   grants: readonly OperatorGrant[] = [],
   membershipLookup: MembershipLookup = "scan",
-  challengeSigner?: ChallengeMacSigner,
+  challengeSigner?: ChallengeSigner,
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),

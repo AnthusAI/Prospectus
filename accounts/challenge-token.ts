@@ -1,4 +1,4 @@
-import { KMSClient, GenerateMacCommand, VerifyMacCommand } from "@aws-sdk/client-kms";
+import { CHALLENGE_KEY_ID_PATTERN, type ChallengeSigner } from "./challenge-signer";
 import { fail, UUID_PATTERN } from "./model";
 import type { LoginChallenge } from "./google-identity";
 import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
@@ -8,38 +8,6 @@ export const CHALLENGE_TOKEN_MAXIMUM_LENGTH = 2048;
 const CHALLENGE_TOKEN_DOMAIN = "prospectus-login-challenge-v1";
 const CHALLENGE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/;
-
-/** HMAC over exact bytes. Implementations hold no key material the caller can read. */
-export interface ChallengeMacSigner {
-  generate(message: Uint8Array): Promise<Uint8Array>;
-  verify(message: Uint8Array, mac: Uint8Array): Promise<boolean>;
-}
-
-/** Signing is delegated to one AWS KMS HMAC_256 key; the Lambda holds only GenerateMac and VerifyMac on it. */
-export class KmsChallengeMacSigner implements ChallengeMacSigner {
-  constructor(
-    private keyId: string,
-    private client: Pick<KMSClient, "send"> = new KMSClient({ region: "us-east-1" }),
-  ) {}
-  async generate(message: Uint8Array) {
-    const result = await this.client.send(
-      new GenerateMacCommand({ KeyId: this.keyId, Message: message, MacAlgorithm: "HMAC_SHA_256" }),
-    );
-    if (!result.Mac) throw new Error("The challenge MAC was not produced.");
-    return result.Mac;
-  }
-  async verify(message: Uint8Array, mac: Uint8Array) {
-    try {
-      const result = await this.client.send(
-        new VerifyMacCommand({ KeyId: this.keyId, Message: message, Mac: mac, MacAlgorithm: "HMAC_SHA_256" }),
-      );
-      return result.MacValid === true;
-    } catch (error) {
-      if ((error as { name?: string }).name === "KMSInvalidMacException") return false;
-      throw error;
-    }
-  }
-}
 
 /** The signed payload is a fixed-position JSON array, so key order and whitespace cannot vary. */
 const payloadOf = (challenge: LoginChallenge) =>
@@ -59,10 +27,10 @@ const payloadOf = (challenge: LoginChallenge) =>
 
 const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 
-export async function issueChallengeToken(signer: ChallengeMacSigner, challenge: LoginChallenge) {
+export async function issueChallengeToken(signer: ChallengeSigner, challenge: LoginChallenge) {
   const payload = new TextEncoder().encode(payloadOf(challenge));
-  const mac = await signer.generate(payload);
-  return `${CHALLENGE_TOKEN_VERSION}.${encode(payload)}.${encode(mac)}`;
+  const mac = await signer.sign(payload);
+  return `${CHALLENGE_TOKEN_VERSION}.${signer.currentKeyId}.${encode(payload)}.${encode(mac)}`;
 }
 
 const isText = (value: unknown, maximumLength: number) =>
@@ -92,30 +60,31 @@ const invalid = failWith(401, "challenge_invalid", "The challenge token is not v
 /** Verifies the MAC before the payload is interpreted. Expiry, nonce, binding and login state are
  * checked by the repository exactly as for a stored challenge.
  */
-export async function verifyChallengeToken(
-  signer: ChallengeMacSigner,
-  token: string,
-): Promise<LoginChallenge> {
+export async function verifyChallengeToken(signer: ChallengeSigner, token: string): Promise<LoginChallenge> {
   const parts = token.split(".");
   requireRules(
     { token, parts },
     [
       rule(({ token }) => token.length <= CHALLENGE_TOKEN_MAXIMUM_LENGTH, "The token is too long."),
-      rule(({ parts }) => parts.length === 3, "The token must have three parts."),
+      rule(({ parts }) => parts.length === 4, "The token must have four parts."),
       rule(({ parts }) => parts[0] === CHALLENGE_TOKEN_VERSION, "The token version is not supported."),
       rule(
-        ({ parts }) => matchesStringPattern(parts[1], BASE64_URL_PATTERN),
-        "The token payload is not base64url.",
+        ({ parts }) => matchesStringPattern(parts[1], CHALLENGE_KEY_ID_PATTERN),
+        "The token key ID is malformed.",
       ),
       rule(
         ({ parts }) => matchesStringPattern(parts[2], BASE64_URL_PATTERN),
+        "The token payload is not base64url.",
+      ),
+      rule(
+        ({ parts }) => matchesStringPattern(parts[3], BASE64_URL_PATTERN),
         "The token MAC is not base64url.",
       ),
     ],
     invalid,
   );
-  const payload = Buffer.from(parts[1], "base64url");
-  if (!(await signer.verify(payload, Buffer.from(parts[2], "base64url"))))
+  const payload = Buffer.from(parts[2], "base64url");
+  if (!(await signer.verify(parts[1], payload, Buffer.from(parts[3], "base64url"))))
     fail(401, "challenge_invalid", "The challenge token is not valid: its MAC does not verify.");
   let fields: unknown;
   try {

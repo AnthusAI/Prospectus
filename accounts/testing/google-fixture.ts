@@ -3,12 +3,12 @@ import { googleIdentityHandler } from "../google-identity";
 import { MemoryGoogleIdentities } from "./memory-google-identities";
 import { registrations } from "../registration";
 import type { RestEvent } from "../auth";
-import type { ChallengeMacSigner } from "../challenge-token";
+import type { ChallengeSigner } from "../challenge-signer";
 
 const accessKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const idKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 /** Synthetic cryptographic fixture, never production credentials or IAM proof. */
-export function googleFixture(challengeSigner?: ChallengeMacSigner) {
+export function googleFixture(challengeSigner?: ChallengeSigner) {
   let now = 1900000000;
   const products = registrations(
     ["cyclotron", "papyrus"].map((product, index) => ({

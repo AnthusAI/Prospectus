@@ -11,7 +11,7 @@ import reviewedDeployment from "./deployment.json";
 import { membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
-import { KmsChallengeMacSigner } from "./challenge-token";
+import { challengeSignerFromConfiguration, loginChallengeSignerConfiguration } from "./challenge-signer";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
   throw new Error("Canonical accounts runtime not enabled.");
 const bucket = process.env.PROSPECTUS_ACCOUNTS_BUCKET ?? "",
@@ -33,8 +33,11 @@ const products = registrations([
   membershipLookup = membershipLookupMode(
     (reviewedDeployment as { membershipLookup?: unknown }).membershipLookup,
   );
-const challengeSigner = process.env.PROSPECTUS_CHALLENGE_MAC_KEY_ARN
-  ? new KmsChallengeMacSigner(process.env.PROSPECTUS_CHALLENGE_MAC_KEY_ARN)
+const challengeSigner = process.env.PROSPECTUS_LOGIN_CHALLENGE_SIGNER
+  ? challengeSignerFromConfiguration(
+      loginChallengeSignerConfiguration(JSON.parse(process.env.PROSPECTUS_LOGIN_CHALLENGE_SIGNER)),
+      process.env.PROSPECTUS_CHALLENGE_MAC_KEY_ARN,
+    )
   : undefined;
 let activeRequestId = "unavailable";
 const timingForProject = (project: "identities" | "accounts") => (value: NativeTiming) =>
