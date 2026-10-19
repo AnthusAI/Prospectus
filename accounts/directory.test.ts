@@ -135,7 +135,7 @@ test("JWT BFF returns actual persisted accounts and rejects browser authority or
   let forwarded = 0;
   try {
     const bff = accountsBffHandler({
-      origin: "https://prospectus.anth.us",
+      origins: ["https://prospectus.anth.us"],
       registration: environment.products[0],
       keys: environment.identityFixture.keys,
       nowSeconds: () => environment.identityFixture.now,
@@ -213,7 +213,7 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
   const environment = await directoryFixture();
   try {
     const bff = accountsBffHandler({
-      origin: "https://prospectus.anth.us",
+      origins: ["https://prospectus.anth.us"],
       registration: environment.products[0],
       keys: environment.identityFixture.keys,
       nowSeconds: () => environment.identityFixture.now,
@@ -298,7 +298,7 @@ test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bo
   const environment = await directoryFixture();
   try {
     const bff = accountsBffHandler({
-      origin: "https://prospectus.anth.us",
+      origins: ["https://prospectus.anth.us"],
       registration: environment.products[0],
       keys: environment.identityFixture.keys,
       nowSeconds: () => environment.identityFixture.now,
@@ -466,7 +466,7 @@ test("BFF carries a signed login challenge token end to end and nothing is store
   const environment = await directoryFixture(signer);
   try {
     const bff = accountsBffHandler({
-      origin: "https://prospectus.anth.us",
+      origins: ["https://prospectus.anth.us"],
       registration: environment.products[0],
       keys: environment.identityFixture.keys,
       nowSeconds: () => environment.identityFixture.now,
