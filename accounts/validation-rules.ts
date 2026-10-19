@@ -49,6 +49,10 @@ export const hasExactlyKeys = (value: object, expectedSortedKeys: string) =>
   Object.keys(value).sort().join(",") === expectedSortedKeys;
 
 export const PRODUCT_NAME_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
+export const isProductName = (value: unknown): value is string =>
+  typeof value === "string" && PRODUCT_NAME_PATTERN.test(value);
 export const COGNITO_ISSUER_PATTERN = /^https:\/\/cognito-idp\.[a-z0-9-]+\.amazonaws\.com\/[a-zA-Z0-9_-]+$/;
 export const CLIENT_ID_PATTERN = /^[a-z0-9]{1,128}$/;
 export const REVIEW_IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+export const isCognitoIssuer = (value: unknown): value is string =>
+  typeof value === "string" && COGNITO_ISSUER_PATTERN.test(value);

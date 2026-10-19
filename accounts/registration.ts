@@ -1,10 +1,10 @@
 import type { ProductRegistration } from "./auth";
 import {
   CLIENT_ID_PATTERN,
-  COGNITO_ISSUER_PATTERN,
-  PRODUCT_NAME_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
   hasOnlyKeys,
+  isCognitoIssuer,
+  isProductName,
   requireRules,
   throwErrorWithPrefix,
   rule,
@@ -59,14 +59,16 @@ const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
     ({ item }) => hasOnlyKeys(item, registrationFields),
     "A product registration has a field that is not allowed.",
   ),
+  rule(({ item }) => typeof item.product === "string", "A product name must be a string."),
   rule(
-    ({ item }) => PRODUCT_NAME_PATTERN.test(item.product),
+    ({ item }) => isProductName(item.product),
     "A product name must be lowercase letters, digits and hyphens, starting with a letter.",
   ),
   rule(({ item }) => typeof item.roleArn === "string", "A product runtime role ARN must be a string."),
   rule(({ item }) => rolePattern.test(item.roleArn), "A product runtime role must be an IAM role ARN."),
+  rule(({ item }) => typeof item.issuer === "string", "A product issuer must be a string."),
   rule(
-    ({ item }) => COGNITO_ISSUER_PATTERN.test(item.issuer),
+    ({ item }) => isCognitoIssuer(item.issuer),
     "A product issuer must be a regional Cognito user pool URL.",
   ),
   rule(({ item }) => Array.isArray(item.clientIds), "Product client IDs must be an array."),

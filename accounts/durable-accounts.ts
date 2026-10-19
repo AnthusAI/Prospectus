@@ -19,7 +19,7 @@ import type { AccountsApi } from "./handler";
 import {
   failWith,
   isPlainRecord,
-  PRODUCT_NAME_PATTERN,
+  isProductName,
   requireRules,
   rule,
   type ValidationRule,
@@ -656,7 +656,7 @@ export class DurableAccountsService implements AccountsApi {
   ): Promise<Entitlement> {
     if (!entitlementStatuses.includes(status))
       fail(400, "invalid_entitlement", "Entitlement status must be active or disabled.");
-    if (!PRODUCT_NAME_PATTERN.test(grantedProduct.product))
+    if (!isProductName(grantedProduct.product))
       fail(400, "invalid_entitlement", "Registered product name required.");
     const capabilities = roleOperations.owner.filter((operation) =>
       grantedProduct.capabilities.includes(operation),

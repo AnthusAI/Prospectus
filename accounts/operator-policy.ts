@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import type { Context } from "./model";
 import {
-  COGNITO_ISSUER_PATTERN,
-  PRODUCT_NAME_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
   hasExactlyKeys,
+  isCognitoIssuer,
+  isProductName,
   requireRules,
   throwErrorWithPrefix,
   rule,
@@ -31,12 +31,14 @@ const grantRules: ValidationRule<OperatorGrant>[] = [
     (grant) => hasExactlyKeys(grant, grantKeys),
     "A central operator grant must have exactly the reviewed fields.",
   ),
+  rule((grant) => typeof grant.product === "string", "A central operator grant product must be a string."),
   rule(
-    (grant) => PRODUCT_NAME_PATTERN.test(grant.product),
+    (grant) => isProductName(grant.product),
     "A central operator grant product must be lowercase letters, digits and hyphens, starting with a letter.",
   ),
+  rule((grant) => typeof grant.issuer === "string", "A central operator grant issuer must be a string."),
   rule(
-    (grant) => COGNITO_ISSUER_PATTERN.test(grant.issuer),
+    (grant) => isCognitoIssuer(grant.issuer),
     "A central operator grant issuer must be a regional Cognito user pool URL.",
   ),
   rule(

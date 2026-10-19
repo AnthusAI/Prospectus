@@ -333,3 +333,67 @@ test("operator grant failures name the broken grant rule", () => {
 test("duplicate operator grants are named as duplicates", () => {
   rejectsGrants([grant(), grant()], "Duplicate central operator grant.");
 });
+
+const nonStringValues: Array<[string, unknown]> = [
+  ["undefined", undefined],
+  ["null", null],
+  ["a number", 5],
+  ["an array holding a valid name", ["cyclotron"]],
+];
+
+const nonStringIssuers = (validIssuer: string): Array<[string, unknown]> => [
+  ...nonStringValues,
+  ["an array holding a valid issuer", [validIssuer]],
+];
+
+test("a product registration needs a string product, whatever it coerces to", () => {
+  for (const [, product] of nonStringValues) {
+    rejectsRegistration(
+      [{ ...baseRegistration(), product }],
+      `${registrationPrefix} A product name must be a string.`,
+    );
+  }
+  const withoutProduct: any = baseRegistration();
+  delete withoutProduct.product;
+  rejectsRegistration([withoutProduct], `${registrationPrefix} A product name must be a string.`);
+});
+
+test("a product registration needs a string issuer, whatever it coerces to", () => {
+  for (const [, issuer] of nonStringIssuers(baseRegistration().issuer)) {
+    rejectsRegistration(
+      [{ ...baseRegistration(), issuer }],
+      `${registrationPrefix} A product issuer must be a string.`,
+    );
+  }
+});
+
+test("a product literally named undefined is a valid name but a missing product is not", () => {
+  assert.equal(registrations([{ ...baseRegistration(), product: "undefined" }]).length, 1);
+});
+
+test("an operator grant needs a string product and issuer, whatever they coerce to", () => {
+  for (const [, product] of nonStringValues) {
+    rejectsGrants(
+      [{ ...grant(), product }],
+      `${grantPrefix} A central operator grant product must be a string.`,
+    );
+  }
+  for (const [, issuer] of nonStringIssuers(grant().issuer)) {
+    rejectsGrants(
+      [{ ...grant(), issuer }],
+      `${grantPrefix} A central operator grant issuer must be a string.`,
+    );
+  }
+  const withoutProduct: any = grant();
+  delete withoutProduct.product;
+  rejectsGrants(
+    [withoutProduct],
+    `${grantPrefix} A central operator grant must have exactly the reviewed fields.`,
+  );
+});
+
+test("a Papyrus site needs a string product, whatever it coerces to", () => {
+  for (const [, product] of nonStringValues) {
+    rejectsSite([{ ...siteEntry(), product }], `${siteEntryPrefix} A Papyrus site product must be a string.`);
+  }
+});

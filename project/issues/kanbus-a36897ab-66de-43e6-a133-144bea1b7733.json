@@ -1,0 +1,28 @@
+{
+  "id": "kanbus-a36897ab-66de-43e6-a133-144bea1b7733",
+  "title": "Product-name validation accepts a missing or non-string product",
+  "description": "Bug found reviewing PR #42 (merged e0dd639). PRODUCT_NAME_PATTERN.test(value) coerces its argument to a string, so a product that is undefined (missing) becomes \"undefined\" and matches /^[a-z][a-z0-9-]{0,39}$/. A one-element array such as [\"cyclotron\"] also coerces to \"cyclotron\" and passes, and the same coercion lets an array-wrapped issuer pass the issuer pattern.\n\nAffected: registrationRules (accounts/registration.ts) for product and issuer, grantRules (accounts/operator-policy.ts) for product and issuer, and the PRODUCT_NAME_PATTERN.test in setEntitlement (accounts/durable-accounts.ts). siteEntryRules (accounts/papyrus-sites.ts) already has a string rule before its pattern rule and is not affected.\n\nImpact: registrations and operator grants are deployment-owned configs validated at startup. No request-supplied data reaches these validators, and the committed deployment configs have valid string products, so nothing reachable in production hits this today. It could only admit a deployment-config mistake (a registration or grant with no product, stored as undefined). setEntitlement receives its product from the registered-product list (matched by route), not from the request body, so it is not reachable either; it is hardened for consistency.\n\nDesign note: the literal string \"undefined\" is a legitimate product name by the pattern (lowercase letters), so it stays accepted; the typeof rule is what rejects a missing product.\n\nAcceptance criteria:\n- Registration, operator grant and Papyrus site validators reject a missing, null, numeric and array-wrapped product with a specific \"must be a string\" message and unchanged status and error codes.\n- The same for issuer on registrations and operator grants.\n- setEntitlement rejects a non-string product with the existing 400 invalid_entitlement.\n- A shared isProductName type guard is used by every product-name check.\n- Committed deployment configs still validate; lint, typecheck, tests pass.",
+  "type": "bug",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-19T21:36:18.812488Z",
+  "updated_at": "2026-10-19T21:36:26.855911Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude-sonnet-5-5",
+    "name": "product-name-required"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
+  }
+}
