@@ -44,22 +44,13 @@ export class EvaluationIntake extends Construct {
         resources: [`arn:aws:lambda:us-east-1:${TARGET_ACCOUNT}:function:prospectus-api`],
       }),
     );
-    const claimPrefixes = [
-      `_virtuus/${PROJECT_NAMESPACE}/intake-identities/*`,
-      `_virtuus/${PROJECT_NAMESPACE}/intake-receipts/*`,
-    ];
-    const bucketArn = `arn:aws:s3:::prospectus-records-${TARGET_ACCOUNT}`;
     role.addToPolicy(
       new iam.PolicyStatement({
         actions: ["s3:GetObject", "s3:PutObject"],
-        resources: claimPrefixes.map((prefix) => `${bucketArn}/${prefix}`),
-      }),
-    );
-    role.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["s3:ListBucket"],
-        resources: [bucketArn],
-        conditions: { StringLikeIfExists: { "s3:prefix": claimPrefixes } },
+        resources: [
+          `arn:aws:s3:::prospectus-records-${TARGET_ACCOUNT}/_virtuus/${PROJECT_NAMESPACE}/intake-identities/*`,
+          `arn:aws:s3:::prospectus-records-${TARGET_ACCOUNT}/_virtuus/${PROJECT_NAMESPACE}/intake-receipts/*`,
+        ],
       }),
     );
     const handler = new lambda.Function(this, "Handler", {

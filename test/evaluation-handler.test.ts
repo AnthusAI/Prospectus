@@ -165,7 +165,7 @@ const realContactSubmission = () => ({
   campaign: {},
 });
 
-const storageWithoutListPermission = (listPermission: boolean) => {
+const storageWithoutListPermission = (writesAvailable: boolean) => {
   const workspace = "test/prospectus";
   const objects = new Map<string, { bytes: string; revision: string }>();
   return new VirtuusS3ControlStore(workspace, async (request: ControlRequest) => {
@@ -173,15 +173,17 @@ const storageWithoutListPermission = (listPermission: boolean) => {
     const stored = objects.get(request.path);
     if (request.operation === "get") {
       if (stored) return { ...base, status: "ok", object: stored };
-      return { ...base, status: listPermission ? "missing" : "unavailable" };
+      return { ...base, status: "unavailable" };
     }
+    if (!writesAvailable) return { ...base, status: "unavailable" };
+    if (request.condition && "absent" in request.condition && stored) return { ...base, status: "conflict" };
     const object = { bytes: request.bytes!, revision: `"etag-${objects.size + 1}"` };
     objects.set(request.path, object);
     return { ...base, status: "ok", object };
   });
 };
 
-const submitRealContactThrough = async (listPermission: boolean) => {
+const submitRealContactThrough = async (writesAvailable: boolean) => {
   const diagnostics: UnconfirmedSubmissionDiagnostic[] = [];
   let reachedCanonicalWrite = false;
   const handler = createEvaluationHandler({
@@ -196,7 +198,7 @@ const submitRealContactThrough = async (listPermission: boolean) => {
         siteId: REAL_CONTACT_POLICY.siteId,
         formId: REAL_CONTACT_POLICY.formId,
         contactPolicy: REAL_CONTACT_POLICY,
-        identityStore: storageWithoutListPermission(listPermission),
+        identityStore: storageWithoutListPermission(writesAvailable),
         request: async () => {
           reachedCanonicalWrite = true;
           throw new IntakeError(503, "stop after the first canonical call");
@@ -219,7 +221,13 @@ const submitRealContactThrough = async (listPermission: boolean) => {
   return { result, diagnostics, reachedCanonicalWrite };
 };
 
-test("a first submission whose claim read is denied returns the generic 503 with a data-free diagnostic", async () => {
+test("a first submission reaches the canonical write although reading an absent claim is denied", async () => {
+  const { diagnostics, reachedCanonicalWrite } = await submitRealContactThrough(true);
+  assert.equal(reachedCanonicalWrite, true);
+  assert.ok(diagnostics.every((diagnostic) => diagnostic.errorClass === "IntakeError"));
+});
+
+test("an unavailable claim write returns the generic 503 with a data-free diagnostic", async () => {
   const { result, diagnostics, reachedCanonicalWrite } = await submitRealContactThrough(false);
   assert.equal(result.statusCode, 503);
   assert.equal(
@@ -231,12 +239,6 @@ test("a first submission whose claim read is denied returns the generic 503 with
     { event: "intake-submission-unconfirmed", errorClass: "ControlTransportError", outcome: "unavailable" },
   ]);
   assert.ok(!JSON.stringify(diagnostics).includes("alex@example.com"));
-});
-
-test("a first submission whose absent claim reads as missing proceeds to the canonical write", async () => {
-  const { diagnostics, reachedCanonicalWrite } = await submitRealContactThrough(true);
-  assert.equal(reachedCanonicalWrite, true);
-  assert.ok(diagnostics.every((diagnostic) => diagnostic.errorClass === "IntakeError"));
 });
 
 test("unexpected failures are reported by class only, never by message", () => {

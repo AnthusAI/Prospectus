@@ -63,9 +63,12 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
       "logs:CreateLogStream",
       "logs:PutLogEvents",
       "s3:GetObject",
-      "s3:ListBucket",
       "s3:PutObject",
     ].sort(),
+  );
+  assert.ok(
+    !JSON.stringify(statements).includes("s3:ListBucket"),
+    "intake claims are created first, so reading an absent claim never needs bucket listing",
   );
   const invoke = statements.find((statement: any) => statement.Action === "lambda:InvokeFunction");
   assert.equal(invoke.Resource, "arn:aws:lambda:us-east-1:712236451410:function:prospectus-api");
@@ -76,20 +79,6 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
     "arn:aws:s3:::prospectus-records-712236451410/_virtuus/cyclotron/prospectus/intake-identities/*",
     "arn:aws:s3:::prospectus-records-712236451410/_virtuus/cyclotron/prospectus/intake-receipts/*",
   ]);
-  const listing = statements.find((statement: any) => statement.Action === "s3:ListBucket");
-  assert.equal(
-    listing.Resource,
-    "arn:aws:s3:::prospectus-records-712236451410",
-    "bucket-level listing is what lets S3 report a missing claim as 404 instead of 403",
-  );
-  assert.deepEqual(listing.Condition, {
-    StringLikeIfExists: {
-      "s3:prefix": [
-        "_virtuus/cyclotron/prospectus/intake-identities/*",
-        "_virtuus/cyclotron/prospectus/intake-receipts/*",
-      ],
-    },
-  });
   assert.deepEqual(corsOrigins(template), ["https://prospectus.anth.us"]);
   assert.equal(lambdaEnvironment(template).PROSPECTUS_INTAKE_ALLOWED_ORIGINS, "https://prospectus.anth.us");
   assert.equal(lambdaEnvironment(template).PROSPECTUS_INTAKE_CONTACT_MODE, "synthetic-only");
@@ -125,7 +114,6 @@ test("real-contact intake adds only the anth.us form origins and keeps the same 
       "logs:CreateLogStream",
       "logs:PutLogEvents",
       "s3:GetObject",
-      "s3:ListBucket",
       "s3:PutObject",
     ].sort(),
   );

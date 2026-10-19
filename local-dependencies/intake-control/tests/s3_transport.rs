@@ -281,7 +281,7 @@ fn real_stdio_binary_refuses_other_workspace_before_loading_credentials() {
 }
 
 #[tokio::test]
-async fn first_read_of_an_absent_claim_without_list_permission_is_unavailable_and_never_missing() {
+async fn create_first_succeeds_and_reads_an_existing_claim_without_list_permission_while_absent_reads_stay_unavailable() {
     let service = Arc::new(Mutex::new(Service {
         forbid_missing_keys_without_list_permission: true,
         ..Service::default()
@@ -327,5 +327,30 @@ async fn first_read_of_an_absent_claim_without_list_permission_is_unavailable_an
         .status,
         "unavailable"
     );
+    let created = dispatch(
+        &request("put", "test/prospectus", Some("first claim"), None),
+        "test/prospectus",
+        &controls,
+    )
+    .await;
+    assert_eq!(created.status, "ok");
+    assert_eq!(
+        dispatch(
+            &request("put", "test/prospectus", Some("second claim"), None),
+            "test/prospectus",
+            &controls
+        )
+        .await
+        .status,
+        "conflict"
+    );
+    let existing = dispatch(
+        &request("get", "test/prospectus", None, None),
+        "test/prospectus",
+        &controls,
+    )
+    .await;
+    assert_eq!(existing.status, "ok");
+    assert_eq!(existing.object.unwrap().bytes, "first claim");
     server.abort();
 }

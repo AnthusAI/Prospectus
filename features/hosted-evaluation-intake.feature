@@ -18,8 +18,9 @@ Feature: Evaluate inquiry capture without contacting real people
     Then the shared claim resolves the original prospect and canonical inquiry
     And temporary cache deletion does not delete shared claims or CRM records
 
-  Scenario: A first-ever inquiry is distinguished from a denied storage read
-    Given the intake runtime may list only its own claim prefixes
+  Scenario: A first-ever inquiry needs no permission to read an absent claim
+    Given the intake runtime may only get and put its own claim prefixes and cannot list the bucket
     When a visitor submits an inquiry whose identity and receipt claims do not exist yet
-    Then the absent claims read as missing and the inquiry proceeds to the private CRM
-    And a denied claim read is never treated as missing and logs only an error class and transport outcome
+    Then each claim is created first with an absent-only conditional write and read only if it already exists
+    And repeated, changed and concurrent submissions resolve exactly as before
+    And a denied read of an existing claim is an error and an unconfirmed submission logs only an error class and transport outcome
