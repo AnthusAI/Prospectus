@@ -17,3 +17,9 @@ Feature: Evaluate inquiry capture without contacting real people
     When a committed backend response is lost and the receipt is retried
     Then the shared claim resolves the original prospect and canonical inquiry
     And temporary cache deletion does not delete shared claims or CRM records
+
+  Scenario: A first-ever inquiry is distinguished from a denied storage read
+    Given the intake runtime may list only its own claim prefixes
+    When a visitor submits an inquiry whose identity and receipt claims do not exist yet
+    Then the absent claims read as missing and the inquiry proceeds to the private CRM
+    And a denied claim read is never treated as missing and logs only an error class and transport outcome

@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createEvaluationHandler, type EvaluationEvent } from "../server/evaluation-handler";
+import {
+  createEvaluationHandler,
+  diagnoseUnconfirmedSubmission,
+  type EvaluationEvent,
+} from "../server/evaluation-handler";
 import { canonicalRequest } from "../server/canonical-invoke";
-import { IntakeError } from "../server/intake";
+import { IntakeError, IntakeService } from "../server/intake";
+import { VirtuusS3ControlStore, type ControlRequest } from "../server/s3-control-store";
+import { REAL_CONTACT_POLICY } from "../server/intake-contact-policy";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { UnconfirmedSubmissionDiagnostic } from "../server/evaluation-handler";
 
 const event: EvaluationEvent = {
   rawPath: "/intake/demo",
@@ -140,4 +150,102 @@ test("evaluation accepts every configured form origin and nothing else", async (
   ] as const) {
     assert.equal((await handler({ ...event, headers: { ...event.headers, origin } })).statusCode, expected);
   }
+});
+
+const realContactSubmission = () => ({
+  submission_id: "2f6b7c52-3d1e-4a52-9b0e-6a1a1f0c9d11",
+  name: "Alex Example",
+  email: "alex@example.com",
+  company: "Example Studio",
+  message: "Please show the demo.",
+  website: "",
+  notice_version: REAL_CONTACT_POLICY.noticeVersion,
+  marketing_opt_in: false,
+  page_path: "/contact",
+  campaign: {},
+});
+
+const storageWithoutListPermission = (listPermission: boolean) => {
+  const workspace = "test/prospectus";
+  const objects = new Map<string, { bytes: string; revision: string }>();
+  return new VirtuusS3ControlStore(workspace, async (request: ControlRequest) => {
+    const base = { version: 1, workspace, path: request.path };
+    const stored = objects.get(request.path);
+    if (request.operation === "get") {
+      if (stored) return { ...base, status: "ok", object: stored };
+      return { ...base, status: listPermission ? "missing" : "unavailable" };
+    }
+    const object = { bytes: request.bytes!, revision: `"etag-${objects.size + 1}"` };
+    objects.set(request.path, object);
+    return { ...base, status: "ok", object };
+  });
+};
+
+const submitRealContactThrough = async (listPermission: boolean) => {
+  const diagnostics: UnconfirmedSubmissionDiagnostic[] = [];
+  let reachedCanonicalWrite = false;
+  const handler = createEvaluationHandler({
+    allowedOrigins: ["https://anth.us"],
+    reportUnconfirmed: (diagnostic) => diagnostics.push(diagnostic),
+    open: async () => {
+      const directory = await mkdtemp(join(tmpdir(), "prospectus-intake-test-"));
+      const service = await IntakeService.open({
+        directory,
+        workspace: "test/prospectus",
+        owner: "intake-queue",
+        siteId: REAL_CONTACT_POLICY.siteId,
+        formId: REAL_CONTACT_POLICY.formId,
+        contactPolicy: REAL_CONTACT_POLICY,
+        identityStore: storageWithoutListPermission(listPermission),
+        request: async () => {
+          reachedCanonicalWrite = true;
+          throw new IntakeError(503, "stop after the first canonical call");
+        },
+      });
+      return {
+        submit: service.submit.bind(service),
+        close: async () => {
+          await service.close();
+          await rm(directory, { recursive: true, force: true });
+        },
+      };
+    },
+  });
+  const result = await handler({
+    ...event,
+    headers: { origin: "https://anth.us", "content-type": "application/json" },
+    body: JSON.stringify(realContactSubmission()),
+  });
+  return { result, diagnostics, reachedCanonicalWrite };
+};
+
+test("a first submission whose claim read is denied returns the generic 503 with a data-free diagnostic", async () => {
+  const { result, diagnostics, reachedCanonicalWrite } = await submitRealContactThrough(false);
+  assert.equal(result.statusCode, 503);
+  assert.equal(
+    JSON.parse(result.body).message,
+    "The inquiry could not be confirmed. Retry the same receipt.",
+  );
+  assert.equal(reachedCanonicalWrite, false);
+  assert.deepEqual(diagnostics, [
+    { event: "intake-submission-unconfirmed", errorClass: "ControlTransportError", outcome: "unavailable" },
+  ]);
+  assert.ok(!JSON.stringify(diagnostics).includes("alex@example.com"));
+});
+
+test("a first submission whose absent claim reads as missing proceeds to the canonical write", async () => {
+  const { diagnostics, reachedCanonicalWrite } = await submitRealContactThrough(true);
+  assert.equal(reachedCanonicalWrite, true);
+  assert.ok(diagnostics.every((diagnostic) => diagnostic.errorClass === "IntakeError"));
+});
+
+test("unexpected failures are reported by class only, never by message", () => {
+  assert.deepEqual(diagnoseUnconfirmedSubmission(new TypeError("alex@example.com")), {
+    event: "intake-submission-unconfirmed",
+    errorClass: "TypeError",
+  });
+  assert.deepEqual(diagnoseUnconfirmedSubmission("alex@example.com"), {
+    event: "intake-submission-unconfirmed",
+    errorClass: "string",
+  });
 });

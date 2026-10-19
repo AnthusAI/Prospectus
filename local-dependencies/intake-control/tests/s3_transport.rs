@@ -26,6 +26,7 @@ struct Service {
     lose_put: bool,
     lose_get: bool,
     deny_put: bool,
+    forbid_missing_keys_without_list_permission: bool,
     sequence: u64,
 }
 
@@ -56,6 +57,9 @@ async fn handle(
     service.calls.push((parts.method.to_string(), path.clone()));
     if parts.method == "GET" {
         let Some((bytes, revision)) = service.objects.get(&path).cloned() else {
+            if service.forbid_missing_keys_without_list_permission {
+                return error(StatusCode::FORBIDDEN, "AccessDenied");
+            }
             return error(StatusCode::NOT_FOUND, "NoSuchKey");
         };
         if service.lose_get {
@@ -274,4 +278,54 @@ fn real_stdio_binary_refuses_other_workspace_before_loading_credentials() {
     assert!(output.status.success());
     let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(response["status"], "unauthorized");
+}
+
+#[tokio::test]
+async fn first_read_of_an_absent_claim_without_list_permission_is_unavailable_and_never_missing() {
+    let service = Arc::new(Mutex::new(Service {
+        forbid_missing_keys_without_list_permission: true,
+        ..Service::default()
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let state = service.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(any(handle)).with_state(state),
+        )
+        .await
+        .unwrap();
+    });
+    let configuration = aws_sdk_s3::config::Builder::new()
+        .behavior_version_latest()
+        .region(aws_sdk_s3::config::Region::new("us-east-1"))
+        .credentials_provider(aws_sdk_s3::config::Credentials::new(
+            "mock-key",
+            "mock-secret",
+            None,
+            None,
+            "loopback-test",
+        ))
+        .endpoint_url(format!("http://{address}"))
+        .force_path_style(true)
+        .build();
+    let controls = IntakeControls::new(
+        Arc::new(S3Store::new(
+            aws_sdk_s3::Client::from_conf(configuration),
+            "mock-bucket",
+        )),
+        Scope::new("test", "prospectus").unwrap(),
+    );
+    assert_eq!(
+        dispatch(
+            &request("get", "test/prospectus", None, None),
+            "test/prospectus",
+            &controls
+        )
+        .await
+        .status,
+        "unavailable"
+    );
+    server.abort();
 }
