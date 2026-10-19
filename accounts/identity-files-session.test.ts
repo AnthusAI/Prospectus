@@ -77,7 +77,9 @@ test(
         (error) => error instanceof IdentityFileError && error.code === "conflict",
       );
       assert.equal((await first.get<{ active: boolean }>("people/a.json"))?.value.active, false);
+      assert.equal(first.isClosed, false);
       first.close();
+      assert.equal(first.isClosed, true);
       await assert.rejects(
         first.get("people/a.json"),
         (error) => error instanceof IdentityFileError && error.code === "unavailable",

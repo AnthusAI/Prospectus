@@ -31,28 +31,39 @@ const products = registrations([
   membershipLookup = membershipLookupMode(
     (reviewedDeployment as { membershipLookup?: unknown }).membershipLookup,
   );
+let activeRequestId = "unavailable";
+const timingForProject = (project: "identities" | "accounts") => (value: NativeTiming) =>
+  console.info(JSON.stringify({ event: "accounts.native", requestId: activeRequestId, project, ...value }));
+let warmIdentities: VirtuusS3IdentityFiles | undefined;
+let warmAccounts: VirtuusS3AccountFiles | undefined;
+const closeWarmBridges = () => {
+  warmIdentities?.close();
+  warmAccounts?.close();
+};
+const warmBridges = () => {
+  if (!warmIdentities || warmIdentities.isClosed)
+    warmIdentities = new VirtuusS3IdentityFiles(
+      { ...config, project: "identities" },
+      executable,
+      true,
+      timingForProject("identities"),
+    );
+  if (!warmAccounts || warmAccounts.isClosed)
+    warmAccounts = new VirtuusS3AccountFiles(config, executable, true, timingForProject("accounts"));
+  return { identities: warmIdentities, accounts: warmAccounts };
+};
+process.once("SIGTERM", closeWarmBridges);
 export const handler = async (
   event: RestEvent,
   context?: { awsRequestId?: string; getRemainingTimeInMillis?: () => number },
 ) => {
-  const requestId = /^[a-f0-9-]{36}$/i.test(context?.awsRequestId ?? "")
-    ? context!.awsRequestId
+  activeRequestId = /^[a-f0-9-]{36}$/i.test(context?.awsRequestId ?? "")
+    ? context!.awsRequestId!
     : "unavailable";
-  const timing = (project: "identities" | "accounts") => (value: NativeTiming) =>
-    console.info(JSON.stringify({ event: "accounts.native", requestId, project, ...value }));
-  const identities = new VirtuusS3IdentityFiles(
-    { ...config, project: "identities" },
-    executable,
-    true,
-    timing("identities"),
-  );
-  const accounts = new VirtuusS3AccountFiles(config, executable, true, timing("accounts"));
-  const close = () => {
-    identities.close();
-    accounts.close();
-  };
+  const { identities, accounts } = warmBridges();
   const remaining = context?.getRemainingTimeInMillis?.();
-  const deadline = remaining === undefined ? undefined : setTimeout(close, Math.max(1, remaining - 250));
+  const deadline =
+    remaining === undefined ? undefined : setTimeout(closeWarmBridges, Math.max(1, remaining - 250));
   deadline?.unref();
   try {
     return await canonicalAccountsHandler(
@@ -66,6 +77,5 @@ export const handler = async (
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);
-    close();
   }
 };

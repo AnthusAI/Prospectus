@@ -54,9 +54,12 @@ export class AccountsPlane extends Construct {
         resources: prefixes.map((prefix) => bucket.arnForObjects(prefix)),
       }),
     );
-    // HeadBucket requires bucket-level ListBucket; explicit approval must cover it.
     runtime.addToPolicy(
-      new iam.PolicyStatement({ actions: ["s3:ListBucket"], resources: [bucket.bucketArn] }),
+      new iam.PolicyStatement({
+        actions: ["s3:ListBucket"],
+        resources: [bucket.bucketArn],
+        conditions: { StringLike: { "s3:prefix": prefixes } },
+      }),
     );
     const keys = cdk.Stack.of(this);
     const registration = {
