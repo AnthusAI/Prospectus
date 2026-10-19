@@ -13,9 +13,9 @@ import { context } from "../auth";
 /** Real RSA + pinned Virtuus files, disposable synthetic only. */
 export async function directoryFixture() {
   const root = await mkdtemp(join(tmpdir(), "accounts-directory-")),
-    f = googleFixture();
+    identityFixture = googleFixture();
   const products = registrations(
-    f.products.map((product, index) => ({
+    identityFixture.products.map((product, index) => ({
       ...product,
       ...(index === 0 ? { product: "prospectus-directory", accountDirectory: true as const } : {}),
       capabilities: ["console:read", "console:write", "members:read", "members:write"],
@@ -29,12 +29,14 @@ export async function directoryFixture() {
       new VirtuusIdentityFiles(root),
       new VirtuusAccountFiles(root),
       products,
-      f.keys,
-      () => f.now,
+      identityFixture.keys,
+      () => identityFixture.now,
     );
   async function enroll(index: number, name: string, groups: string[] = []) {
-    const challenge = JSON.parse((await handler()(f.event(index, "/v1/identities/google/challenge"))).body);
-    const proof = f.pair(
+    const challenge = JSON.parse(
+      (await handler()(identityFixture.event(index, "/v1/identities/google/challenge"))).body,
+    );
+    const proof = identityFixture.pair(
       index,
       challenge.nonce,
       `synthetic-google-${name}`,
@@ -42,13 +44,23 @@ export async function directoryFixture() {
       { sub: `synthetic-${name}-${index}` },
     );
     const result = await handler()(
-      f.event(index, "/v1/identities/google/resolve", { challengeId: challenge.challengeId }, proof),
+      identityFixture.event(
+        index,
+        "/v1/identities/google/resolve",
+        { challengeId: challenge.challengeId },
+        proof,
+      ),
     );
     if (result.statusCode !== 200) throw new Error("Synthetic enrollment failed");
     return {
       proof,
       person: JSON.parse(result.body).person,
-      context: await context(f.event(index, "/v1/accounts", {}, proof), products, f.keys, f.now),
+      context: await context(
+        identityFixture.event(index, "/v1/accounts", {}, proof),
+        products,
+        identityFixture.keys,
+        identityFixture.now,
+      ),
       index,
     };
   }
@@ -61,7 +73,7 @@ export async function directoryFixture() {
   await service.setMembership(owner.context, account.id, member.person.id, "member", "active");
   return {
     root,
-    f,
+    identityFixture,
     products,
     files,
     repository,

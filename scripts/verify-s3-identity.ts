@@ -162,21 +162,21 @@ const config: S3IdentityConfiguration = {
 const files = () => new VirtuusS3IdentityFiles(config),
   repo = () => new DurableGoogleIdentities(files());
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const f = googleFixture();
+const identityFixture = googleFixture();
 function fixture() {
   const unique = randomUUID(),
     binding = {
-      product: f.products[0].product,
-      principal: f.products[0].roleArn,
-      issuer: f.products[0].issuer,
-      clientId: f.products[0].clientIds[0],
-      policyRevision: f.products[0].googleFederation!.reviewedPolicyId,
+      product: identityFixture.products[0].product,
+      principal: identityFixture.products[0].roleArn,
+      issuer: identityFixture.products[0].issuer,
+      clientId: identityFixture.products[0].clientIds[0],
+      policyRevision: identityFixture.products[0].googleFederation!.reviewedPolicyId,
     };
   const challenge: LoginChallenge = {
     challengeId: randomUUID(),
     nonce: randomUUID(),
-    issuedAt: f.now,
-    expiresAt: f.now + 300,
+    issuedAt: identityFixture.now,
+    expiresAt: identityFixture.now + 300,
     binding,
   };
   const proof: GoogleAssociation = {
@@ -185,10 +185,10 @@ function fixture() {
     binding,
     cognitoSubject: `synthetic-${unique}`,
     googleSubject: `synthetic-${unique}`,
-    authTime: f.now,
+    authTime: identityFixture.now,
     lineageHash: hash(unique),
     fingerprint: hash(randomUUID()),
-    now: f.now,
+    now: identityFixture.now,
   };
   return { challenge, proof };
 }
@@ -223,27 +223,37 @@ let passed = 0;
 // Each bridge operation is a fresh native process; no shared memory coordinates S3.
 for (const phase of ["issue", "prepare", "google", "alias", "person", "session", "complete"] as const)
   for (const point of ["before", "after"] as const) {
-    const x = fixture();
-    if (phase !== "issue") await repo().issue(x.challenge);
+    const fixtureValues = fixture();
+    if (phase !== "issue") await repo().issue(fixtureValues.challenge);
     assert.equal(
       (
-        await worker(phase === "issue" ? "issue" : "associate", phase === "issue" ? x.challenge : x.proof, {
-          phase,
-          point,
-        })
+        await worker(
+          phase === "issue" ? "issue" : "associate",
+          phase === "issue" ? fixtureValues.challenge : fixtureValues.proof,
+          {
+            phase,
+            point,
+          },
+        )
       ).code,
       86,
     );
     if (!(phase === "complete" && point === "after"))
-      assert.equal(await repo().find(x.proof.binding.issuer, x.proof.cognitoSubject), null);
-    if (phase === "issue") await repo().issue(x.challenge);
-    const person = await retry(() => repo().associate(x.proof));
-    assert.deepEqual(await repo().recover(x.challenge.challengeId), person);
-    assert.equal((await repo().find(x.proof.binding.issuer, x.proof.cognitoSubject))?.person.id, person.id);
+      assert.equal(
+        await repo().find(fixtureValues.proof.binding.issuer, fixtureValues.proof.cognitoSubject),
+        null,
+      );
+    if (phase === "issue") await repo().issue(fixtureValues.challenge);
+    const person = await retry(() => repo().associate(fixtureValues.proof));
+    assert.deepEqual(await repo().recover(fixtureValues.challenge.challengeId), person);
+    assert.equal(
+      (await repo().find(fixtureValues.proof.binding.issuer, fixtureValues.proof.cognitoSubject))?.person.id,
+      person.id,
+    );
     passed++;
   }
-const x = fixture();
-await repo().issue(x.challenge);
+const fixtureValues = fixture();
+await repo().issue(fixtureValues.challenge);
 let lost = false;
 const inner = files();
 const uncertain: IdentityFiles = {
@@ -258,21 +268,21 @@ const uncertain: IdentityFiles = {
     return result;
   },
 };
-await assert.rejects(new DurableGoogleIdentities(uncertain).associate(x.proof));
-assert.equal(await repo().find(x.proof.binding.issuer, x.proof.cognitoSubject), null);
-const recovered = await repo().recover(x.challenge.challengeId);
+await assert.rejects(new DurableGoogleIdentities(uncertain).associate(fixtureValues.proof));
+assert.equal(await repo().find(fixtureValues.proof.binding.issuer, fixtureValues.proof.cognitoSubject), null);
+const recovered = await repo().recover(fixtureValues.challenge.challengeId);
 assert.ok(recovered);
-assert.deepEqual(await repo().associate(x.proof), recovered);
+assert.deepEqual(await repo().associate(fixtureValues.proof), recovered);
 await assert.rejects(
-  repo().associate({ ...x.proof, fingerprint: hash("changed") }),
+  repo().associate({ ...fixtureValues.proof, fingerprint: hash("changed") }),
   (error) => (error as any).code === "challenge_replay",
 );
 passed++;
-const competing = { ...x.challenge, challengeId: randomUUID() };
+const competing = { ...fixtureValues.challenge, challengeId: randomUUID() };
 await repo().issue(competing);
 await assert.rejects(
   repo().associate({
-    ...x.proof,
+    ...fixtureValues.proof,
     challengeId: competing.challengeId,
     googleSubject: "synthetic-conflict",
     fingerprint: hash("conflict"),
@@ -306,17 +316,23 @@ for (const proof of proofs) people.push(await retry(() => repo().associate(proof
 assert.equal(new Set(people.map((person) => person.id)).size, 1);
 passed++;
 // Actual RSA handler at the storage boundary, not only trusted repository calls.
-const handler = () => googleIdentityHandler(repo(), f.products, f.keys, () => f.now);
+const handler = () =>
+  googleIdentityHandler(repo(), identityFixture.products, identityFixture.keys, () => identityFixture.now);
 const peopleFromPools = [];
 for (let index = 0; index < 2; index++) {
-  const issued = JSON.parse((await handler()(f.event(index, "/v1/identities/google/challenge"))).body);
-  const pair = f.pair(index, issued.nonce);
+  const issued = JSON.parse(
+    (await handler()(identityFixture.event(index, "/v1/identities/google/challenge"))).body,
+  );
+  const pair = identityFixture.pair(index, issued.nonce);
   const response = await handler()(
-    f.event(index, "/v1/identities/google/resolve", { challengeId: issued.challengeId }, pair),
+    identityFixture.event(index, "/v1/identities/google/resolve", { challengeId: issued.challengeId }, pair),
   );
   assert.equal(response.statusCode, 200);
   peopleFromPools.push(JSON.parse(response.body).person);
-  assert.equal((await handler()(f.event(index, "/v1/identities/me", {}, pair, "GET"))).body, response.body);
+  assert.equal(
+    (await handler()(identityFixture.event(index, "/v1/identities/me", {}, pair, "GET"))).body,
+    response.body,
+  );
 }
 assert.deepEqual(peopleFromPools[0], peopleFromPools[1]);
 passed++;
