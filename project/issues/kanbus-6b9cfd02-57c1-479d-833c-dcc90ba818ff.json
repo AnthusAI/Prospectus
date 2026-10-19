@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
+  "title": "Act on the 2026-10-17 code review",
+  "description": "Ryan reviewed the 2026-10-17 full code review of Prospectus and agreed with every finding and recommendation. This epic tracks the fixes. The review document is https://claude.ai/code/artifact/f53880ad-eeb3-4c04-bcf6-82dfb7af4b9a.\n\nDecisions recorded from that review:\n\n- The account model stays as implemented: one organization account with per-product entitlements. Apps own permissions on their own objects, keyed by Prospectus person and account IDs, never exceeding the Prospectus role. Only reviewed operators turn products on or off.\n- A single formatting PR lands first; every other fix is stacked on it so later diffs read line by line.\n- The PR #18 follow-ups (callable entitlement route) are owned by the \"Next moves to get ahead\" thread and are not duplicated here. The review's Google OAuth secret finding was a false alarm: the secret Prospectus uses is live in papyrus-production; the deleted copy was an unused one in cyclotron-production.\n\n```mermaid\nflowchart TD\n  F[Format with Prettier, lint in CI] --> B[Native bridge lifetime and S3 scope]\n  F --> D[Remove dead code, shared request parser]\n  F --> R[Resolve Person once per request]\n  F --> S[Sign-in: store session first, one Google login]\n  F --> C[CI caching, test:all, Node 24, 202 status]\n  F --> O[Docs: README, ARCHITECTURE, SECURITY, OPERATIONS]\n  D --> P[Named predicates and descriptive names in accounts/]\n  B --> P\n  R --> P\n```\n\nWorking rules for every child issue (from Ryan's standing preferences and the review hand-off):\n\n- Branch from `claude/project-thread-3r1x8t` (main plus the Prettier formatting commit) as `claude/project-thread-3r1x8t-<topic>`. Open the PR with base `claude/project-thread-3r1x8t` so the diff shows only the fix; GitHub retargets it to `main` when the formatting PR merges.\n- Code style: no comments that explain what a line does; long descriptive names instead. One statement per line. No single-letter identifiers. Validation chains become named predicate functions, each failing with its own message. Run `npm run lint` before committing.\n- Verify before pushing. Build the pinned Kanbus UI first (`node infra/scripts/checkout-kanbus.mjs`, then `npm ci` and `npm run build` in `.build/kanbus-ui/packages/ui`), then `npm ci`, `npm ci --prefix packages/accounts-client`, and `npm run lint && npm run typecheck && npm test && npm run build`. Native accounts tests need `npm run build:identity-files` (cargo, several minutes). Infra changes: `npm ci --prefix infra && npm run check --prefix infra`.\n- No AWS access from cloud workers; nothing a worker does deploys. No model names in code, commits or PR bodies.\n- Order: the formatting PR (kanbus-f1ffd7) merges first, after PR #18. The six wave-1 issues run in parallel. kanbus-dc58ab (named predicates) waits for the dead-code, bridge and read-amplification PRs. The CI issue and the docs issue both edit README.md; whichever lands second rebases.\n- The docs issue (kanbus-829a99) must describe the Google OAuth secret as live, not as a deploy risk.",
+  "type": "epic",
+  "status": "in_progress",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-17T14:49:24.976353159Z",
+  "updated_at": "2026-10-17T16:32:52.910958394Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

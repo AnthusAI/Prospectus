@@ -23,7 +23,9 @@
     "test:accounts:delegation": "npm run build:identity-files && node --import tsx --test accounts/execution-delegation.test.ts",
     "build:accounts": "node accounts/build.mjs",
     "build:accounts-client": "tsc -p packages/accounts-client/tsconfig.json",
-    "test:accounts:ui": "node --import tsx --test test/accounts-directory-ui.test.ts"
+    "test:accounts:ui": "node --import tsx --test test/accounts-directory-ui.test.ts",
+    "lint": "prettier --check \"**/*.{ts,tsx,mjs,js}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,mjs,js}\""
   },
   "dependencies": {
     "@aws-sdk/client-lambda": "3.1152.0",
@@ -40,6 +42,7 @@
     "autoprefixer": "^10.4.20",
     "esbuild": "0.28.2",
     "postcss": "^8.4.47",
+    "prettier": "3.6.2",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.23.12",
     "typescript": "^5.7.3",

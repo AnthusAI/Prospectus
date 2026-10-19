@@ -25,8 +25,16 @@ const apiOrigin = process.env.PROSPECTUS_LOCAL_API_ORIGIN ?? "http://127.0.0.1:5
 test("a signed-in identity without membership sees access pending and no CRM controls", async ({ page }) => {
   test.skip(!token, "Run with the isolated local proof fixture.");
   const issueRequests: string[] = [];
-  page.on("request", request => { if (request.url().includes("/api/issues")) issueRequests.push(request.url()); });
-  await page.route("**/api/config", route => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden", message: "Project membership is required." }) }));
+  page.on("request", (request) => {
+    if (request.url().includes("/api/issues")) issueRequests.push(request.url());
+  });
+  await page.route("**/api/config", (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "forbidden", message: "Project membership is required." }),
+    }),
+  );
   await page.goto("/");
   await page.getByLabel("Local access token").fill(token!);
   await page.getByRole("button", { name: "Open local workspace" }).click();
@@ -42,14 +50,21 @@ test("a signed-in identity without membership sees access pending and no CRM con
 
 test("anonymous visitors see sign-in without requesting CRM records", async ({ page }) => {
   const crmRequests: string[] = [];
-  page.on("request", (request) => { if (request.url().includes("/api/issues")) crmRequests.push(request.url()); });
+  page.on("request", (request) => {
+    if (request.url().includes("/api/issues")) crmRequests.push(request.url());
+  });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Prospectus", exact: true })).toBeVisible();
-  await expect(page.getByText("Private workspace · Sign in with Google, then request workspace access.")).toBeVisible();
+  await expect(
+    page.getByText("Private workspace · Sign in with Google, then request workspace access."),
+  ).toBeVisible();
   expect(crmRequests).toEqual([]);
 });
 
-test("real backend retains a prospect through sales, handoff, notes and reload", async ({ page, request }) => {
+test("real backend retains a prospect through sales, handoff, notes and reload", async ({
+  page,
+  request,
+}) => {
   test.skip(!token, "Set PROSPECTUS_TEST_TOKEN and run the real Kanbus API on port 5418.");
   const unauthorized = await request.get(`${apiOrigin}/api/issues`);
   expect(unauthorized.status()).toBe(401);
@@ -82,7 +97,9 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await page.getByLabel("Company").fill("Example research team");
   await page.getByLabel("Email").fill("proof@example.invalid");
   await page.getByLabel("Next follow-up").fill("2026-01-01");
-  await page.getByLabel("Conversation", { exact: true }).fill("Asked for a demonstration. Synthetic local test record.");
+  await page
+    .getByLabel("Conversation", { exact: true })
+    .fill("Asked for a demonstration. Synthetic local test record.");
   await page.getByRole("button", { name: "Create prospect", exact: true }).click();
   await expect(page.locator("aside").getByRole("heading", { name: title, exact: true })).toBeVisible();
   const identifier = await page.locator("aside .kb-detail-id").textContent();
@@ -92,13 +109,17 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
   for (const stage of ["contacted", "qualified", "proposal", "customer"]) {
     await page.getByRole("combobox", { name: "Stage", exact: true }).selectOption(stage);
-    const response = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"));
+    const response = page.waitForResponse(
+      (response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"),
+    );
     await page.getByRole("button", { name: "Save changes" }).click();
     expect((await response).ok()).toBe(true);
     await expect(page.getByRole("combobox", { name: "Stage", exact: true })).toHaveValue(stage);
   }
   await page.getByLabel("Owner", { exact: true }).fill("customer-success");
-  const handoff = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"));
+  const handoff = page.waitForResponse(
+    (response) => response.request().method() === "PATCH" && response.url().includes("/api/issues/"),
+  );
   await page.getByRole("button", { name: "Save changes" }).click();
   expect((await handoff).ok()).toBe(true);
   await page.getByLabel("Add a note").fill("Customer success owns the next check-in.");
@@ -112,7 +133,9 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await expect(page.getByLabel("Owner", { exact: true })).toHaveValue("customer-success");
   await expect(page.getByText("proof@example.invalid", { exact: true })).toBeVisible();
   await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();
-  const persisted = await request.get(`${apiOrigin}/api/issues/${identifier}`, { headers: { Authorization: `Bearer ${token}` } });
+  const persisted = await request.get(`${apiOrigin}/api/issues/${identifier}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   expect(persisted.ok()).toBe(true);
   const record = (await persisted.json()).issue;
   expect(record.id).toBe(identifier);

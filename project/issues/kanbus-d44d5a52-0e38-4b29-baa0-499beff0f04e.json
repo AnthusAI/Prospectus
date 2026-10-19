@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-d44d5a52-0e38-4b29-baa0-499beff0f04e",
+  "title": "Store the session before the Accounts resolve and make one Google login serve the CRM and Accounts",
+  "description": "Two sign-in problems in the frontend:\n\n1. `finishSignIn` (`src/auth.ts`) resolves the Accounts challenge before storing the Cognito session. If the BFF call fails the user is left signed out even though Google login succeeded.\n2. The Accounts nonce is only requested from the Accounts tab's \"Continue with Google\" button, so a user who signs in to the CRM and then opens Accounts goes back to Google with `prompt=login`. Reliable sign-in to account selection is the current top product priority.\n\nScope: store the session first and surface an Accounts-specific error; make one Google login serve both the CRM and Accounts where the BFF allows it, or start the Accounts confirmation automatically on first visit and file the BFF change needed for a true single login. Keep the 300-second freshness requirement of the central resolve.\n\nAcceptance: `test/auth.test.ts` covers both outcomes; UI tests pass; `npm run build` passes.",
+  "type": "bug",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-f1ffd74d-e2b4-44bb-b24e-d57f41f28796",
+      "type": "blocked-by"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-17T14:50:13.024990920Z",
+  "updated_at": "2026-10-17T16:32:37.031839200Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
