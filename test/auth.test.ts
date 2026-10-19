@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test, { type TestContext } from "node:test";
-import { finishSignIn, getAccessToken, signIn } from "../src/auth";
+import {
+  AccountsConfirmationError,
+  finishSignIn,
+  getAccessToken,
+  hasAttemptedAccountsConfirmation,
+  signIn,
+} from "../src/auth";
 
 const configuration = {
   domain: "https://prospectus.auth.example.invalid",
@@ -190,4 +196,52 @@ test("Accounts authorization URL includes the centrally issued nonce without cha
   const url = new URL(environment.destination());
   assert.equal(url.searchParams.get("nonce"), "central-nonce");
   assert.equal(url.searchParams.get("prompt"), "login");
+});
+
+test("Accounts resolve failure keeps the Google session and reports an Accounts-specific error", async (context) => {
+  const environment = browser(context, "?code=fresh-code&state=expected");
+  environment.values.set(
+    "prospectus.login",
+    JSON.stringify({
+      state: "expected",
+      verifier: "saved",
+      accounts: { challengeId: "11111111-1111-4111-8111-111111111111", nonce: "central-nonce" },
+    }),
+  );
+  environment.values.set("prospectus.accounts-confirmation-attempted", "true");
+  context.mock.method(globalThis, "fetch", async (input: any) => {
+    if (String(input).includes("oauth2/token"))
+      return Response.json({ access_token: "synthetic-access", id_token: "synthetic-id", expires_in: 3600 });
+    return new Response("{}", { status: 500 });
+  });
+  await assert.rejects(
+    finishSignIn({ ...configuration, accountsBffUrl: "https://bff.invalid/api/saas" }),
+    AccountsConfirmationError,
+  );
+  assert.equal(getAccessToken(), "synthetic-access");
+  assert.equal(environment.cleaned(), "/?view=accounts");
+  assert.equal(hasAttemptedAccountsConfirmation(), true);
+});
+
+test("successful Accounts confirmation clears the attempted marker so a later session may confirm again", async (context) => {
+  const environment = browser(context, "?code=fresh-code&state=expected");
+  environment.values.set(
+    "prospectus.login",
+    JSON.stringify({ state: "expected", verifier: "saved", accounts: { challengeId: "c", nonce: "n" } }),
+  );
+  environment.values.set("prospectus.accounts-confirmation-attempted", "true");
+  context.mock.method(globalThis, "fetch", async (input: any) =>
+    String(input).includes("oauth2/token")
+      ? Response.json({ access_token: "a", id_token: "i", expires_in: 3600 })
+      : new Response("{}"),
+  );
+  await finishSignIn({ ...configuration, accountsBffUrl: "https://bff.invalid/api/saas" });
+  assert.equal(hasAttemptedAccountsConfirmation(), false);
+});
+
+test("starting Accounts confirmation records the attempt so it is never launched automatically twice", async (context) => {
+  browser(context);
+  assert.equal(hasAttemptedAccountsConfirmation(), false);
+  await signIn(configuration, { challengeId: "c", nonce: "n" });
+  assert.equal(hasAttemptedAccountsConfirmation(), true);
 });
