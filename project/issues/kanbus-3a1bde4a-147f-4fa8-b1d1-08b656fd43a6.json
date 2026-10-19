@@ -3,16 +3,24 @@
   "title": "Find a person's accounts through a membership index",
   "description": "As a site that checks accounts on every sign-in, I want account lookups to scale beyond 256 accounts in total.\n\nFeature: Find a person's accounts through a membership index\n  Scenario: Many accounts in the system\n    Given more than 256 canonical account documents\n    When a person's accounts or directory are listed\n    Then only that person's candidate accounts are read and each is rechecked against its canonical document\n\n  Scenario: Rebuild from canonical files\n    Given the index is missing or stale\n    When it is rebuilt from canonical account documents\n    Then listings match a full scan and the index never grants access by itself\n\nToday list and directory read every account document per call and fail above 256 accounts. Canonical files stay the authority; the index is supplemental.",
   "type": "story",
-  "status": "open",
+  "status": "in_progress",
   "priority": 1,
   "assignee": null,
   "creator": null,
   "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "8516db9d-502c-4b86-ad38-261a6cb1f378",
+      "author": "unknown",
+      "text": "Implemented on branch claude/project-thread-8m9yf5: create-only membership markers, membershipLookup scan|indexed in accounts/deployment.json (stays scan), and scripts/rebuild-membership-index.ts. Rollout: deploy in scan mode, rebuild from Ryan's Mac, then switch to indexed.",
+      "created_at": "2026-10-17T13:39:15.906440844Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T07:14:48.937793284Z",
-  "updated_at": "2026-10-17T07:14:48.937850364Z",
+  "updated_at": "2026-10-17T13:39:15.906491150Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
