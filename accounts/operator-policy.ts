@@ -1,5 +1,15 @@
 import { createHash } from "node:crypto";
 import type { Context } from "./model";
+import {
+  COGNITO_ISSUER_PATTERN,
+  PRODUCT_NAME_PATTERN,
+  REVIEW_IDENTIFIER_PATTERN,
+  hasExactlyKeys,
+  requireRules,
+  throwErrorWithPrefix,
+  rule,
+  type ValidationRule,
+} from "./validation-rules";
 export const operatorPermissions = ["accounts:admin:read", "accounts:admin:entitlements"] as const;
 export type OperatorPermission = (typeof operatorPermissions)[number];
 /** Deployment-owned operator grants. Never derive these from email, CRM groups or memberships. */
@@ -11,23 +21,53 @@ export interface OperatorGrant {
   reviewedGrantId: string;
 }
 export const operatorSubjectHash = (subject: string) => createHash("sha256").update(subject).digest("hex");
+const MAXIMUM_OPERATOR_GRANTS = 20;
+const SUBJECT_HASH_PATTERN = /^[a-f0-9]{64}$/;
+const grantKeys = "issuer,permission,product,reviewedGrantId,subjectHash";
+
+const grantRules: ValidationRule<OperatorGrant>[] = [
+  rule((grant) => !!grant && typeof grant === "object", "A central operator grant must be an object."),
+  rule(
+    (grant) => hasExactlyKeys(grant, grantKeys),
+    "A central operator grant must have exactly the reviewed fields.",
+  ),
+  rule(
+    (grant) => PRODUCT_NAME_PATTERN.test(grant.product),
+    "A central operator grant product must be lowercase letters, digits and hyphens, starting with a letter.",
+  ),
+  rule(
+    (grant) => COGNITO_ISSUER_PATTERN.test(grant.issuer),
+    "A central operator grant issuer must be a regional Cognito user pool URL.",
+  ),
+  rule(
+    (grant) => typeof grant.subjectHash === "string",
+    "A central operator grant subject hash must be a string.",
+  ),
+  rule(
+    (grant) => SUBJECT_HASH_PATTERN.test(grant.subjectHash),
+    "A central operator grant subject hash must be a SHA-256 hex digest.",
+  ),
+  rule(
+    (grant) => (operatorPermissions as readonly string[]).includes(grant.permission),
+    "A central operator grant permission must be a known operator permission.",
+  ),
+  rule(
+    (grant) => typeof grant.reviewedGrantId === "string",
+    "A central operator grant review ID must be a string.",
+  ),
+  rule(
+    (grant) => REVIEW_IDENTIFIER_PATTERN.test(grant.reviewedGrantId),
+    "A central operator grant review ID must be a reviewed identifier.",
+  ),
+];
+
 export function operatorGrants(value: unknown): readonly OperatorGrant[] {
-  if (!Array.isArray(value) || value.length > 20) throw new Error("Invalid central operator policy.");
+  if (!Array.isArray(value)) throw new Error("Central operator policy must be an array of grants.");
+  if (value.length > MAXIMUM_OPERATOR_GRANTS)
+    throw new Error("Central operator policy exceeds the maximum of 20 grants.");
   const seen = new Set<string>();
   for (const grant of value) {
-    if (
-      !grant ||
-      typeof grant !== "object" ||
-      Object.keys(grant).sort().join(",") !== "issuer,permission,product,reviewedGrantId,subjectHash" ||
-      !/^[a-z][a-z0-9-]{0,39}$/.test(grant.product) ||
-      !/^https:\/\/cognito-idp\.[a-z0-9-]+\.amazonaws\.com\/[a-zA-Z0-9_-]+$/.test(grant.issuer) ||
-      typeof grant.subjectHash !== "string" ||
-      !/^[a-f0-9]{64}$/.test(grant.subjectHash) ||
-      !operatorPermissions.includes(grant.permission) ||
-      typeof grant.reviewedGrantId !== "string" ||
-      !/^[A-Za-z0-9._:-]{1,128}$/.test(grant.reviewedGrantId)
-    )
-      throw new Error("Exact reviewed central operator grant required.");
+    requireRules(grant, grantRules, throwErrorWithPrefix("Exact reviewed central operator grant required:"));
     const key = JSON.stringify([grant.product, grant.issuer, grant.subjectHash, grant.permission]);
     if (seen.has(key)) throw new Error("Duplicate central operator grant.");
     seen.add(key);

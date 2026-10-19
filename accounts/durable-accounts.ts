@@ -16,12 +16,267 @@ import {
 import { IdentityFileError, type IdentityFiles, type IdentityObject } from "./identity-files";
 import type { PersonDirectory } from "./person-directory";
 import type { AccountsApi } from "./handler";
+import {
+  failWith,
+  isPlainRecord,
+  PRODUCT_NAME_PATTERN,
+  requireRules,
+  rule,
+  type ValidationRule,
+} from "./validation-rules";
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const path = (id: string) => `accounts/${id}.json`;
 const membershipMarkerPath = (personId: string, accountId: string) => `members/${personId}/${accountId}.json`;
-const record = (value: unknown): value is Record<string, any> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
 const timestamp = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
+const MAXIMUM_ACCOUNT_DOCUMENT_BYTES = 65536;
+const MAXIMUM_AUDIT_EVENTS = 128;
+const MAXIMUM_MEMBERSHIPS = 100;
+const MAXIMUM_ACCOUNT_NAME_LENGTH = 150;
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+const membershipStatuses = ["active", "revoked"];
+const entitlementStatuses = ["active", "disabled"];
+const auditEventTypes = ["account.created", "membership.changed", "entitlement.changed"];
+
+interface AccountDocumentUnderValidation {
+  document: AccountDocument;
+  accountId: string;
+}
+
+interface MembershipUnderValidation {
+  personId: string;
+  member: Membership;
+  accountId: string;
+}
+
+interface EntitlementUnderValidation {
+  product: string;
+  entitlement: Entitlement;
+  accountId: string;
+}
+
+interface AuditEventUnderValidation {
+  document: AccountDocument;
+  event: AccountDocument["audit"][number];
+  index: number;
+}
+
+const accountDocumentRules: ValidationRule<AccountDocumentUnderValidation>[] = [
+  rule(({ document }) => isPlainRecord(document), "Account document must be an object."),
+  rule(({ document }) => document.version === 1, "Account document version must be 1."),
+  rule(({ document }) => document.kind === "account", "Account document kind must be account."),
+  rule(({ document }) => isPlainRecord(document.account), "Account section must be an object."),
+  rule(
+    ({ document, accountId }) => document.account.id === accountId,
+    "Account ID must match the canonical path.",
+  ),
+  rule(({ accountId }) => UUID_PATTERN.test(accountId), "Account ID must be a UUID."),
+  rule(({ document }) => typeof document.account.name === "string", "Account name must be a string."),
+  rule(({ document }) => !!document.account.name.trim(), "Account name must not be blank."),
+  rule(
+    ({ document }) => document.account.name.length <= MAXIMUM_ACCOUNT_NAME_LENGTH,
+    "Account name must be at most 150 characters.",
+  ),
+  rule(
+    ({ document }) => timestamp(document.account.createdAt),
+    "Account creation time must be a valid timestamp.",
+  ),
+  rule(
+    ({ document }) => Number.isSafeInteger(document.account.revision) && document.account.revision >= 1,
+    "Account revision must be a positive integer.",
+  ),
+  rule(({ document }) => isPlainRecord(document.creation), "Creation section must be an object."),
+  rule(({ document }) => UUID_PATTERN.test(document.creation.personId), "Creating Person ID must be a UUID."),
+  rule(({ document }) => typeof document.creation.product === "string", "Creating product must be a string."),
+  rule(
+    ({ document }) => SHA256_HEX_PATTERN.test(document.creation.requestHash),
+    "Creation request hash must be a SHA-256 hex digest.",
+  ),
+  rule(
+    ({ document }) => SHA256_HEX_PATTERN.test(document.creation.fingerprint),
+    "Creation fingerprint must be a SHA-256 hex digest.",
+  ),
+  rule(({ document }) => isPlainRecord(document.memberships), "Memberships must be an object."),
+  rule(({ document }) => isPlainRecord(document.entitlements), "Entitlements must be an object."),
+  rule(({ document }) => Array.isArray(document.audit), "Audit history must be an array."),
+  rule(({ document }) => document.audit.length >= 1, "Audit history must not be empty."),
+  rule(
+    ({ document }) => document.audit.length <= MAXIMUM_AUDIT_EVENTS,
+    "Audit history exceeds its capacity.",
+  ),
+  rule(
+    ({ document }) => Object.keys(document.memberships).length <= MAXIMUM_MEMBERSHIPS,
+    "Memberships exceed their capacity.",
+  ),
+  rule(
+    ({ document }) => Buffer.byteLength(JSON.stringify(document)) <= MAXIMUM_ACCOUNT_DOCUMENT_BYTES,
+    "Account document exceeds its byte capacity.",
+  ),
+];
+
+const membershipRules: ValidationRule<MembershipUnderValidation>[] = [
+  rule(({ personId }) => UUID_PATTERN.test(personId), "Membership key must be a Person UUID."),
+  rule(({ member }) => isPlainRecord(member), "Membership must be an object."),
+  rule(({ member, personId }) => member.personId === personId, "Membership Person ID must match its key."),
+  rule(
+    ({ member, accountId }) => member.accountId === accountId,
+    "Membership account ID must match the account.",
+  ),
+  rule(({ member }) => Object.hasOwn(roleOperations, member.role), "Membership role must be known."),
+  rule(
+    ({ member }) => membershipStatuses.includes(member.status),
+    "Membership status must be active or revoked.",
+  ),
+];
+
+const accountRelationshipRules: ValidationRule<AccountDocument>[] = [
+  rule((document) => countActiveOwners(document) > 0, "Account must retain an active owner."),
+  rule(
+    (document) => Object.hasOwn(document.memberships, document.creation.personId),
+    "Creating Person must hold a membership.",
+  ),
+  rule(
+    (document) => Object.hasOwn(document.entitlements, document.creation.product),
+    "Creating product must hold an entitlement.",
+  ),
+];
+
+const entitlementRules: ValidationRule<EntitlementUnderValidation>[] = [
+  rule(({ product }) => !!product, "Entitlement key must name a product."),
+  rule(({ entitlement }) => isPlainRecord(entitlement), "Entitlement must be an object."),
+  rule(
+    ({ entitlement, product }) => entitlement.product === product,
+    "Entitlement product must match its key.",
+  ),
+  rule(
+    ({ entitlement, accountId }) => entitlement.accountId === accountId,
+    "Entitlement account ID must match the account.",
+  ),
+  rule(
+    ({ entitlement }) => entitlementStatuses.includes(entitlement.status),
+    "Entitlement status must be active or disabled.",
+  ),
+  rule(
+    ({ entitlement }) => Array.isArray(entitlement.capabilities),
+    "Entitlement capabilities must be an array.",
+  ),
+  rule(
+    ({ entitlement }) =>
+      entitlement.capabilities.every((operation) => roleOperations.owner.includes(operation)),
+    "Entitlement capabilities must be known operations.",
+  ),
+];
+
+const auditEventRules: ValidationRule<AuditEventUnderValidation>[] = [
+  rule(({ event }) => isPlainRecord(event), "Audit event must be an object."),
+  rule(
+    ({ event, index }) => event.revision === index + 1,
+    "Audit event revisions must be consecutive from 1.",
+  ),
+  rule(({ event }) => auditEventTypes.includes(event.type), "Audit event type must be known."),
+  rule(({ event }) => UUID_PATTERN.test(event.actor), "Audit event actor must be a Person UUID."),
+  rule(({ event }) => timestamp(event.at), "Audit event time must be a valid timestamp."),
+  rule(({ event }) => typeof event.product === "string", "Audit event product must be a string."),
+  rule(({ event }) => typeof event.principal === "string", "Audit event principal must be a string."),
+  rule(
+    ({ event, index }) => index > 0 || event.type === "account.created",
+    "The first audit event must be the account creation.",
+  ),
+  rule(
+    ({ event, index, document }) => index > 0 || event.actor === document.creation.personId,
+    "The creation audit event must be actored by the creating Person.",
+  ),
+  rule(
+    ({ event, index, document }) => index > 0 || event.product === document.creation.product,
+    "The creation audit event must come from the creating product.",
+  ),
+  rule(
+    ({ event, index }) => index === 0 || event.type !== "account.created",
+    "Only the first audit event may be an account creation.",
+  ),
+  rule(
+    ({ event, index }) =>
+      index === 0 || event.type !== "membership.changed" || UUID_PATTERN.test(event.target ?? ""),
+    "A membership audit event must target a Person UUID.",
+  ),
+  rule(
+    ({ event, index }) =>
+      index === 0 ||
+      event.type !== "membership.changed" ||
+      (!!event.role && Object.hasOwn(roleOperations, event.role)),
+    "A membership audit event must carry a known role.",
+  ),
+  rule(
+    ({ event, index }) =>
+      index === 0 || event.type !== "membership.changed" || membershipStatuses.includes(event.status ?? ""),
+    "A membership audit event must carry an active or revoked status.",
+  ),
+  rule(
+    ({ event, index, document }) =>
+      index === 0 ||
+      event.type !== "entitlement.changed" ||
+      Object.hasOwn(document.entitlements, event.target ?? ""),
+    "An entitlement audit event must target an existing entitlement.",
+  ),
+  rule(
+    ({ event, index }) => index === 0 || event.type !== "entitlement.changed" || event.role === undefined,
+    "An entitlement audit event must not carry a role.",
+  ),
+  rule(
+    ({ event, index }) =>
+      index === 0 || event.type !== "entitlement.changed" || entitlementStatuses.includes(event.status ?? ""),
+    "An entitlement audit event must carry an active or disabled status.",
+  ),
+];
+
+function countActiveOwners(document: AccountDocument) {
+  return Object.values(document.memberships).filter(
+    (member) => member.role === "owner" && member.status === "active",
+  ).length;
+}
+
+const inconsistentAccount = failWith(
+  503,
+  "account_inconsistent",
+  "Canonical account document is inconsistent",
+);
+
+function memberMayPerform(member: Membership | null, operation: Operation): member is Membership {
+  return !!member && member.status === "active" && roleOperations[member.role].includes(operation);
+}
+
+function entitlementMayPerform(
+  entitlement: Entitlement | null,
+  operation: Operation,
+): entitlement is Entitlement {
+  return !!entitlement && entitlement.status === "active" && entitlement.capabilities.includes(operation);
+}
+
+function creationHashesMatch(
+  creation: AccountDocument["creation"],
+  requestHash: string,
+  fingerprint: string,
+) {
+  return creation.requestHash === requestHash && creation.fingerprint === fingerprint;
+}
+
+function creationBelongsToCaller(creation: AccountDocument["creation"], personId: string, product: string) {
+  return creation.personId === personId && creation.product === product;
+}
+
+function validateAccountDocument(document: AccountDocument, accountId: string) {
+  requireRules({ document, accountId }, accountDocumentRules, inconsistentAccount);
+  for (const [personId, member] of Object.entries(document.memberships))
+    requireRules({ personId, member, accountId }, membershipRules, inconsistentAccount);
+  requireRules(document, accountRelationshipRules, inconsistentAccount);
+  for (const [product, entitlement] of Object.entries(document.entitlements))
+    requireRules({ product, entitlement, accountId }, entitlementRules, inconsistentAccount);
+  if (document.audit.length !== document.account.revision)
+    inconsistentAccount("Audit history length must equal the account revision.");
+  document.audit.forEach((event, index) =>
+    requireRules({ document, event, index }, auditEventRules, inconsistentAccount),
+  );
+}
+
 export function createdAccountId(personId: string, product: string, requestId: string) {
   const hex = hash(["prospectus-account-create-v1", personId, product, requestId.toLowerCase()]).split("");
   hex[12] = "4";
@@ -99,115 +354,17 @@ export class DurableAccountsService implements AccountsApi {
     return resolution;
   }
   private async resolvePerson(context: Context): Promise<Person> {
-    if (!context.product || !context.principal || !context.human?.issuer || !context.human.subject)
-      fail(401, "unverified", "Verified caller and human required.");
+    if (!context.product || !context.principal) fail(401, "unverified", "Verified product caller required.");
+    if (!context.human?.issuer || !context.human.subject)
+      fail(401, "unverified", "Verified human identity required.");
     const person = await this.directory.resolve(context);
     if (!person) fail(403, "identity_enrollment_required", "Committed canonical Person required.");
     return person;
   }
-  private validate(value: AccountDocument, id: string) {
-    const bad = () => fail(503, "account_inconsistent", "Canonical account document is inconsistent.");
-    if (
-      !record(value) ||
-      value.version !== 1 ||
-      value.kind !== "account" ||
-      !record(value.account) ||
-      value.account.id !== id ||
-      !UUID_PATTERN.test(id) ||
-      typeof value.account.name !== "string" ||
-      !value.account.name.trim() ||
-      value.account.name.length > 150 ||
-      !timestamp(value.account.createdAt) ||
-      !Number.isSafeInteger(value.account.revision) ||
-      value.account.revision < 1 ||
-      !record(value.creation) ||
-      !UUID_PATTERN.test(value.creation.personId) ||
-      typeof value.creation.product !== "string" ||
-      !/^[a-f0-9]{64}$/.test(value.creation.requestHash) ||
-      !/^[a-f0-9]{64}$/.test(value.creation.fingerprint) ||
-      !record(value.memberships) ||
-      !record(value.entitlements) ||
-      !Array.isArray(value.audit) ||
-      value.audit.length < 1 ||
-      value.audit.length > 128 ||
-      Object.keys(value.memberships).length > 100 ||
-      Buffer.byteLength(JSON.stringify(value)) > 65536
-    )
-      bad();
-    let owners = 0;
-    for (const [personId, member] of Object.entries(value.memberships)) {
-      if (
-        !UUID_PATTERN.test(personId) ||
-        !record(member) ||
-        member.personId !== personId ||
-        member.accountId !== id ||
-        !Object.hasOwn(roleOperations, member.role) ||
-        !["active", "revoked"].includes(member.status)
-      )
-        bad();
-      if (member.role === "owner" && member.status === "active") owners++;
-    }
-    if (
-      !owners ||
-      !Object.hasOwn(value.memberships, value.creation.personId) ||
-      !Object.hasOwn(value.entitlements, value.creation.product)
-    )
-      bad();
-    for (const [product, entitlement] of Object.entries(value.entitlements))
-      if (
-        !product ||
-        !record(entitlement) ||
-        entitlement.product !== product ||
-        entitlement.accountId !== id ||
-        !["active", "disabled"].includes(entitlement.status) ||
-        !Array.isArray(entitlement.capabilities) ||
-        entitlement.capabilities.some((operation) => !roleOperations.owner.includes(operation))
-      )
-        bad();
-    if (value.audit.length !== value.account.revision) bad();
-    for (let index = 0; index < value.audit.length; index++) {
-      const event = value.audit[index];
-      if (
-        !record(event) ||
-        event.revision !== index + 1 ||
-        !["account.created", "membership.changed", "entitlement.changed"].includes(event.type) ||
-        !UUID_PATTERN.test(event.actor) ||
-        !timestamp(event.at) ||
-        typeof event.product !== "string" ||
-        typeof event.principal !== "string"
-      )
-        bad();
-      if (
-        index === 0 &&
-        (event.type !== "account.created" ||
-          event.actor !== value.creation.personId ||
-          event.product !== value.creation.product)
-      )
-        bad();
-      if (
-        index > 0 &&
-        event.type === "membership.changed" &&
-        (!UUID_PATTERN.test(event.target ?? "") ||
-          !event.role ||
-          !Object.hasOwn(roleOperations, event.role) ||
-          !["active", "revoked"].includes(event.status ?? ""))
-      )
-        bad();
-      if (
-        index > 0 &&
-        event.type === "entitlement.changed" &&
-        (!Object.hasOwn(value.entitlements, event.target ?? "") ||
-          event.role !== undefined ||
-          !["active", "disabled"].includes(event.status ?? ""))
-      )
-        bad();
-      if (index > 0 && event.type === "account.created") bad();
-    }
-  }
   async read(id: string): Promise<IdentityObject<AccountDocument> | null> {
     if (!UUID_PATTERN.test(id)) fail(400, "account", "UUID account ID required.");
     const stored = await this.files.get<AccountDocument>(path(id));
-    if (stored) this.validate(stored.value, id);
+    if (stored) validateAccountDocument(stored.value, id);
     return stored;
   }
   private summary(
@@ -222,12 +379,8 @@ export class DurableAccountsService implements AccountsApi {
       : null;
     if (
       !context.capabilities.includes(operation) ||
-      !member ||
-      member.status !== "active" ||
-      !roleOperations[member.role].includes(operation) ||
-      !entitlement ||
-      entitlement.status !== "active" ||
-      !entitlement.capabilities.includes(operation)
+      !memberMayPerform(member, operation) ||
+      !entitlementMayPerform(entitlement, operation)
     )
       fail(403, "forbidden", "Account operation is not permitted.");
     return {
@@ -264,7 +417,7 @@ export class DurableAccountsService implements AccountsApi {
         if (!(error instanceof AccountsError && error.status === 403)) throw error;
       }
     }
-    return { person, accounts: accounts.sort((a, b) => a.id.localeCompare(b.id)) };
+    return { person, accounts: accounts.sort((left, right) => left.id.localeCompare(right.id)) };
   }
   private async listedAccountIds(prefix: string, pattern: RegExp) {
     const paths = await this.files.list(prefix);
@@ -333,8 +486,10 @@ export class DurableAccountsService implements AccountsApi {
     return { accounts: documents.length, markers };
   }
   async create(context: Context, name: string, requestId: string): Promise<AccountSummary> {
-    if (!UUID_PATTERN.test(requestId) || typeof name !== "string" || !name.trim() || name.trim().length > 150)
-      fail(400, "invalid", "UUID idempotency key and account name required.");
+    if (!UUID_PATTERN.test(requestId)) fail(400, "invalid", "UUID idempotency key required.");
+    if (typeof name !== "string" || !name.trim()) fail(400, "invalid", "Non-blank account name required.");
+    if (name.trim().length > MAXIMUM_ACCOUNT_NAME_LENGTH)
+      fail(400, "invalid", "Account name must be at most 150 characters.");
     const person = await this.person(context);
     if (!context.capabilities.includes("console:read"))
       fail(403, "product_forbidden", "Product cannot provision accounts.");
@@ -345,19 +500,17 @@ export class DurableAccountsService implements AccountsApi {
     const existing = await this.read(id);
     if (existing) {
       if (
-        existing.value.creation.personId !== person.id ||
-        existing.value.creation.product !== context.product ||
-        existing.value.creation.requestHash !== requestHash ||
-        existing.value.creation.fingerprint !== fingerprint
+        !creationBelongsToCaller(existing.value.creation, person.id, context.product) ||
+        !creationHashesMatch(existing.value.creation, requestHash, fingerprint)
       )
         fail(409, "idempotency_conflict", "Request key belongs to different account input.");
       return this.summary(context, person.id, existing.value, "console:read");
     }
-    const at = this.now();
+    const createdAt = this.now();
     const document: AccountDocument = {
       version: 1,
       kind: "account",
-      account: { id, name, createdAt: at, revision: 1 },
+      account: { id, name, createdAt, revision: 1 },
       creation: { personId: person.id, product: context.product, requestHash, fingerprint },
       memberships: { [person.id]: { accountId: id, personId: person.id, role: "owner", status: "active" } },
       entitlements: {
@@ -375,11 +528,11 @@ export class DurableAccountsService implements AccountsApi {
           actor: person.id,
           product: context.product,
           principal: context.principal,
-          at,
+          at: createdAt,
         },
       ],
     };
-    this.validate(document, id);
+    validateAccountDocument(document, id);
     await this.recordMembershipMarker(person.id, id);
     try {
       await this.publish(
@@ -399,10 +552,7 @@ export class DurableAccountsService implements AccountsApi {
     // Journal recovery can publish a frozen first decision; always re-read canonical authority.
     const committed = await this.read(id);
     if (!committed) fail(503, "accounts_unavailable", "Canonical account publication unavailable.");
-    if (
-      committed.value.creation.requestHash !== requestHash ||
-      committed.value.creation.fingerprint !== fingerprint
-    )
+    if (!creationHashesMatch(committed.value.creation, requestHash, fingerprint))
       fail(409, "idempotency_conflict", "Request key belongs to different account input.");
     return this.summary(context, person.id, committed.value, "console:read");
   }
@@ -430,12 +580,11 @@ export class DurableAccountsService implements AccountsApi {
     role: Role,
     status: Membership["status"],
   ): Promise<Membership> {
-    if (
-      !UUID_PATTERN.test(personId) ||
-      !Object.hasOwn(roleOperations, role) ||
-      !["active", "revoked"].includes(status)
-    )
-      fail(400, "invalid_membership", "Known Person and valid membership required.");
+    if (!UUID_PATTERN.test(personId)) fail(400, "invalid_membership", "Person UUID required for membership.");
+    if (!Object.hasOwn(roleOperations, role))
+      fail(400, "invalid_membership", "Known membership role required.");
+    if (!membershipStatuses.includes(status))
+      fail(400, "invalid_membership", "Membership status must be active or revoked.");
     let targetPersonVerified = false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const state = await this.allowed(context, id, "members:write");
@@ -455,12 +604,7 @@ export class DurableAccountsService implements AccountsApi {
         fail(409, "account_capacity", "Account audit capacity reached; no history is discarded.");
       const membership: Membership = { accountId: id, personId, role, status };
       document.memberships[personId] = membership;
-      if (
-        !Object.values(document.memberships).some(
-          (member) => member.status === "active" && member.role === "owner",
-        )
-      )
-        fail(409, "last_owner", "Account must retain an active owner.");
+      if (countActiveOwners(document) === 0) fail(409, "last_owner", "Account must retain an active owner.");
       document.account.revision++;
       document.audit.push({
         type: "membership.changed",
@@ -475,7 +619,7 @@ export class DurableAccountsService implements AccountsApi {
       });
       if (Buffer.byteLength(JSON.stringify(document)) > 65536)
         fail(409, "account_capacity", "Account canonical byte capacity reached.");
-      this.validate(document, id);
+      validateAccountDocument(document, id);
       const logical = [
         "account-membership-v1",
         id,
@@ -510,8 +654,10 @@ export class DurableAccountsService implements AccountsApi {
     grantedProduct: { product: string; capabilities: readonly Operation[] },
     status: Entitlement["status"],
   ): Promise<Entitlement> {
-    if (!["active", "disabled"].includes(status) || !/^[a-z][a-z0-9-]{0,39}$/.test(grantedProduct.product))
-      fail(400, "invalid_entitlement", "Registered product and active or disabled status required.");
+    if (!entitlementStatuses.includes(status))
+      fail(400, "invalid_entitlement", "Entitlement status must be active or disabled.");
+    if (!PRODUCT_NAME_PATTERN.test(grantedProduct.product))
+      fail(400, "invalid_entitlement", "Registered product name required.");
     const capabilities = roleOperations.owner.filter((operation) =>
       grantedProduct.capabilities.includes(operation),
     );
@@ -552,7 +698,7 @@ export class DurableAccountsService implements AccountsApi {
       });
       if (Buffer.byteLength(JSON.stringify(document)) > 65536)
         fail(409, "account_capacity", "Account canonical byte capacity reached.");
-      this.validate(document, id);
+      validateAccountDocument(document, id);
       const logical = [
         "account-entitlement-v1",
         id,

@@ -35,9 +35,9 @@ export interface VerifiedCaller {
   authority: "enrollment" | "execution";
 }
 export function caller(event: RestEvent, products: ValidatedRegistrations): VerifiedCaller {
-  const arn = event.requestContext?.identity?.userArn;
+  const callerArn = event.requestContext?.identity?.userArn;
   const accountId = event.requestContext?.identity?.accountId;
-  const session = /^arn:aws:sts::(\d{12}):assumed-role\/([^/]+)\/[^/]+$/.exec(arn ?? "");
+  const session = /^arn:aws:sts::(\d{12}):assumed-role\/([^/]+)\/[^/]+$/.exec(callerArn ?? "");
   if (!session || session[1] !== accountId)
     fail(403, "caller_forbidden", "A registered temporary runtime role is required.");
   for (const registration of products) {

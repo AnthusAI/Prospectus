@@ -53,7 +53,9 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap(
     (r: any) => r.Properties.PolicyDocument.Statement,
   );
-  const actions = statements.flatMap((s: any) => (Array.isArray(s.Action) ? s.Action : [s.Action])).sort();
+  const actions = statements
+    .flatMap((statement: any) => (Array.isArray(statement.Action) ? statement.Action : [statement.Action]))
+    .sort();
   assert.deepEqual(
     actions,
     [
@@ -64,9 +66,11 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
       "s3:PutObject",
     ].sort(),
   );
-  const invoke = statements.find((s: any) => s.Action === "lambda:InvokeFunction");
+  const invoke = statements.find((statement: any) => statement.Action === "lambda:InvokeFunction");
   assert.equal(invoke.Resource, "arn:aws:lambda:us-east-1:712236451410:function:prospectus-api");
-  const s3 = statements.find((s: any) => Array.isArray(s.Action) && s.Action.includes("s3:GetObject"));
+  const s3 = statements.find(
+    (statement: any) => Array.isArray(statement.Action) && statement.Action.includes("s3:GetObject"),
+  );
   assert.deepEqual(s3.Resource, [
     "arn:aws:s3:::prospectus-records-712236451410/_virtuus/cyclotron/prospectus/intake-identities/*",
     "arn:aws:s3:::prospectus-records-712236451410/_virtuus/cyclotron/prospectus/intake-receipts/*",
@@ -97,7 +101,7 @@ test("real-contact intake adds only the anth.us form origins and keeps the same 
   });
   const actions = Object.values(template.findResources("AWS::IAM::Policy"))
     .flatMap((r: any) => r.Properties.PolicyDocument.Statement)
-    .flatMap((s: any) => (Array.isArray(s.Action) ? s.Action : [s.Action]))
+    .flatMap((statement: any) => (Array.isArray(statement.Action) ? statement.Action : [statement.Action]))
     .sort();
   assert.deepEqual(
     actions,

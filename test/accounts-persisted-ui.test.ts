@@ -13,16 +13,22 @@ test(
   "browser list and owner/member detail come from real persisted canonical account responses",
   { skip: !process.env.PROSPECTUS_ACCOUNTS_UI },
   async () => {
-    const x = await directoryFixture();
-    let activeCentral = x.handler();
+    const environment = await directoryFixture();
+    let activeCentral = environment.handler();
     const bff = accountsBffHandler({
       origin: "https://prospectus.anth.us",
-      registration: x.products[0],
-      keys: x.f.keys,
-      nowSeconds: () => x.f.now,
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
       client: (access, id) =>
         new AccountsClient(async (path, method, body) => {
-          const event = x.f.event(0, path, body ?? {}, x.ownerDirectory.proof, method);
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
           event.headers!["x-prospectus-human-token"] = access;
           if (id) event.headers!["x-prospectus-identity-token"] = id;
           const result = await activeCentral(event);
@@ -47,7 +53,11 @@ test(
               // Test identity adapter only; production BFF itself verifies actual RSA JWTs.
               const name = req.headers.authorization?.slice(7),
                 actor =
-                  name === "owner" ? x.ownerDirectory : name === "member" ? x.memberDirectory : x.outsider;
+                  name === "owner"
+                    ? environment.ownerDirectory
+                    : name === "member"
+                      ? environment.memberDirectory
+                      : environment.outsider;
               const response = await bff({
                 rawPath: req.url.replace("/directory-fixture", "/api/saas"),
                 requestContext: { http: { method: "GET" } },
@@ -79,7 +89,7 @@ test(
             exact: true,
           }),
         ).toBeVisible();
-        await expect(page.getByText(x.account.id, { exact: true })).toBeVisible();
+        await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
       }
       await page.goto(
         `${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html?person=outsider`,
@@ -90,16 +100,16 @@ test(
         "explicitly assigned central Accounts administrator permission",
       );
       activeCentral = canonicalAccountsHandler(
-        new VirtuusIdentityFiles(x.root),
-        new VirtuusAccountFiles(x.root),
-        x.products,
-        x.f.keys,
-        () => x.f.now,
+        new VirtuusIdentityFiles(environment.root),
+        new VirtuusAccountFiles(environment.root),
+        environment.products,
+        environment.identityFixture.keys,
+        () => environment.identityFixture.now,
         [
           {
-            product: x.outsider.context.product,
-            issuer: x.outsider.context.human.issuer,
-            subjectHash: operatorSubjectHash(x.outsider.context.human.subject),
+            product: environment.outsider.context.product,
+            issuer: environment.outsider.context.human.issuer,
+            subjectHash: operatorSubjectHash(environment.outsider.context.human.subject),
             permission: "accounts:admin:read",
             reviewedGrantId: "synthetic-browser-approval",
           },
@@ -108,19 +118,19 @@ test(
       await page.reload();
       await page.getByRole("button", { name: /Persisted Papyrus organization/ }).click();
       await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
-      await expect(page.getByText(x.account.id, { exact: true })).toBeVisible();
+      await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "My memberships", exact: true }).click();
       await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
       await page.getByRole("button", { name: "Account administration", exact: true }).click();
       await expect(page.getByRole("button", { name: /Persisted Papyrus organization/ })).toBeVisible();
-      activeCentral = x.handler();
+      activeCentral = environment.handler();
       await page.getByRole("button", { name: "Refresh directory" }).click();
       await expect(page.getByRole("alert")).toContainText("permission may have changed");
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();
       await server.close();
-      await rm(x.root, { recursive: true, force: true });
+      await rm(environment.root, { recursive: true, force: true });
     }
   },
 );

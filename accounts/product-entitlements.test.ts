@@ -16,13 +16,16 @@ const roots: string[] = [];
 after(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true });
 });
-const at = "2030-03-17T17:46:40.000Z";
+const fixedTimestamp = "2030-03-17T17:46:40.000Z";
 const forbidden = (error: any) => error.code === "forbidden";
 async function serviceFixture() {
   const root = await mkdtemp(join(tmpdir(), "prospectus-product-entitlements-"));
   roots.push(root);
   const people: Record<string, Person> = Object.fromEntries(
-    ["owner", "member", "operator"].map((subject) => [subject, { id: randomUUID(), createdAt: at }]),
+    ["owner", "member", "operator"].map((subject) => [
+      subject,
+      { id: randomUUID(), createdAt: fixedTimestamp },
+    ]),
   );
   const contextFor = (subject: string, product: string): Context => ({
     product,
@@ -35,27 +38,31 @@ async function serviceFixture() {
     get: async (id: string) => Object.values(people).find((person) => person.id === id) ?? null,
   };
   const files = new VirtuusAccountFiles(root),
-    service = new DurableAccountsService(files, directory, () => at);
+    service = new DurableAccountsService(files, directory, () => fixedTimestamp);
   return { people, contextFor, files, service };
 }
 
 test("granting a product lets members use it and disabling it denies only that product", async () => {
-  const x = await serviceFixture(),
+  const environment = await serviceFixture(),
     cyclotronLab = { product: "cyclotron", capabilities: ["console:read", "console:write"] as const };
-  const account = await x.service.create(x.contextFor("owner", "papyrus"), "Newsroom", randomUUID());
-  await x.service.setMembership(
-    x.contextFor("owner", "papyrus"),
+  const account = await environment.service.create(
+    environment.contextFor("owner", "papyrus"),
+    "Newsroom",
+    randomUUID(),
+  );
+  await environment.service.setMembership(
+    environment.contextFor("owner", "papyrus"),
     account.id,
-    x.people.member.id,
+    environment.people.member.id,
     "member",
     "active",
   );
   await assert.rejects(
-    x.service.authorize(x.contextFor("member", "cyclotron"), account.id, "console:read"),
+    environment.service.authorize(environment.contextFor("member", "cyclotron"), account.id, "console:read"),
     forbidden,
   );
-  const granted = await x.service.setEntitlement(
-    x.contextFor("operator", "prospectus-directory"),
+  const granted = await environment.service.setEntitlement(
+    environment.contextFor("operator", "prospectus-directory"),
     account.id,
     cyclotronLab,
     "active",
@@ -67,53 +74,65 @@ test("granting a product lets members use it and disabling it denies only that p
     capabilities: ["console:read", "console:write"],
   });
   assert.equal(
-    (await x.service.authorize(x.contextFor("member", "cyclotron"), account.id, "console:write")).personId,
-    x.people.member.id,
+    (
+      await environment.service.authorize(
+        environment.contextFor("member", "cyclotron"),
+        account.id,
+        "console:write",
+      )
+    ).personId,
+    environment.people.member.id,
   );
   await assert.rejects(
-    x.service.authorize(x.contextFor("owner", "cyclotron"), account.id, "members:write"),
+    environment.service.authorize(environment.contextFor("owner", "cyclotron"), account.id, "members:write"),
     forbidden,
   );
   assert.deepEqual(
-    await x.service.setEntitlement(
-      x.contextFor("operator", "prospectus-directory"),
+    await environment.service.setEntitlement(
+      environment.contextFor("operator", "prospectus-directory"),
       account.id,
       cyclotronLab,
       "active",
     ),
     granted,
   );
-  await x.service.setEntitlement(
-    x.contextFor("operator", "prospectus-directory"),
+  await environment.service.setEntitlement(
+    environment.contextFor("operator", "prospectus-directory"),
     account.id,
     cyclotronLab,
     "disabled",
   );
   await assert.rejects(
-    x.service.authorize(x.contextFor("member", "cyclotron"), account.id, "console:read"),
+    environment.service.authorize(environment.contextFor("member", "cyclotron"), account.id, "console:read"),
     forbidden,
   );
   assert.equal(
-    (await x.service.authorize(x.contextFor("member", "papyrus"), account.id, "console:write")).personId,
-    x.people.member.id,
+    (
+      await environment.service.authorize(
+        environment.contextFor("member", "papyrus"),
+        account.id,
+        "console:write",
+      )
+    ).personId,
+    environment.people.member.id,
   );
-  const stored = (await x.files.get<AccountDocument>(`accounts/${account.id}.json`))!.value;
-  assert.equal(stored.memberships[x.people.member.id].status, "active");
+  const stored = (await environment.files.get<AccountDocument>(`accounts/${account.id}.json`))!.value;
+  assert.equal(stored.memberships[environment.people.member.id].status, "active");
   assert.deepEqual(
     stored.audit.map((event) => [event.type, event.target, event.status, event.actor]).slice(2),
     [
-      ["entitlement.changed", "cyclotron", "active", x.people.operator.id],
-      ["entitlement.changed", "cyclotron", "disabled", x.people.operator.id],
+      ["entitlement.changed", "cyclotron", "active", environment.people.operator.id],
+      ["entitlement.changed", "cyclotron", "disabled", environment.people.operator.id],
     ],
   );
   assert.equal(stored.account.revision, 4);
 });
 
 test("granting a product to a missing account or with an unknown status is refused", async () => {
-  const x = await serviceFixture(),
-    operator = x.contextFor("operator", "prospectus-directory");
+  const environment = await serviceFixture(),
+    operator = environment.contextFor("operator", "prospectus-directory");
   await assert.rejects(
-    x.service.setEntitlement(
+    environment.service.setEntitlement(
       operator,
       randomUUID(),
       { product: "cyclotron", capabilities: ["console:read"] },
@@ -121,9 +140,13 @@ test("granting a product to a missing account or with an unknown status is refus
     ),
     (error: any) => error.code === "account_missing",
   );
-  const account = await x.service.create(x.contextFor("owner", "papyrus"), "Newsroom", randomUUID());
+  const account = await environment.service.create(
+    environment.contextFor("owner", "papyrus"),
+    "Newsroom",
+    randomUUID(),
+  );
   await assert.rejects(
-    x.service.setEntitlement(
+    environment.service.setEntitlement(
       operator,
       account.id,
       { product: "cyclotron", capabilities: ["console:read"] },
@@ -134,12 +157,12 @@ test("granting a product to a missing account or with an unknown status is refus
 });
 
 test("the operator entitlement route requires the reviewed entitlements permission and a registered product", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
     const products: ProductRegistration[] = [
-      ...x.products,
+      ...environment.products,
       {
-        ...x.products[1],
+        ...environment.products[1],
         product: "cyclotron",
         roleArn: "arn:aws:iam::111111111111:role/SyntheticCyclotron",
         accountDirectory: undefined,
@@ -147,29 +170,29 @@ test("the operator entitlement route requires the reviewed entitlements permissi
       },
     ];
     const grantFor = (permission: OperatorPermission) => ({
-      product: x.outsider.context.product,
-      issuer: x.outsider.context.human.issuer,
-      subjectHash: operatorSubjectHash(x.outsider.context.human.subject),
+      product: environment.outsider.context.product,
+      issuer: environment.outsider.context.human.issuer,
+      subjectHash: operatorSubjectHash(environment.outsider.context.human.subject),
       permission,
       reviewedGrantId: "synthetic-approval-v1",
     });
     const central = (permissions: OperatorPermission[]) =>
       canonicalAccountsHandler(
-        new VirtuusIdentityFiles(x.root),
-        new VirtuusAccountFiles(x.root),
+        new VirtuusIdentityFiles(environment.root),
+        new VirtuusAccountFiles(environment.root),
         registrations(products),
-        x.f.keys,
-        () => x.f.now,
+        environment.identityFixture.keys,
+        () => environment.identityFixture.now,
         operatorGrants(permissions.map(grantFor)),
       );
     const entitlementPath = (product: string) =>
-      `/v1/account-directory/operator/accounts/${x.account.id}/entitlements/${product}`;
+      `/v1/account-directory/operator/accounts/${environment.account.id}/entitlements/${product}`;
     const post = (
       handler: ReturnType<typeof central>,
       path: string,
       body: unknown,
-      proof = x.outsider.proof,
-    ) => handler(x.f.event(0, path, body, proof, "POST"));
+      proof = environment.outsider.proof,
+    ) => handler(environment.identityFixture.event(0, path, body, proof, "POST"));
     assert.equal(
       (await post(central(["accounts:admin:read"]), entitlementPath("cyclotron"), { status: "active" }))
         .statusCode,
@@ -178,8 +201,14 @@ test("the operator entitlement route requires the reviewed entitlements permissi
     );
     const operator = central(["accounts:admin:read", "accounts:admin:entitlements"]);
     assert.equal(
-      (await post(operator, entitlementPath("cyclotron"), { status: "active" }, x.ownerDirectory.proof))
-        .statusCode,
+      (
+        await post(
+          operator,
+          entitlementPath("cyclotron"),
+          { status: "active" },
+          environment.ownerDirectory.proof,
+        )
+      ).statusCode,
       403,
       "account owners cannot grant products",
     );
@@ -196,11 +225,11 @@ test("the operator entitlement route requires the reviewed entitlements permissi
       ).statusCode,
       400,
     );
-    const withoutJsonContentType = x.f.event(
+    const withoutJsonContentType = environment.identityFixture.event(
       0,
       entitlementPath("cyclotron"),
       { status: "active" },
-      x.outsider.proof,
+      environment.outsider.proof,
       "POST",
     );
     withoutJsonContentType.headers!["content-type"] = "text/plain";
@@ -208,7 +237,13 @@ test("the operator entitlement route requires the reviewed entitlements permissi
     assert.equal(
       (
         await operator({
-          ...x.f.event(0, entitlementPath("cyclotron"), { status: "active" }, x.outsider.proof, "POST"),
+          ...environment.identityFixture.event(
+            0,
+            entitlementPath("cyclotron"),
+            { status: "active" },
+            environment.outsider.proof,
+            "POST",
+          ),
           isBase64Encoded: true,
         })
       ).statusCode,
@@ -222,14 +257,24 @@ test("the operator entitlement route requires the reviewed entitlements permissi
     const granted = await post(operator, entitlementPath("cyclotron"), { status: "active" });
     assert.equal(granted.statusCode, 200);
     assert.deepEqual(JSON.parse(granted.body).entitlement, {
-      accountId: x.account.id,
+      accountId: environment.account.id,
       product: "cyclotron",
       status: "active",
       capabilities: ["console:read", "console:write"],
     });
     const memberProducts = async () =>
       JSON.parse(
-        (await operator(x.f.event(0, "/v1/account-directory", {}, x.memberDirectory.proof, "GET"))).body,
+        (
+          await operator(
+            environment.identityFixture.event(
+              0,
+              "/v1/account-directory",
+              {},
+              environment.memberDirectory.proof,
+              "GET",
+            ),
+          )
+        ).body,
       ).accounts[0].products;
     assert.deepEqual(await memberProducts(), [
       { product: "cyclotron", status: "active" },
@@ -244,6 +289,6 @@ test("the operator entitlement route requires the reviewed entitlements permissi
       { product: "papyrus", status: "active" },
     ]);
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });

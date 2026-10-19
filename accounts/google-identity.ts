@@ -3,10 +3,15 @@ import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
+import { failWith, requireRules, rule, type ValidationRule } from "./validation-rules";
 
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
 const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 1024;
+const MAXIMUM_ORIGIN_JTI_LENGTH = 256;
+const MAXIMUM_NONCE_LENGTH = 256;
+const ALLOWED_CLOCK_SKEW_SECONDS = 30;
+const GOOGLE_USER_ID_PATTERN = /^[\x21-\x7e]{1,255}$/;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export interface IdentityBinding {
   product: string;
@@ -62,17 +67,21 @@ export interface GoogleIdentityRepository {
   ): Promise<{ person: Person; alias: GoogleAlias } | null>;
   getPerson(id: string): Promise<Person | null>;
 }
+function principalIsBoundToProduct(registration: ProductRegistration, principal: string) {
+  return principal === registration.roleArn || principal === registration.executionDelegation?.roleArn;
+}
+
 export function enrollmentBinding(registration: ProductRegistration, principal: string): IdentityBinding {
   const policy = registration.googleFederation;
-  if (
-    !policy ||
-    policy.policy !== "google-only-unlinked-v1" ||
-    !policy.reviewedPolicyId ||
-    !registration.clientIds.includes(policy.clientId)
-  )
-    fail(403, "federation_policy", "Reviewed Google-only unlinked federation is required.");
+  if (!policy) fail(403, "federation_policy", "A reviewed Google federation policy is required.");
+  if (policy.policy !== "google-only-unlinked-v1")
+    fail(403, "federation_policy", "Google-only unlinked federation is required.");
+  if (!policy.reviewedPolicyId)
+    fail(403, "federation_policy", "A reviewed federation policy identifier is required.");
+  if (!registration.clientIds.includes(policy.clientId))
+    fail(403, "federation_policy", "The federation client is not registered for this product.");
   // Continuation reads the original binding without rewriting provenance.
-  if (principal !== registration.roleArn && principal !== registration.executionDelegation?.roleArn)
+  if (!principalIsBoundToProduct(registration, principal))
     fail(403, "caller_forbidden", "Principal is not bound to this product.");
   return {
     product: registration.product,
@@ -82,12 +91,106 @@ export function enrollmentBinding(registration: ProductRegistration, principal: 
     policyRevision: policy.reviewedPolicyId,
   };
 }
-export const sameBinding = (a: IdentityBinding, b: IdentityBinding) =>
-  a.product === b.product &&
-  a.principal === b.principal &&
-  a.issuer === b.issuer &&
-  a.clientId === b.clientId &&
-  a.policyRevision === b.policyRevision;
+export const sameBinding = (binding: IdentityBinding, otherBinding: IdentityBinding) =>
+  binding.product === otherBinding.product &&
+  binding.principal === otherBinding.principal &&
+  binding.issuer === otherBinding.issuer &&
+  binding.clientId === otherBinding.clientId &&
+  binding.policyRevision === otherBinding.policyRevision;
+
+type Claims = Record<string, any>;
+
+interface SessionEvidence {
+  access: Claims;
+  now: number;
+}
+
+interface LoginEvidence extends SessionEvidence {
+  id: Claims;
+}
+
+const loginTimeIsNumeric = rule<SessionEvidence>(
+  ({ access }) => Number.isFinite(access.auth_time),
+  "The access token must carry a login time.",
+);
+const loginTimeIsNotInTheFuture = rule<SessionEvidence>(
+  ({ access, now }) => !(access.auth_time > now + ALLOWED_CLOCK_SKEW_SECONDS),
+  "The login time must not be in the future.",
+);
+const originTokenIdIsString = rule<SessionEvidence>(
+  ({ access }) => typeof access.origin_jti === "string",
+  "The access token must carry an origin token ID.",
+);
+const originTokenIdIsNotEmpty = rule<SessionEvidence>(
+  ({ access }) => !!access.origin_jti,
+  "The access token origin token ID must not be empty.",
+);
+
+const sessionEvidenceRules: ValidationRule<SessionEvidence>[] = [
+  loginTimeIsNumeric,
+  loginTimeIsNotInTheFuture,
+  originTokenIdIsString,
+  originTokenIdIsNotEmpty,
+];
+
+const loginEvidenceRules: ValidationRule<LoginEvidence>[] = [
+  rule(
+    ({ access, id }) => access.sub === id.sub,
+    "The access and ID tokens must belong to the same subject.",
+  ),
+  rule(
+    ({ access, id }) => access.client_id === id.aud,
+    "The access token client must match the ID token audience.",
+  ),
+  loginTimeIsNumeric,
+  rule(
+    ({ access, id }) => access.auth_time === id.auth_time,
+    "The access and ID tokens must carry the same login time.",
+  ),
+  loginTimeIsNotInTheFuture,
+  rule(
+    ({ access, id }) => !(access.auth_time > Math.min(access.iat, id.iat) + ALLOWED_CLOCK_SKEW_SECONDS),
+    "The login time must not be later than the tokens were issued.",
+  ),
+  rule(
+    ({ access, now }) => !(now - access.auth_time > GOOGLE_CHALLENGE_SECONDS),
+    "The login is older than the challenge window.",
+  ),
+  originTokenIdIsString,
+  originTokenIdIsNotEmpty,
+  rule(
+    ({ access }) => !(access.origin_jti.length > MAXIMUM_ORIGIN_JTI_LENGTH),
+    "The access token origin token ID is too long.",
+  ),
+  rule(
+    ({ access, id }) => access.origin_jti === id.origin_jti,
+    "The access and ID tokens must share one origin token ID.",
+  ),
+  rule(({ id }) => typeof id.nonce === "string", "The ID token must carry the challenge nonce."),
+  rule(({ id }) => !(id.nonce.length > MAXIMUM_NONCE_LENGTH), "The ID token nonce is too long."),
+];
+
+const googleIdentityRules: ValidationRule<unknown>[] = [
+  rule((identities) => Array.isArray(identities), "The ID token must list its linked identities."),
+  rule((identities) => (identities as any[]).length === 1, "Exactly one linked identity is required."),
+  rule((identities) => !!(identities as any[])[0], "The linked identity must be an object."),
+  rule(
+    (identities) => (identities as any[])[0].providerName === "Google",
+    "The linked identity provider name must be Google.",
+  ),
+  rule(
+    (identities) => (identities as any[])[0].providerType === "Google",
+    "The linked identity provider type must be Google.",
+  ),
+  rule(
+    (identities) => typeof (identities as any[])[0].userId === "string",
+    "The linked Google user ID must be a string.",
+  ),
+  rule(
+    (identities) => GOOGLE_USER_ID_PATTERN.test((identities as any[])[0].userId),
+    "The linked Google user ID must be 1 to 255 printable characters.",
+  ),
+];
 /** Fixed central transport: caller is IAM verified, JWTs stay in signed headers.
  * The BFF puts the returned nonce in its code+PKCE authorize request and retains
  * independent state. A new login needs a new challenge; refresh never enrolls.
@@ -124,44 +227,26 @@ export function googleIdentityHandler(
         });
       }
       if (event.path === "/v1/identities/google/resolve" && event.httpMethod === "POST") {
-        if (
-          Object.keys(body).some((key) => key !== "challengeId") ||
-          typeof body.challengeId !== "string" ||
-          !UUID_PATTERN.test(body.challengeId)
-        )
+        if (Object.keys(body).some((key) => key !== "challengeId"))
           fail(400, "fields", "Only a challenge ID is accepted.");
+        if (typeof body.challengeId !== "string" || !UUID_PATTERN.test(body.challengeId))
+          fail(400, "fields", "A UUID challenge ID is required.");
         const registration = { ...authenticated.registration, clientIds: [scope.clientId] };
         const [access, id] = await Promise.all([
           cognitoClaims(headers["x-prospectus-human-token"], registration, keys, "access", now),
           cognitoClaims(headers["x-prospectus-identity-token"], registration, keys, "id", now),
         ]);
-        if (
-          access.sub !== id.sub ||
-          access.client_id !== id.aud ||
-          !Number.isFinite(access.auth_time) ||
-          access.auth_time !== id.auth_time ||
-          access.auth_time > now + 30 ||
-          access.auth_time > Math.min(access.iat, id.iat) + 30 ||
-          now - access.auth_time > GOOGLE_CHALLENGE_SECONDS ||
-          typeof access.origin_jti !== "string" ||
-          !access.origin_jti ||
-          access.origin_jti.length > 256 ||
-          access.origin_jti !== id.origin_jti ||
-          typeof id.nonce !== "string" ||
-          id.nonce.length > 256
-        )
-          fail(401, "session_binding", "Fresh matching login evidence is required.");
+        requireRules(
+          { access, id, now },
+          loginEvidenceRules,
+          failWith(401, "session_binding", "Fresh matching login evidence is required"),
+        );
         const identities = id.identities;
-        if (
-          !Array.isArray(identities) ||
-          identities.length !== 1 ||
-          !identities[0] ||
-          identities[0].providerName !== "Google" ||
-          identities[0].providerType !== "Google" ||
-          typeof identities[0].userId !== "string" ||
-          !/^[\x21-\x7e]{1,255}$/.test(identities[0].userId)
-        )
-          fail(401, "google_identity", "One unambiguous trusted Google identity is required.");
+        requireRules(
+          identities,
+          googleIdentityRules,
+          failWith(401, "google_identity", "One unambiguous trusted Google identity is required"),
+        );
         const person = await repository.associate({
           challengeId: body.challengeId,
           nonce: id.nonce,
@@ -184,13 +269,11 @@ export function googleIdentityHandler(
           "access",
           now,
         );
-        if (
-          !Number.isFinite(access.auth_time) ||
-          access.auth_time > now + 30 ||
-          typeof access.origin_jti !== "string" ||
-          !access.origin_jti
-        )
-          fail(401, "session_binding", "Human session evidence required.");
+        requireRules(
+          { access, now },
+          sessionEvidenceRules,
+          failWith(401, "session_binding", "Human session evidence required"),
+        );
         const existing = await repository.find(scope.issuer, access.sub, {
           binding: scope,
           authTime: access.auth_time,

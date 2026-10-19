@@ -58,110 +58,167 @@ function recordingFiles(inner: IdentityFiles, extraAccountPaths: string[] = []) 
 }
 
 test("indexed lookup reads only the person's own accounts, even past the full-scan budget", async () => {
-  const x = await fixture(),
-    indexed = x.service("indexed");
-  const bobOwn = await indexed.create(x.contexts.bob, "Bob own", randomUUID()),
-    shared = await indexed.create(x.contexts.alice, "Shared", randomUUID());
+  const environment = await fixture(),
+    indexed = environment.service("indexed");
+  const bobOwn = await indexed.create(environment.contexts.bob, "Bob own", randomUUID()),
+    shared = await indexed.create(environment.contexts.alice, "Shared", randomUUID());
   for (let index = 0; index < 5; index++)
-    await indexed.create(x.contexts.alice, `Alice only ${index}`, randomUUID());
-  await indexed.setMembership(x.contexts.alice, shared.id, x.people.bob.id, "viewer", "active");
+    await indexed.create(environment.contexts.alice, `Alice only ${index}`, randomUUID());
+  await indexed.setMembership(
+    environment.contexts.alice,
+    shared.id,
+    environment.people.bob.id,
+    "viewer",
+    "active",
+  );
   const unrelatedAccountPaths = Array.from({ length: 300 }, () => `accounts/${randomUUID()}.json`);
-  const recorded = recordingFiles(x.files, unrelatedAccountPaths);
-  const listed = await x.service("indexed", recorded.files).list(x.contexts.bob);
+  const recorded = recordingFiles(environment.files, unrelatedAccountPaths);
+  const listed = await environment.service("indexed", recorded.files).list(environment.contexts.bob);
   assert.deepEqual(listed.accounts.map((account) => account.id).sort(), [bobOwn.id, shared.id].sort());
-  assert.deepEqual(recorded.listedPrefixes, [`members/${x.people.bob.id}/`]);
+  assert.deepEqual(recorded.listedPrefixes, [`members/${environment.people.bob.id}/`]);
   assert.deepEqual(
     recorded.readPaths.sort(),
     [`accounts/${bobOwn.id}.json`, `accounts/${shared.id}.json`].sort(),
   );
   await assert.rejects(
-    x.service("scan", recorded.files).list(x.contexts.bob),
+    environment.service("scan", recorded.files).list(environment.contexts.bob),
     (error: any) => error.code === "account_read_budget",
   );
 });
 
 test("a revoked membership is not listed although its marker remains", async () => {
-  const x = await fixture(),
-    indexed = x.service("indexed");
-  const account = await indexed.create(x.contexts.alice, "Revocable", randomUUID());
-  await indexed.setMembership(x.contexts.alice, account.id, x.people.bob.id, "member", "active");
+  const environment = await fixture(),
+    indexed = environment.service("indexed");
+  const account = await indexed.create(environment.contexts.alice, "Revocable", randomUUID());
+  await indexed.setMembership(
+    environment.contexts.alice,
+    account.id,
+    environment.people.bob.id,
+    "member",
+    "active",
+  );
   assert.deepEqual(
-    (await indexed.list(x.contexts.bob)).accounts.map((listed) => listed.id),
+    (await indexed.list(environment.contexts.bob)).accounts.map((listed) => listed.id),
     [account.id],
   );
-  await indexed.setMembership(x.contexts.alice, account.id, x.people.bob.id, "member", "revoked");
-  assert.deepEqual(await x.files.list(`members/${x.people.bob.id}/`), [
-    `members/${x.people.bob.id}/${account.id}.json`,
+  await indexed.setMembership(
+    environment.contexts.alice,
+    account.id,
+    environment.people.bob.id,
+    "member",
+    "revoked",
+  );
+  assert.deepEqual(await environment.files.list(`members/${environment.people.bob.id}/`), [
+    `members/${environment.people.bob.id}/${account.id}.json`,
   ]);
-  assert.deepEqual((await indexed.list(x.contexts.bob)).accounts, []);
-  await indexed.setMembership(x.contexts.alice, account.id, x.people.bob.id, "viewer", "active");
-  assert.equal((await indexed.list(x.contexts.bob)).accounts[0].role, "viewer");
+  assert.deepEqual((await indexed.list(environment.contexts.bob)).accounts, []);
+  await indexed.setMembership(
+    environment.contexts.alice,
+    account.id,
+    environment.people.bob.id,
+    "viewer",
+    "active",
+  );
+  assert.equal((await indexed.list(environment.contexts.bob)).accounts[0].role, "viewer");
 });
 
 test("a marker whose account never published is skipped", async () => {
-  const x = await fixture(),
-    indexed = x.service("indexed"),
+  const environment = await fixture(),
+    indexed = environment.service("indexed"),
     accountId = randomUUID();
-  await x.files.commit(
-    `members/${x.people.carol.id}/${accountId}.json`,
-    `membership-marker:${x.people.carol.id}:${accountId}`,
+  await environment.files.commit(
+    `members/${environment.people.carol.id}/${accountId}.json`,
+    `membership-marker:${environment.people.carol.id}:${accountId}`,
     "0".repeat(64),
-    { version: 1, kind: "membership-marker", personId: x.people.carol.id, accountId },
+    { version: 1, kind: "membership-marker", personId: environment.people.carol.id, accountId },
     null,
   );
-  assert.deepEqual((await indexed.list(x.contexts.carol)).accounts, []);
+  assert.deepEqual((await indexed.list(environment.contexts.carol)).accounts, []);
 });
 
 test("rebuilding the index for accounts published before markers existed matches the full scan", async () => {
-  const x = await fixture();
+  const environment = await fixture();
   const filesWithoutMarkers: IdentityFiles = {
-    get: x.files.get.bind(x.files),
-    list: x.files.list.bind(x.files),
+    get: environment.files.get.bind(environment.files),
+    list: environment.files.list.bind(environment.files),
     commit: async (path, operationId, requestHash, value, revision) =>
       path.startsWith("members/")
         ? { value, revision: "skipped" }
-        : x.files.commit(path, operationId, requestHash, value, revision),
+        : environment.files.commit(path, operationId, requestHash, value, revision),
   };
-  const scan = x.service("scan", filesWithoutMarkers);
-  const first = await scan.create(x.contexts.alice, "First", randomUUID()),
-    second = await scan.create(x.contexts.bob, "Second", randomUUID());
-  await scan.setMembership(x.contexts.alice, first.id, x.people.carol.id, "admin", "active");
-  await scan.setMembership(x.contexts.bob, second.id, x.people.carol.id, "viewer", "active");
-  await scan.setMembership(x.contexts.alice, first.id, x.people.bob.id, "member", "active");
-  await scan.setMembership(x.contexts.alice, first.id, x.people.bob.id, "member", "revoked");
-  const indexed = x.service("indexed");
-  assert.deepEqual((await indexed.list(x.contexts.carol)).accounts, []);
+  const scan = environment.service("scan", filesWithoutMarkers);
+  const first = await scan.create(environment.contexts.alice, "First", randomUUID()),
+    second = await scan.create(environment.contexts.bob, "Second", randomUUID());
+  await scan.setMembership(
+    environment.contexts.alice,
+    first.id,
+    environment.people.carol.id,
+    "admin",
+    "active",
+  );
+  await scan.setMembership(
+    environment.contexts.bob,
+    second.id,
+    environment.people.carol.id,
+    "viewer",
+    "active",
+  );
+  await scan.setMembership(
+    environment.contexts.alice,
+    first.id,
+    environment.people.bob.id,
+    "member",
+    "active",
+  );
+  await scan.setMembership(
+    environment.contexts.alice,
+    first.id,
+    environment.people.bob.id,
+    "member",
+    "revoked",
+  );
+  const indexed = environment.service("indexed");
+  assert.deepEqual((await indexed.list(environment.contexts.carol)).accounts, []);
   assert.deepEqual(await indexed.rebuildMembershipIndex(), { accounts: 2, markers: 4 });
   assert.deepEqual(await indexed.rebuildMembershipIndex(), { accounts: 2, markers: 4 });
   for (const subject of ["alice", "bob", "carol"])
-    assert.deepEqual(await indexed.list(x.contexts[subject]), await scan.list(x.contexts[subject]));
+    assert.deepEqual(
+      await indexed.list(environment.contexts[subject]),
+      await scan.list(environment.contexts[subject]),
+    );
 });
 
 test("the personal account directory reads through the index", async () => {
-  const x = await directoryFixture();
+  const environment = await directoryFixture();
   try {
-    await x.service.rebuildMembershipIndex();
-    const recorded = recordingFiles(new VirtuusAccountFiles(x.root));
+    await environment.service.rebuildMembershipIndex();
+    const recorded = recordingFiles(new VirtuusAccountFiles(environment.root));
     const handler = canonicalAccountsHandler(
-      new VirtuusIdentityFiles(x.root),
+      new VirtuusIdentityFiles(environment.root),
       recorded.files,
-      x.products,
-      x.f.keys,
-      () => x.f.now,
+      environment.products,
+      environment.identityFixture.keys,
+      () => environment.identityFixture.now,
       [],
       "indexed",
     );
     const response = await handler(
-      x.f.event(x.memberDirectory.index, "/v1/account-directory", {}, x.memberDirectory.proof, "GET"),
+      environment.identityFixture.event(
+        environment.memberDirectory.index,
+        "/v1/account-directory",
+        {},
+        environment.memberDirectory.proof,
+        "GET",
+      ),
     );
     assert.equal(response.statusCode, 200);
     assert.deepEqual(
       JSON.parse(response.body).accounts.map((account: { id: string }) => account.id),
-      [x.account.id],
+      [environment.account.id],
     );
-    assert.deepEqual(recorded.listedPrefixes, [`members/${x.member.person.id}/`]);
+    assert.deepEqual(recorded.listedPrefixes, [`members/${environment.member.person.id}/`]);
   } finally {
-    await rm(x.root, { recursive: true, force: true });
+    await rm(environment.root, { recursive: true, force: true });
   }
 });
 

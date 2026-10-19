@@ -29,7 +29,7 @@ export function accountDirectoryHandler(
       role: membership.role,
       products: Object.values(document.entitlements)
         .map(({ product, status }) => ({ product, status }))
-        .sort((a, b) => a.product.localeCompare(b.product)),
+        .sort((left, right) => left.product.localeCompare(right.product)),
     };
   };
   return async (event: RestEvent) => {
@@ -105,7 +105,7 @@ export function accountDirectoryHandler(
           revision: document.account.revision,
           products: Object.values(document.entitlements)
             .map(({ product, status }) => ({ product, status }))
-            .sort((a, b) => a.product.localeCompare(b.product)),
+            .sort((left, right) => left.product.localeCompare(right.product)),
           activeMembers: Object.values(document.memberships).filter((member) => member.status === "active")
             .length,
         });
@@ -113,7 +113,9 @@ export function accountDirectoryHandler(
           const accounts = (await service.allAccounts()).map(operatorSummary);
           return jsonResponse(200, {
             person,
-            accounts: accounts.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+            accounts: accounts.sort(
+              (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+            ),
           });
         }
         const match = /^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})$/.exec(event.path);
@@ -134,7 +136,9 @@ export function accountDirectoryHandler(
         return jsonResponse(200, {
           person,
           operatorAccess,
-          accounts: accounts.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+          accounts: accounts.sort(
+            (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+          ),
         });
       }
       const match = /^\/v1\/account-directory\/([a-f0-9-]{36})$/.exec(event.path);
