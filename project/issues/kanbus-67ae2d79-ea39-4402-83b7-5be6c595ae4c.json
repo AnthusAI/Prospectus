@@ -3,7 +3,7 @@
   "title": "Accept real contact inquiries only after approved readiness",
   "description": "As an operator, I want safe contact intake beyond the synthetic evaluation.\n\nFeature: Accept real contact inquiries only after approved readiness\n  Scenario: Observable acceptance\n    Given the existing synthetic-only intake and its reviewed deployment proposal\n    When real-contact capture is considered\n    Then operating ownership privacy retention abuse controls writer reconciliation and real-cloud failure acceptance are approved before enabling it\n\nPlanning only. No new implementation, deployment, paid call or permission is authorized by this record.\n\n## Current next-step plan — 2026-10-17\n\nBasic contact/demo inquiry follows the core account acceptance path and must preserve the synthetic evaluation readiness gates already recorded. Real-contact activation remains blocked until operating owner, privacy/retention, abuse controls, writer reconciliation and real-cloud failure acceptance have concrete approval.\n\nFeature: Basic inquiry capture\n  Scenario: Return a receipt for an allowed inquiry\n    Given approved intake scope and enabled runtime\n    When a contact/demo inquiry is saved and retried after an uncertain response\n    Then one durable inquiry is available for authorized follow-up with source and receipt history\n    And no membership appointment charge or credit is created\n\nPR13 addresses wording only; its passing application check is not evidence of production intake activation. Billing design must not block the basic account/login path.\n\nAuthority: Ryan requested this plan as the permanent Kanbus record. This action updates documentation only. The desired product outcomes are requested priorities, not claims of implementation or hosted acceptance. Existing implementation owners retain their approvals; recommendations needing further scope, release, permission or migration direction stay explicitly gated. No feature code, deployment, paid call, permission change or unrelated merge is performed here.",
   "type": "story",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -71,11 +71,23 @@
         "model": "claude-sonnet-5-5",
         "name": "board-reconcile-2026-10-19"
       }
+    },
+    {
+      "id": "4c9d39ac-8192-4836-8b46-e3e088b76f4e",
+      "author": "home",
+      "text": "2026-10-19 (verified): readiness is covered and real-contact intake is live end to end. Operating owner: intake-queue. Privacy: notice contact-v1. Retention: kept until deletion is requested. Approval: Ryan, 2026-10-17 (evaluation-deployment.json approval field). Abuse controls: throttle and honeypot. Writer reconciliation: intake claims are created first, an interrupted identity claim stays denied until an operator reconciles it (docs/SECURITY.md, docs/ARCHITECTURE.md), and canonical writes go through prospectus-api. Real-cloud acceptance: Prospectus#43 (merged 4317089, Amplify job 41 SUCCEED) fixed the production 503 found live; then at 20:45 UTC a labelled submission from anth.us/engage (Anth.us-web#74 ef00dbd, #79 87d5af7) returned 202 with receipt 0714f32b-c9fa-4621-976e-c96240619ff8 and created canonical prospect prsp-964cd0ea-a2c7-44d4-870c-aa835e02216d (test contact, may be archived). Note: a live retry-after-uncertain-response replay was not part of this run; the stable-claim design is meant to cover it.\n",
+      "created_at": "2026-10-19T20:59:13.404537Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-intake-live"
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.458450Z",
-  "updated_at": "2026-10-19T17:28:04.812212Z",
-  "closed_at": null,
+  "updated_at": "2026-10-19T20:59:16.257440Z",
+  "closed_at": "2026-10-19T20:59:16.257398Z",
   "agent": {
     "platform": "codex",
     "model": "gpt-6.1-sol",

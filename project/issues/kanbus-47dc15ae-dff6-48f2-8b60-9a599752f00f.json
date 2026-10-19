@@ -3,7 +3,7 @@
   "title": "Route the anth.us engage page into Prospectus intake and retire the Google Form",
   "description": "Ryan, 2026-10-17 portfolio review: the first outside contact arrives through a form, and the anth.us contact path is a Google Form today, which undercuts the pitch. Wire the anth.us engage page into Prospectus contact/demo intake and retire the Google Form once intake works end to end.\n\nFeature: anth.us contact reaches Prospectus\n  Scenario: Visitor sends a demo request from anth.us\n    Given Prospectus intake is enabled for real contacts\n    When a visitor submits the anth.us engage form\n    Then one durable inquiry appears in Prospectus with its source and receipt\n    And the visitor no longer reaches the Google Form\n\nDepends on kanbus-67ae2d79 (real-contact intake readiness). Invitations kanbus-b2ddb42a follow this.",
   "type": "task",
-  "status": "open",
+  "status": "closed",
   "priority": 1,
   "assignee": null,
   "creator": null,
@@ -46,11 +46,23 @@
         "model": "claude-sonnet-5-5",
         "name": "board-reconcile-2026-10-19"
       }
+    },
+    {
+      "id": "01cb2a66-fbc5-4435-bdaa-e9d0305a2574",
+      "author": "home",
+      "text": "2026-10-19 (verified): scenario satisfied. AnthusAI/Anth.us-web#74 (merged ef00dbd) replaced the Google Form on https://anth.us/engage/ with a form posting to Prospectus intake (notice contact-v1); Anth.us-web#79 (merged 87d5af7) styled it and added an info@anth.us fallback. No Google Form links remain on anth.us. Prospectus#43 (merged 4317089, Amplify job 41 SUCCEED) fixed the production 503 by creating control claims first instead of reading absent keys without ListBucket; no IAM change. At 20:45 UTC a labelled test submission from anth.us/engage returned 202 with receipt 0714f32b-c9fa-4621-976e-c96240619ff8; intake wrote its receipt and identity claims, invoked prospectus-api, and created canonical prospect prsp-964cd0ea-a2c7-44d4-870c-aa835e02216d (cyclotron/prospectus/project/issues/..., 20:45:49 UTC). That record is a test contact Ryan may archive.\n",
+      "created_at": "2026-10-19T20:59:13.220418Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "name": "board-intake-live"
+      }
     }
   ],
   "created_at": "2026-10-17T12:16:51.022069Z",
-  "updated_at": "2026-10-19T17:28:12.088309Z",
-  "closed_at": null,
+  "updated_at": "2026-10-19T20:59:16.075970Z",
+  "closed_at": "2026-10-19T20:59:16.075473Z",
   "agent": {
     "platform": "claude-code",
     "model": "claude",
