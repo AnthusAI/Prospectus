@@ -634,3 +634,33 @@ test("person lookup reads session pointers in bounded batches and stops at the f
   );
   assert.ok(maximum > 1 && maximum <= 4, `Expected bounded overlap, observed ${maximum}`);
 });
+test("durable canonical files keep the login state digest and reject a different login state without consuming", async () => {
+  const x = await fixture();
+  const handler = googleIdentityHandler(x.repository(), x.f.products, x.f.keys, () => x.f.now);
+  const loginState = "synthetic-login-state-0123456789abcdefghijklmnop";
+  const issued = JSON.parse(
+    (
+      await handler(
+        x.f.event(0, "/v1/identities/google/challenge", {
+          loginStateDigest: createHash("sha256").update(loginState).digest("hex"),
+        }),
+      )
+    ).body,
+  );
+  const proof = x.f.pair(0, issued.nonce);
+  const resolve = (state: string | undefined, repositoryHandler = handler) =>
+    repositoryHandler(
+      x.f.event(
+        0,
+        "/v1/identities/google/resolve",
+        { challengeId: issued.challengeId, ...(state ? { loginState: state } : {}) },
+        proof,
+      ),
+    );
+  assert.equal((await resolve(undefined)).statusCode, 401);
+  assert.equal((await resolve("another-login-state-0123456789abcdefghij")).statusCode, 401);
+  const restarted = googleIdentityHandler(x.repository(), x.f.products, x.f.keys, () => x.f.now);
+  const accepted = await resolve(loginState, restarted);
+  assert.equal(accepted.statusCode, 200);
+  assert.equal((await resolve(loginState)).body, accepted.body);
+});

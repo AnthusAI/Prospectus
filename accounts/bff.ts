@@ -3,6 +3,9 @@ import { AccountsError, fail, UUID_PATTERN } from "./model";
 import { jsonResponse, lowerCaseHeaders, parseJsonRequest } from "./request";
 import { AccountsClientError, type AccountsClient } from "../packages/accounts-client/src/client";
 const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
+const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
+const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 export interface BffEvent {
   rawPath: string;
@@ -15,7 +18,7 @@ export interface AccountsBffOptions {
   origin: string;
   registration: ProductRegistration;
   keys: KeyResolver;
-  client: (access: string, id?: string) => AccountsClient;
+  client: (access?: string, id?: string) => AccountsClient;
   nowSeconds?: () => number;
 }
 /** JWT-protected, read-only account BFF. Never accepts a runtime role, endpoint,
@@ -24,6 +27,20 @@ export interface AccountsBffOptions {
 export function accountsBffHandler(options: AccountsBffOptions) {
   return async (event: BffEvent) => {
     try {
+      if (event.requestContext.http.method === "POST" && event.rawPath === LOGIN_CHALLENGE_PATH) {
+        // Public by design: nobody has signed in yet. It only mints a challenge bound to a digest of the
+        // browser's own login state, accepts no authority field and is throttled at the gateway.
+        // Do not add other unauthenticated routes here.
+        const { headers, body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
+        if (headers.origin !== options.origin) fail(403, "origin", "Request origin is not permitted.");
+        if (
+          Object.keys(body).length !== 1 ||
+          typeof body.loginStateDigest !== "string" ||
+          !LOGIN_STATE_DIGEST_PATTERN.test(body.loginStateDigest)
+        )
+          fail(400, "body", "A login state digest is required.");
+        return jsonResponse(200, await options.client().challenge(body.loginStateDigest));
+      }
       const headers = lowerCaseHeaders(event.headers);
       const access = /^Bearer ([^ ]+)$/.exec(headers.authorization ?? "")?.[1];
       const claims = await cognitoClaims(
@@ -55,8 +72,10 @@ export function accountsBffHandler(options: AccountsBffOptions) {
       }
       if (method === "POST" && event.rawPath === "/api/saas/identity/resolve") {
         if (
-          Object.keys(body).some((key) => !["challengeId", "idToken"].includes(key)) ||
+          Object.keys(body).some((key) => !["challengeId", "idToken", "loginState"].includes(key)) ||
           !UUID_PATTERN.test(body.challengeId) ||
+          (body.loginState !== undefined &&
+            (typeof body.loginState !== "string" || !LOGIN_STATE_PATTERN.test(body.loginState))) ||
           typeof body.idToken !== "string" ||
           body.idToken.length > 16384
         )
@@ -70,7 +89,10 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         );
         if (identity.sub !== claims.sub)
           fail(401, "invalid_human", "Identity evidence does not match session.");
-        return jsonResponse(200, await options.client(access!, body.idToken).resolveGoogle(body.challengeId));
+        return jsonResponse(
+          200,
+          await options.client(access!, body.idToken).resolveGoogle(body.challengeId, body.loginState),
+        );
       }
       fail(404, "route", "Account route not found.");
     } catch (error) {

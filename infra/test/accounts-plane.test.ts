@@ -39,8 +39,22 @@ function template(
 test("Accounts additive synthesis preserves every existing CRM resource and adds only scoped UI routes", () => {
   const before = template(false),
     after = template(true);
-  for (const [id, resource] of Object.entries(before.Resources))
+  for (const [id, resource] of Object.entries(before.Resources as Record<string, any>)) {
+    if (resource.Type === "AWS::ApiGatewayV2::Stage") {
+      // The only permitted change to an existing resource: throttling for the public login challenge.
+      const { RouteSettings, ...rest } = after.Resources[id].Properties;
+      assert.deepEqual(rest, resource.Properties, `Existing CRM stage changed: ${id}`);
+      assert.deepEqual(RouteSettings, {
+        "POST /api/saas/identity/login-challenge": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+      });
+      assert.deepEqual(
+        { ...after.Resources[id], Properties: undefined },
+        { ...resource, Properties: undefined },
+      );
+      continue;
+    }
     assert.deepEqual(after.Resources[id], resource, `Existing CRM resource changed: ${id}`);
+  }
   const resources = Object.values(after.Resources) as any[],
     newResources = Object.entries(after.Resources)
       .filter(([id]) => !before.Resources[id])
@@ -66,13 +80,14 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
     0,
   );
   const routes = newResources.filter((value) => value.Type === "AWS::ApiGatewayV2::Route");
-  assert.equal(routes.length, 2);
-  assert.ok(
-    routes.every(
-      (route) =>
-        route.Properties.AuthorizationType === "JWT" && route.Properties.RouteKey.includes("/api/saas/"),
-    ),
+  assert.equal(routes.length, 3);
+  assert.ok(routes.every((route) => route.Properties.RouteKey.includes("/api/saas/")));
+  const publicRoutes = routes.filter((route) => route.Properties.AuthorizationType !== "JWT");
+  assert.deepEqual(
+    publicRoutes.map((route) => [route.Properties.RouteKey, route.Properties.AuthorizationType]),
+    [["POST /api/saas/identity/login-challenge", "NONE"]],
   );
+  assert.equal(routes.filter((route) => route.Properties.AuthorizationType === "JWT").length, 2);
   const policies = newResources
     .filter((value) => value.Type === "AWS::IAM::Policy")
     .flatMap((value) => value.Properties.PolicyDocument.Statement);

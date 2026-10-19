@@ -1,6 +1,7 @@
 import { operatorSubjectHash } from "./operator-policy";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { directoryFixture } from "./testing/directory-fixture";
 import { canonicalAccountsHandler } from "./canonical-handler";
@@ -220,6 +221,72 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
   }
 });
 
+test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bound to the login state", async () => {
+  const x = await directoryFixture();
+  try {
+    const bff = accountsBffHandler({
+      origin: "https://prospectus.anth.us",
+      registration: x.products[0],
+      keys: x.f.keys,
+      nowSeconds: () => x.f.now,
+      client: (access, id) =>
+        new AccountsClient(async (path, method, body) => {
+          const event = x.f.event(0, path, body ?? {}, x.ownerDirectory.proof, method);
+          event.headers!["x-prospectus-human-token"] = access;
+          if (id) event.headers!["x-prospectus-identity-token"] = id;
+          const response = await x.handler()(event);
+          return decode(new Response(response.body, { status: response.statusCode }));
+        }),
+    });
+    const loginState = "synthetic-login-state_0123456789";
+    const digest = createHash("sha256").update(loginState).digest("hex");
+    const publicRequest = (body: unknown, headers: Record<string, string> = {}) => ({
+      rawPath: "/api/saas/identity/login-challenge",
+      requestContext: { http: { method: "POST" } },
+      headers: { origin: "https://prospectus.anth.us", "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    for (const [request, status] of [
+      [publicRequest({ loginStateDigest: digest }, { origin: "https://wrong.invalid" }), 403],
+      [publicRequest({ loginStateDigest: digest }, { origin: "" }), 403],
+      [publicRequest({}), 400],
+      [publicRequest({ loginStateDigest: "not-a-digest" }), 400],
+      [publicRequest({ loginStateDigest: digest.toUpperCase() }), 400],
+      [publicRequest({ loginStateDigest: digest, roleArn: "forged" }), 400],
+      [{ ...publicRequest({ loginStateDigest: digest }), requestContext: { http: { method: "GET" } } }, 401],
+    ] as const)
+      assert.equal((await bff(request)).statusCode, status);
+    const issued = await bff(publicRequest({ loginStateDigest: digest }));
+    assert.equal(issued.statusCode, 200);
+    const challenge = JSON.parse(issued.body);
+    const fresh = x.f.pair(
+      0,
+      challenge.nonce,
+      "synthetic-google-owner",
+      { sub: "synthetic-owner-0", origin_jti: "synthetic-bound-family" },
+      { sub: "synthetic-owner-0", origin_jti: "synthetic-bound-family" },
+    );
+    const resolve = (body: Record<string, unknown>) =>
+      bff({
+        rawPath: "/api/saas/identity/resolve",
+        requestContext: { http: { method: "POST" } },
+        headers: {
+          authorization: `Bearer ${fresh.access}`,
+          origin: "https://prospectus.anth.us",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ challengeId: challenge.challengeId, idToken: fresh.id, ...body }),
+      });
+    assert.equal((await resolve({})).statusCode, 401);
+    assert.equal((await resolve({ loginState: "another-browser-login-state" })).statusCode, 401);
+    assert.equal((await resolve({ loginState: "bad state!" })).statusCode, 400);
+    const confirmed = await resolve({ loginState });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(JSON.parse(confirmed.body).person.id, x.owner.person.id);
+  } finally {
+    await rm(x.root, { recursive: true, force: true });
+  }
+});
 test("explicit central operator reads cross-organization records without membership or CRM-admin inheritance", async () => {
   const x = await directoryFixture();
   try {

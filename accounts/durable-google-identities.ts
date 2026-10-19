@@ -3,6 +3,7 @@ import { IdentityFileError, type IdentityFiles, type IdentityObject } from "./id
 import {
   GOOGLE_ISSUER,
   sameBinding,
+  sameLoginState,
   type GoogleAlias,
   type GoogleAssociation,
   type GoogleIdentityRepository,
@@ -108,6 +109,8 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
       fail(401, "challenge_invalid", "Challenge expired or does not match evidence.");
     if (!sameBinding(prior.challenge.binding, proof.binding))
       fail(403, "challenge_binding", "Challenge belongs to another product/client/policy.");
+    if (!sameLoginState(prior.challenge, proof))
+      fail(401, "login_state", "Login state does not match this challenge.");
     if (prior.proof && prior.proof.fingerprint !== proof.fingerprint)
       fail(409, "challenge_replay", "Challenge already consumed with different evidence.");
     if (prior.state === "conflicted") fail(409, "identity_conflict", "Existing identity mapping conflicts.");

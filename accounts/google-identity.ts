@@ -7,6 +7,9 @@ import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
 export const GOOGLE_ISSUER = "https://accounts.google.com";
 export const GOOGLE_CHALLENGE_SECONDS = 300;
 const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 1024;
+const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const sha256Hex = (value: string) => createHash("sha256").update(value).digest("hex");
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export interface IdentityBinding {
   product: string;
@@ -21,6 +24,7 @@ export interface LoginChallenge {
   issuedAt: number;
   expiresAt: number;
   binding: IdentityBinding;
+  loginStateDigest?: string;
 }
 export interface GoogleAssociation {
   challengeId: string;
@@ -32,6 +36,7 @@ export interface GoogleAssociation {
   authTime: number;
   lineageHash: string;
   now: number;
+  loginStateDigest?: string;
 }
 export interface GoogleAlias {
   personId: string;
@@ -82,6 +87,8 @@ export function enrollmentBinding(registration: ProductRegistration, principal: 
     policyRevision: policy.reviewedPolicyId,
   };
 }
+export const sameLoginState = (challenge: LoginChallenge, proof: GoogleAssociation) =>
+  challenge.loginStateDigest === proof.loginStateDigest;
 export const sameBinding = (a: IdentityBinding, b: IdentityBinding) =>
   a.product === b.product &&
   a.principal === b.principal &&
@@ -105,7 +112,14 @@ export function googleIdentityHandler(
       const now = nowSeconds();
       const { headers, body } = parseJsonRequest(event, IDENTITY_REQUEST_MAXIMUM_BODY_BYTES);
       if (event.path === "/v1/identities/google/challenge" && event.httpMethod === "POST") {
-        if (Object.keys(body).length) fail(400, "fields", "No authority fields are accepted.");
+        if (Object.keys(body).some((key) => key !== "loginStateDigest"))
+          fail(400, "fields", "No authority fields are accepted.");
+        if (
+          body.loginStateDigest !== undefined &&
+          (typeof body.loginStateDigest !== "string" ||
+            !LOGIN_STATE_DIGEST_PATTERN.test(body.loginStateDigest))
+        )
+          fail(400, "fields", "A login state digest must be lowercase SHA-256 hexadecimal.");
         // Public challenge timestamps are integer Unix seconds even when the
         // production composition supplies a subsecond freshness clock.
         const issuedAt = Math.floor(now);
@@ -115,6 +129,7 @@ export function googleIdentityHandler(
           issuedAt,
           expiresAt: issuedAt + GOOGLE_CHALLENGE_SECONDS,
           binding: scope,
+          ...(body.loginStateDigest ? { loginStateDigest: body.loginStateDigest } : {}),
         };
         await repository.issue(challenge);
         return jsonResponse(200, {
@@ -125,11 +140,16 @@ export function googleIdentityHandler(
       }
       if (event.path === "/v1/identities/google/resolve" && event.httpMethod === "POST") {
         if (
-          Object.keys(body).some((key) => key !== "challengeId") ||
+          Object.keys(body).some((key) => key !== "challengeId" && key !== "loginState") ||
           typeof body.challengeId !== "string" ||
           !UUID_PATTERN.test(body.challengeId)
         )
-          fail(400, "fields", "Only a challenge ID is accepted.");
+          fail(400, "fields", "Only a challenge ID and login state are accepted.");
+        if (
+          body.loginState !== undefined &&
+          (typeof body.loginState !== "string" || !LOGIN_STATE_PATTERN.test(body.loginState))
+        )
+          fail(400, "fields", "Login state is malformed.");
         const registration = { ...authenticated.registration, clientIds: [scope.clientId] };
         const [access, id] = await Promise.all([
           cognitoClaims(headers["x-prospectus-human-token"], registration, keys, "access", now),
@@ -172,6 +192,7 @@ export function googleIdentityHandler(
           authTime: access.auth_time,
           lineageHash: digest(access.origin_jti),
           now,
+          ...(body.loginState ? { loginStateDigest: sha256Hex(body.loginState) } : {}),
         });
         return jsonResponse(200, { person });
       }

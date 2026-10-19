@@ -67,3 +67,26 @@ Feature: Verified Google identities across independently branded pools
     Then every result uses the enrolled Person ID
     And membership role entitlement and last-owner checks still apply
     And a conflicting prior Person mapping fails before any account side effect
+
+  Scenario: A challenge requested before sign-in is bound to the browser login state
+    Given a browser has generated its login state and sent only a digest of it
+    When the product requests a login challenge carrying that digest before the browser signs in
+    Then the challenge is issued with the same 300-second lifetime and a single-use nonce
+    And resolving it requires fresh login evidence and the original login state
+    And a missing, different or unexpected login state is rejected without consuming the challenge
+    And the matching login state still resolves the challenge afterwards
+    And a challenge issued without a digest rejects any supplied login state
+
+  Scenario Outline: Malformed login state fields are rejected
+    Given a product requests or resolves a challenge with <field>
+    Then the request fails with a 400 status before any challenge is stored or consumed
+    Examples:
+      | field |
+      | a login state digest that is not 64 lowercase hexadecimal characters |
+      | a login state outside the base64url alphabet |
+      | an unknown extra field |
+
+  Scenario: Login evidence older than 300 seconds never resolves a bound challenge
+    Given a bound challenge and matching login state
+    When the login evidence authentication time is older than 300 seconds
+    Then resolution fails with a session binding error

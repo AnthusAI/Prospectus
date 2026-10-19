@@ -62,3 +62,33 @@ test("server SDK refuses static and expired credentials before transmitting evid
     await assert.rejects(client.directoryList(), /Runtime temporary credentials/);
   }
 });
+
+test("server SDK sends a pre-sign-in challenge without a session token but still refuses every other tokenless call", async () => {
+  const requests: Array<{ url: string; headers: Headers; body: string | undefined }> = [];
+  const client = serverAccountsClient({
+    endpoint: "https://accounts.example.invalid/api",
+    region: "us-east-1",
+    humanToken: () => "",
+    credentials: async () => ({
+      accessKeyId: "synthetic-access",
+      secretAccessKey: "synthetic-secret",
+      sessionToken: "synthetic-session",
+      expiration: new Date(Date.now() + 600000),
+    }),
+    fetcher: async (url, init) => {
+      requests.push({ url: String(url), headers: new Headers(init?.headers), body: init?.body as string });
+      return new Response("{}");
+    },
+  });
+  const digest = "a".repeat(64);
+  await client.challenge(digest);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].headers.get("x-prospectus-human-token"), null);
+  assert.deepEqual(JSON.parse(requests[0].body!), { loginStateDigest: digest });
+  await assert.rejects(client.directoryList(), /verified session access token/);
+  await assert.rejects(
+    client.resolveGoogle("11111111-1111-4111-8111-111111111111", "state"),
+    /verified session/,
+  );
+  assert.equal(requests.length, 1);
+});

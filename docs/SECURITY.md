@@ -43,6 +43,8 @@ Central verification of Google-backed sign-in requires, for both the access and 
 
 A product registration with no `googleFederation` policy is denied the identity routes. The declaration is an operational approval input, not an inspection of AWS settings, so a reviewed policy ID must be re-reviewed when any of these change: the Google provider and client, Google-only client login, disabled alternative login paths, absence of linked profiles, administrator linking and pre-token customization, callback and logout URLs, and nonce, PKCE and state handling.
 
+The pre-sign-in route `POST /api/saas/identity/login-challenge` is the only BFF route without a JWT authorizer. It requires the exact configured `Origin`, accepts only a 64-character lowercase hexadecimal `loginStateDigest`, reads no account data and is throttled by API Gateway (1 request per second, burst 2, for all callers together, so it can be exhausted; sign-in then falls back to a plain login). Each call writes a pending challenge file to the identity prefix of the canonical bucket. Those files are not expired automatically.
+
 Error contract: `400` malformed input or raw authority fields, `401` invalid token, session or nonce or an expired challenge, `403` wrong caller, product, client or policy, `409` consumed challenge with changed proof or an identity mapping conflict, `429` capacity, `503` repository unavailable.
 
 ## Data handling

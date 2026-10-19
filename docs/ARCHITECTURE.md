@@ -96,14 +96,14 @@ All are reached with SigV4 from a registered role and are restricted by both the
 
 ### Browser routes
 
-The CRM host exposes JWT-protected routes under `/api/saas`: `GET /accounts`, `GET /accounts/{id}`, `GET /operator/accounts`, `GET /operator/accounts/{id}`, `POST /identity/challenge` and `POST /identity/resolve`. Only the server signs central requests; the browser bundle contains no AWS signing code. POST routes require the configured browser origin. The deployment output `AccountsBffUrl` supplies `VITE_ACCOUNTS_BFF_URL`; without it the Accounts view says the service is not configured instead of showing an empty directory.
+The CRM host exposes JWT-protected routes under `/api/saas`: `GET /accounts`, `GET /accounts/{id}`, `GET /operator/accounts`, `GET /operator/accounts/{id}`, `POST /identity/challenge` and `POST /identity/resolve`. The one exception is `POST /identity/login-challenge`, which has no JWT authorizer because it runs before sign-in (see Sign-in flow). Only the server signs central requests; the browser bundle contains no AWS signing code. POST routes require the configured browser origin. The deployment output `AccountsBffUrl` supplies `VITE_ACCOUNTS_BFF_URL`; without it the Accounts view says the service is not configured instead of showing an empty directory.
 
 The Accounts view exists separately from prospects. Any signed-in person can open it, it never grants CRM access, and it shows distinct states for unknown identity, empty list, loading, unconfigured and failure. There are no demo organizations.
 
 ## Sign-in flow
 
-1. The BFF asks the central service for a challenge and puts its nonce in the Cognito authorize request together with state and PKCE.
-2. On callback the BFF verifies the Cognito tokens itself, then posts the challenge ID with the access and ID tokens as signed headers.
+1. The browser generates its login `state` and calls `POST /api/saas/identity/login-challenge` with only `sha256hex(state)`. The BFF forwards the digest to the central service, which stores it with the challenge, and returns the challenge ID and nonce. The nonce goes in the Cognito authorize request together with state, PKCE and `prompt=login`. If this call fails or is throttled the browser starts a plain sign-in with no nonce, and Accounts is confirmed later from the Accounts tab with an authenticated challenge.
+2. On callback the BFF verifies the Cognito tokens itself, then posts the challenge ID and the raw login `state` with the access and ID tokens as signed headers. The central service hashes the state and rejects a missing or different value with `401 login_state` before the challenge is consumed, so a challenge cannot be used by a browser that did not start it. An authenticated challenge has no digest and rejects any supplied state.
 3. The central service independently verifies both RS256 tokens against the registered issuer (signature, `iss`, expiry, `aud`, `client_id`, `sub`, `auth_time` at most 300 seconds old, nonce) and requires exactly one Google identity in the ID token. A signed-in session is then continued with `GET /v1/identities/me`.
 4. Replaying identical evidence inside the challenge lifetime returns the original Person; changed evidence returns `409`.
 

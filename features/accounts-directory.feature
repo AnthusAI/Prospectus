@@ -68,3 +68,23 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     And each read observes canonical changes made by another request
     And the transport closes when its request finishes
     And a later request performs fresh canonical authorization
+
+  Scenario: One Google login serves the CRM and Accounts
+    Given I am signed out and the Accounts service is configured
+    When I choose Sign in
+    Then the browser requests a challenge from the unauthenticated login-challenge route sending only a digest of its login state
+    And the Google redirect carries the issued nonce and forces a fresh login
+    And the login completion stores the session and then confirms Accounts with the original login state
+    And no second Google login is needed to open Accounts
+
+  Scenario: Sign-in still works when the login challenge cannot be issued
+    Given the login-challenge route is throttled or unavailable
+    When I choose Sign in
+    Then the Google redirect carries no Accounts nonce and no forced re-login
+    And Accounts confirmation can still be started from the Accounts tab
+
+  Scenario: The unauthenticated login-challenge route is narrow and throttled
+    Given the login-challenge route has no JWT authorizer
+    Then it accepts only a same-origin POST containing a login state digest
+    And it never reads or returns account data
+    And the API stage throttles that single route while every CRM route keeps its JWT authorizer
