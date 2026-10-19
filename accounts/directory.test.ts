@@ -270,6 +270,14 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
     const afterEnrollment = await bff(directoryRead);
     assert.equal(afterEnrollment.statusCode, 200);
     assert.equal(JSON.parse(afterEnrollment.body).accounts[0].id, environment.account.id);
+    for (const unusableChallengeId of [[challenge.challengeId], 5, null]) {
+      const refused = await bff({
+        ...resolve,
+        body: JSON.stringify({ challengeId: unusableChallengeId, idToken: fresh.id }),
+      });
+      assert.equal(refused.statusCode, 400);
+      assert.equal(JSON.parse(refused.body).error, "body");
+    }
     assert.equal(
       (
         await bff({

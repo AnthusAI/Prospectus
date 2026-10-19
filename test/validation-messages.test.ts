@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { registrations } from "../accounts/registration";
 import { papyrusSiteRegistrations } from "../accounts/papyrus-sites";
 import { operatorGrants, operatorSubjectHash } from "../accounts/operator-policy";
+import { matchesStringPattern } from "../accounts/validation-rules";
 
 const registrationPrefix = "Invalid or ambiguous product registration:";
 const federationPrefix = "An exact reviewed Google-only federation policy/client is required:";
@@ -395,5 +396,33 @@ test("an operator grant needs a string product and issuer, whatever they coerce 
 test("a Papyrus site needs a string product, whatever it coerces to", () => {
   for (const [, product] of nonStringValues) {
     rejectsSite([{ ...siteEntry(), product }], `${siteEntryPrefix} A Papyrus site product must be a string.`);
+  }
+});
+
+test("a shared string-pattern guard refuses every value that only coerces to a match", () => {
+  const pattern = /^[a-z]+$/;
+  assert.equal(matchesStringPattern("abc", pattern), true);
+  for (const value of [["abc"], 5, null, undefined, { toString: () => "abc" }]) {
+    assert.equal(matchesStringPattern(value, pattern), false);
+  }
+});
+
+test("operator grant and Papyrus site identifiers refuse array-wrapped valid values", () => {
+  for (const field of ["subjectHash", "reviewedGrantId"] as const) {
+    const wrapped: any = grant();
+    wrapped[field] = [wrapped[field]];
+    assert.throws(() => operatorGrants([wrapped]), /must be a string\.$/);
+  }
+  for (const field of [
+    "product",
+    "roleArn",
+    "issuer",
+    "clientId",
+    "federationReviewId",
+    "siteReviewId",
+  ] as const) {
+    const wrapped: any = siteEntry();
+    wrapped[field] = [wrapped[field]];
+    assert.throws(() => papyrusSiteRegistrations([wrapped]), /must be a string\.$/);
   }
 });

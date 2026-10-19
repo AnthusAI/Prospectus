@@ -1,3 +1,4 @@
+import { isCognitoIssuer } from "./validation-rules";
 import { createHash, createPublicKey, verify, type JsonWebKey } from "node:crypto";
 import { fail, UUID_PATTERN, type Context, type Human, type Operation } from "./model";
 import type { ValidatedRegistrations } from "./registration";
@@ -70,8 +71,7 @@ export type KeyResolver = (issuer: string, kid: string) => Promise<JsonWebKey>;
 export class CognitoKeys {
   private cache = new Map<string, { expires: number; keys: JsonWebKey[] }>();
   async resolve(issuer: string, kid: string): Promise<JsonWebKey> {
-    if (!/^https:\/\/cognito-idp\.[a-z0-9-]+\.amazonaws\.com\/[a-zA-Z0-9_-]+$/.test(issuer))
-      fail(401, "issuer", "Unsupported identity authority.");
+    if (!isCognitoIssuer(issuer)) fail(401, "issuer", "Unsupported identity authority.");
     let cached = this.cache.get(issuer);
     if (!cached || cached.expires < Date.now() || !cached.keys.some((key) => key.kid === kid)) {
       const response = await fetch(`${issuer}/.well-known/jwks.json`, {

@@ -156,6 +156,37 @@ test("granting a product to a missing account or with an unknown status is refus
   );
 });
 
+test("account reads, creation and membership refuse an array-wrapped or numeric identifier", async () => {
+  const environment = await serviceFixture(),
+    owner = environment.contextFor("owner", "papyrus");
+  const account = await environment.service.create(owner, "Newsroom", randomUUID());
+  const arrayWrappedAccountId = [account.id] as any,
+    arrayWrappedPersonId = [environment.people.member.id] as any,
+    arrayWrappedRequestId = [randomUUID()] as any;
+  await assert.rejects(
+    environment.service.read(arrayWrappedAccountId),
+    (error: any) => error.status === 400 && error.code === "account",
+  );
+  await assert.rejects(
+    environment.service.read(5 as any),
+    (error: any) => error.status === 400 && error.code === "account",
+  );
+  await assert.rejects(
+    environment.service.create(owner, "Other", arrayWrappedRequestId),
+    (error: any) => error.status === 400 && error.code === "invalid",
+  );
+  await assert.rejects(
+    environment.service.create(owner, "Other", 5 as any),
+    (error: any) => error.status === 400 && error.code === "invalid",
+  );
+  for (const personId of [arrayWrappedPersonId, 5 as any]) {
+    await assert.rejects(
+      environment.service.setMembership(owner, account.id, personId, "member", "active"),
+      (error: any) => error.status === 400 && error.code === "invalid_membership",
+    );
+  }
+});
+
 test("granting a product refuses a missing or non-string product name", async () => {
   const environment = await serviceFixture(),
     operator = environment.contextFor("operator", "prospectus-directory");

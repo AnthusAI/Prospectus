@@ -10,9 +10,17 @@
   "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "af7d508f-1387-4e73-94fd-48d229d506c4",
+      "author": "home",
+      "text": "Scope widened by coordinator: the whole class of PATTERN.test(x) on an unproven non-string. Added matchesStringPattern(value, pattern) in accounts/validation-rules.ts and applied it to every pattern test in accounts/*.ts: request paths (bff.ts challengeId now answers 400 body for array-wrapped or numeric values, durable-accounts read/create/setMembership/candidateAccounts, durable-google-identities recover/getPerson), startup config (deployment.ts, identity-files.ts, canonical-lambda.ts, operator-policy, papyrus-sites, registration) and canonical-document rules (durable-accounts, durable-google-identities, google-identity). Tests cover array-wrapped and numeric values. PR #41 adds resolveRequestRules with an unguarded UUID_PATTERN.test(body.challengeId) and needs the same guard when it merges.",
+      "created_at": "2026-10-19T21:46:41.892536Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-19T21:36:18.812488Z",
-  "updated_at": "2026-10-19T21:36:26.855911Z",
+  "updated_at": "2026-10-19T21:46:41.892893Z",
   "closed_at": null,
   "agent": {
     "platform": "claude-code",

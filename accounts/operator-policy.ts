@@ -5,6 +5,7 @@ import {
   hasExactlyKeys,
   isCognitoIssuer,
   isProductName,
+  matchesStringPattern,
   requireRules,
   throwErrorWithPrefix,
   rule,
@@ -46,7 +47,7 @@ const grantRules: ValidationRule<OperatorGrant>[] = [
     "A central operator grant subject hash must be a string.",
   ),
   rule(
-    (grant) => SUBJECT_HASH_PATTERN.test(grant.subjectHash),
+    (grant) => matchesStringPattern(grant.subjectHash, SUBJECT_HASH_PATTERN),
     "A central operator grant subject hash must be a SHA-256 hex digest.",
   ),
   rule(
@@ -58,7 +59,7 @@ const grantRules: ValidationRule<OperatorGrant>[] = [
     "A central operator grant review ID must be a string.",
   ),
   rule(
-    (grant) => REVIEW_IDENTIFIER_PATTERN.test(grant.reviewedGrantId),
+    (grant) => matchesStringPattern(grant.reviewedGrantId, REVIEW_IDENTIFIER_PATTERN),
     "A central operator grant review ID must be a reviewed identifier.",
   ),
 ];
