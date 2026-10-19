@@ -12,7 +12,7 @@ export const handler = accountsBffHandler({
     serverAccountsClient({
       endpoint: process.env.PROSPECTUS_CENTRAL_ENDPOINT ?? "",
       region: "us-east-1",
-      humanToken: () => human,
+      humanToken: () => human ?? "",
       identityToken: () => id ?? "",
     }),
 });

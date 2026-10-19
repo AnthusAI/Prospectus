@@ -3,6 +3,7 @@ import { SignatureV4 } from "@smithy/signature-v4";
 import { HttpRequest } from "@smithy/protocol-http";
 import { Sha256 } from "@aws-crypto/sha256-js";
 import { AccountsClient, decode } from "./client.js";
+const GOOGLE_CHALLENGE_PATH = "/v1/identities/google/challenge";
 export interface TemporaryCredentials {
   accessKeyId: string;
   secretAccessKey: string;
@@ -37,7 +38,8 @@ export function serverAccountsClient(options: ServerClientOptions): AccountsClie
     )
       throw new Error("Runtime temporary credentials are required; static access keys are refused.");
     const token = await options.humanToken();
-    if (!token) throw new Error("A verified session access token is required.");
+    if (!token && path !== GOOGLE_CHALLENGE_PATH)
+      throw new Error("A verified session access token is required.");
     const url = new URL(`${endpoint.toString().replace(/\/$/, "")}${path}`);
     const payload = body ? JSON.stringify(body) : undefined;
     const identityToken =
@@ -45,7 +47,7 @@ export function serverAccountsClient(options: ServerClientOptions): AccountsClie
     const headers = {
       host: url.host,
       ...(identityToken ? { "x-prospectus-identity-token": identityToken } : {}),
-      "x-prospectus-human-token": token,
+      ...(token ? { "x-prospectus-human-token": token } : {}),
       ...(body ? { "content-type": "application/json" } : {}),
       ...(requestKey ? { "idempotency-key": requestKey } : {}),
     };

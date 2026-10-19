@@ -1,11 +1,13 @@
 import { operatorSubjectHash } from "./operator-policy";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { directoryFixture } from "./testing/directory-fixture";
 import { canonicalAccountsHandler } from "./canonical-handler";
 import { VirtuusIdentityFiles, VirtuusAccountFiles } from "./identity-files";
 import { accountsBffHandler } from "./bff";
+import { FakeChallengeSigner } from "./testing/fake-challenge-signer";
 import { AccountsClient, decode } from "../packages/accounts-client/src/client";
 test("canonical directory filters organizations by membership, never CRM admin or product alone", async () => {
   const environment = await directoryFixture();
@@ -292,6 +294,82 @@ test("BFF fresh Google confirmation requires independent signed ID evidence and 
   }
 });
 
+test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bound to the login state", async () => {
+  const environment = await directoryFixture();
+  try {
+    const bff = accountsBffHandler({
+      origin: "https://prospectus.anth.us",
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
+      client: (access, id) =>
+        new AccountsClient(async (path, method, body) => {
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
+          event.headers!["x-prospectus-human-token"] = access;
+          if (id) event.headers!["x-prospectus-identity-token"] = id;
+          const response = await environment.handler()(event);
+          return decode(new Response(response.body, { status: response.statusCode }));
+        }),
+    });
+    const loginState = "synthetic-login-state_0123456789";
+    const digest = createHash("sha256").update(loginState).digest("hex");
+    const publicRequest = (body: unknown, headers: Record<string, string> = {}) => ({
+      rawPath: "/api/saas/identity/login-challenge",
+      requestContext: { http: { method: "POST" } },
+      headers: { origin: "https://prospectus.anth.us", "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    for (const [request, status] of [
+      [publicRequest({ loginStateDigest: digest }, { origin: "https://wrong.invalid" }), 403],
+      [publicRequest({ loginStateDigest: digest }, { origin: "" }), 403],
+      [publicRequest({}), 400],
+      [publicRequest({ loginStateDigest: "not-a-digest" }), 400],
+      [publicRequest({ loginStateDigest: digest.toUpperCase() }), 400],
+      [publicRequest({ loginStateDigest: [digest] }), 400],
+      [publicRequest({ loginStateDigest: 7 }), 400],
+      [publicRequest({ loginStateDigest: digest, roleArn: "forged" }), 400],
+      [{ ...publicRequest({ loginStateDigest: digest }), requestContext: { http: { method: "GET" } } }, 401],
+    ] as const)
+      assert.equal((await bff(request)).statusCode, status);
+    const issued = await bff(publicRequest({ loginStateDigest: digest }));
+    assert.equal(issued.statusCode, 200);
+    const challenge = JSON.parse(issued.body);
+    const fresh = environment.identityFixture.pair(
+      0,
+      challenge.nonce,
+      "synthetic-google-owner",
+      { sub: "synthetic-owner-0", origin_jti: "synthetic-bound-family" },
+      { sub: "synthetic-owner-0", origin_jti: "synthetic-bound-family" },
+    );
+    const resolve = (body: Record<string, unknown>) =>
+      bff({
+        rawPath: "/api/saas/identity/resolve",
+        requestContext: { http: { method: "POST" } },
+        headers: {
+          authorization: `Bearer ${fresh.access}`,
+          origin: "https://prospectus.anth.us",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ challengeId: challenge.challengeId, idToken: fresh.id, ...body }),
+      });
+    assert.equal((await resolve({})).statusCode, 401);
+    assert.equal((await resolve({ loginState: "another-browser-login-state" })).statusCode, 401);
+    assert.equal((await resolve({ loginState: "bad state!" })).statusCode, 400);
+    assert.equal((await resolve({ loginState: [loginState] })).statusCode, 400);
+    assert.equal((await resolve({ loginState: 7 })).statusCode, 400);
+    const confirmed = await resolve({ loginState });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(JSON.parse(confirmed.body).person.id, environment.owner.person.id);
+  } finally {
+    await rm(environment.root, { recursive: true, force: true });
+  }
+});
 test("explicit central operator reads cross-organization records without membership or CRM-admin inheritance", async () => {
   const environment = await directoryFixture();
   try {
@@ -378,6 +456,82 @@ test("explicit central operator reads cross-organization records without members
       "removing the grant takes effect without changing memberships",
     );
     assert.equal((await operator(event(`${listPath}/00000000-0000-4000-8000-000000000000`))).statusCode, 404);
+  } finally {
+    await rm(environment.root, { recursive: true, force: true });
+  }
+});
+
+test("BFF carries a signed login challenge token end to end and nothing is stored until it resolves", async () => {
+  const signer = new FakeChallengeSigner();
+  const environment = await directoryFixture(signer);
+  try {
+    const bff = accountsBffHandler({
+      origin: "https://prospectus.anth.us",
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
+      client: (access, id) =>
+        new AccountsClient(async (path, method, body) => {
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
+          event.headers!["x-prospectus-human-token"] = access;
+          if (id) event.headers!["x-prospectus-identity-token"] = id;
+          const response = await environment.handler()(event);
+          return decode(new Response(response.body, { status: response.statusCode }));
+        }),
+    });
+    const loginState = "synthetic-login-state_0123456789";
+    const headers = { origin: "https://prospectus.anth.us", "content-type": "application/json" };
+    const issued = await bff({
+      rawPath: "/api/saas/identity/login-challenge",
+      requestContext: { http: { method: "POST" } },
+      headers,
+      body: JSON.stringify({ loginStateDigest: createHash("sha256").update(loginState).digest("hex") }),
+    });
+    assert.equal(issued.statusCode, 200);
+    const challenge = JSON.parse(issued.body);
+    assert.match(challenge.challengeToken, /^v1\./);
+    const files = new VirtuusIdentityFiles(environment.root);
+    const loginsBefore = await files.list("logins/");
+    const fresh = environment.identityFixture.pair(
+      0,
+      challenge.nonce,
+      "synthetic-google-owner",
+      { sub: "synthetic-owner-0", origin_jti: "synthetic-token-family" },
+      { sub: "synthetic-owner-0", origin_jti: "synthetic-token-family" },
+    );
+    const resolve = (body: Record<string, unknown>) =>
+      bff({
+        rawPath: "/api/saas/identity/resolve",
+        requestContext: { http: { method: "POST" } },
+        headers: { ...headers, authorization: `Bearer ${fresh.access}` },
+        body: JSON.stringify({ idToken: fresh.id, ...body }),
+      });
+    assert.equal(
+      (await resolve({ challengeId: challenge.challengeId, challengeToken: challenge.challengeToken }))
+        .statusCode,
+      400,
+    );
+    assert.equal(
+      (await resolve({ challengeToken: `${challenge.challengeToken}x`, loginState })).statusCode,
+      401,
+    );
+    for (const challengeToken of [[challenge.challengeToken], 7, {}, "v1.AAAA"])
+      assert.equal((await resolve({ challengeToken, loginState })).statusCode, 400);
+    assert.deepEqual(await files.list("logins/"), loginsBefore, "invalid evidence writes nothing");
+    const confirmed = await resolve({ challengeToken: challenge.challengeToken, loginState });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(JSON.parse(confirmed.body).person.id, environment.owner.person.id);
+    assert.deepEqual(
+      (await files.list("logins/")).filter((path) => !loginsBefore.includes(path)),
+      [`logins/${challenge.challengeId}.json`],
+    );
+    assert.equal((await resolve({ challengeToken: challenge.challengeToken, loginState })).statusCode, 200);
   } finally {
     await rm(environment.root, { recursive: true, force: true });
   }

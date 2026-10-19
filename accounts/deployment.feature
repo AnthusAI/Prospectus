@@ -24,3 +24,9 @@ Feature: Activate the approved Accounts directory without changing CRM authority
     Then the worker can read its identity and authorize an account using the original BFF enrollment
     And the directory registration and storage grants are preserved
     And neither console principal can invoke directory or membership management routes
+
+  Scenario: The login challenge signer is part of the reviewed deployment configuration
+    Given the deployment configuration names a parameter-store or kms login challenge signer
+    Then CDK grants only ssm:GetParameter on the named parameters, or creates the kms key and its two permissions, and never both
+    And a missing or malformed signer configuration stops the build
+    And no secret value is stored in the repository, the template or the Lambda environment

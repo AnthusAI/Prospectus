@@ -10,10 +10,11 @@ import { googlePersonDirectory } from "../person-directory";
 import { canonicalAccountsHandler } from "../canonical-handler";
 import { registrations } from "../registration";
 import { context } from "../auth";
+import type { ChallengeSigner } from "../challenge-signer";
 /** Real RSA + pinned Virtuus files, disposable synthetic only. */
-export async function directoryFixture() {
+export async function directoryFixture(challengeSigner?: ChallengeSigner) {
   const root = await mkdtemp(join(tmpdir(), "accounts-directory-")),
-    identityFixture = googleFixture();
+    identityFixture = googleFixture(challengeSigner);
   const products = registrations(
     identityFixture.products.map((product, index) => ({
       ...product,
@@ -31,6 +32,9 @@ export async function directoryFixture() {
       products,
       identityFixture.keys,
       () => identityFixture.now,
+      [],
+      "scan",
+      challengeSigner,
     );
   async function enroll(index: number, name: string, groups: string[] = []) {
     const challenge = JSON.parse(
@@ -47,7 +51,9 @@ export async function directoryFixture() {
       identityFixture.event(
         index,
         "/v1/identities/google/resolve",
-        { challengeId: challenge.challengeId },
+        challenge.challengeToken
+          ? { challengeToken: challenge.challengeToken }
+          : { challengeId: challenge.challengeId },
         proof,
       ),
     );

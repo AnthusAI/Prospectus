@@ -10,6 +10,8 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { AccountsPlane, type AccountsPlaneOptions } from "./accounts-plane";
+
+const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
@@ -258,12 +260,23 @@ export class ProspectusBackend extends Construct {
     const accountsPlane = accounts
       ? new AccountsPlane(this, "SaasAccounts", objects, pool, client, { ...accounts, consoleClient })
       : null;
-    if (accountsPlane)
+    if (accountsPlane) {
       api.addRoutes({
         path: "/api/saas/{proxy+}",
         methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsDirectory", accountsPlane.bff),
       });
+      api.addRoutes({
+        path: LOGIN_CHALLENGE_PATH,
+        methods: [apigw.HttpMethod.POST],
+        integration: new HttpLambdaIntegration("AccountsLoginChallenge", accountsPlane.bff),
+        authorizer: new apigw.HttpNoneAuthorizer(),
+      });
+      const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
+      stage.routeSettings = {
+        [`POST ${LOGIN_CHALLENGE_PATH}`]: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+      };
+    }
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
       ApiUrl: api.apiEndpoint,

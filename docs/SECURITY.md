@@ -4,12 +4,12 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 
 ## Principals and authentication
 
-| Surface | Who can call | How it is checked |
-| --- | --- | --- |
-| CRM Kanbus API (`/api/{proxy+}`) | Invited staff | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group |
-| Accounts BFF (`/api/saas/*`) | Any signed-in person | Same JWT authorizer; the BFF verifies the token again and signs central requests itself |
-| Central accounts service | Registered product roles only | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal |
-| Inquiry intake (`POST /intake/demo`) | The public, from allowed origins | Origin and notice checks, throttling and a fixed intake actor; no read access |
+| Surface                              | Who can call                     | How it is checked                                                                                                           |
+| ------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| CRM Kanbus API (`/api/{proxy+}`)     | Invited staff                    | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group                          |
+| Accounts BFF (`/api/saas/*`)         | Any signed-in person             | Same JWT authorizer; the BFF verifies the token again and signs central requests itself                                     |
+| Central accounts service             | Registered product roles only    | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal |
+| Inquiry intake (`POST /intake/demo`) | The public, from allowed origins | Origin and notice checks, throttling and a fixed intake actor; no read access                                               |
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 
@@ -42,6 +42,22 @@ Operator access does not create a membership, enable a product, authorize CRM us
 Central verification of Google-backed sign-in requires, for both the access and ID token: RS256 signature against the registered issuer's keys, exact `iss`, token purpose, `exp`, `iat` and `nbf`; ID `aud` equal to access `client_id` and to the single registered federation client; matching pool `sub`, `auth_time` and a non-empty `origin_jti`; authentication at most 300 seconds old and future skew at most 30 seconds; the ID nonce matching the unexpired challenge. The ID token must contain exactly one identity whose provider is the built-in Google provider with a bounded case-sensitive `userId`. Array order, `primary`, username and email never select the identity. Tokens are not logged or stored; challenge receipts keep only a digest of the token pair and the Person result.
 
 A product registration with no `googleFederation` policy is denied the identity routes. The declaration is an operational approval input, not an inspection of AWS settings, so a reviewed policy ID must be re-reviewed when any of these change: the Google provider and client, Google-only client login, disabled alternative login paths, absence of linked profiles, administrator linking and pre-token customization, callback and logout URLs, and nonce, PKCE and state handling.
+
+The pre-sign-in route `POST /api/saas/identity/login-challenge` is the only BFF route without a JWT authorizer. It requires the exact configured `Origin`, accepts only a 64-character lowercase hexadecimal `loginStateDigest`, reads no account data and is throttled by API Gateway (1 request per second, burst 2, for all callers together, so it can be exhausted; sign-in then falls back to a plain login). It stores nothing, so an attacker can create no durable data by calling it.
+
+Login challenges are stateless signed tokens (`v1.<keyId>.<payload>.<mac>`). The signer is chosen by `loginChallengeSigner` in `accounts/deployment.json`:
+
+- `parameter-store` (the Anthus deployment): HMAC-SHA-256 in the central Lambda with Node crypto. The secret is an SSM SecureString parameter (`<parameterPrefix><keyId>`, default `/prospectus/central-accounts/login-challenge-mac/v1`) encrypted with the AWS managed `aws/ssm` key, created by an operator and never by CDK or the repository. It is fetched with `GetParameter` and decryption, held in Lambda memory for at most 15 minutes, must decode to at least 32 bytes, and is never logged. MACs are compared with `crypto.timingSafeEqual`. The central runtime role gets exactly `ssm:GetParameter` on the configured parameter ARN(s) and no `kms:Decrypt`: the `aws/ssm` key policy already allows every principal in the account that SSM authorizes (`kms:ViaService = ssm.us-east-1.amazonaws.com`, `kms:CallerAccount` = this account).
+- `kms`: one AWS KMS HMAC key (`HMAC_256`, `GENERATE_VERIFY_MAC`), created in CDK only when selected; the role gets `kms:GenerateMac` and `kms:VerifyMac` on that key ARN with `kms:MacAlgorithm = HMAC_SHA_256`.
+
+The payload is a fixed-position JSON array (domain tag, challenge ID, nonce, `issuedAt`, `expiresAt`, login state digest, product, principal, issuer, client ID, policy revision), so key order and whitespace cannot vary, and the MAC covers the exact payload bytes. The key ID in the token (`^[a-z0-9]{1,16}$`) selects the secret; only the configured current and previous key IDs are accepted, and any other ID is rejected without reading a secret. Verification runs before the payload is interpreted and only after the caller and both Cognito tokens have verified. Expiry (300 seconds), nonce equality with the ID token, binding and login state are then checked exactly as for a stored challenge.
+
+- Token theft: a token is useless without a fresh ID token carrying its nonce, Cognito login time within 300 seconds, a matching binding and, for the pre-sign-in path, the raw login state whose digest it carries. The browser keeps it in `sessionStorage` next to the nonce and state it already keeps.
+- Replay: the first successful resolve creates the login receipt at `logins/<challengeId>.json` (a conditional create with the existing operation identity, made before any read of an absent key). The same evidence returns the same Person; changed evidence returns `409 challenge_replay`. After expiry the existing freshness rules reject it.
+- Secret exposure (parameter-store): the secret lives in Lambda memory for the cache period, so code execution in the central Lambda or `ssm:GetParameter` on the parameter reveals it, and with it the ability to forge challenges (not sign-ins: forgery still needs a valid Cognito ID token with the matching nonce, binding and login time). A KMS key would keep the key material outside the Lambda. The parameter is readable only by the central runtime role, plus account administrators, and CloudTrail records each `GetParameter`.
+- Rotation: put a new parameter version name (`v2`), set `currentKeyId` to `v2` and `previousKeyId` to `v1`, deploy, and remove `previousKeyId` after more than 300 seconds. Tokens in flight keep verifying; the cache means a changed secret under the same name takes effect within 15 minutes.
+- Outage: a missing, unreadable, short or malformed secret, or an SSM or KMS failure at issue, returns `503` and the browser falls back to a plain sign-in. At resolve it returns `503` and the retry rule applies. Invalid MACs and malformed tokens return `401 challenge_invalid` and write nothing. Deploying before the parameter exists therefore degrades to plain sign-in, not an outage.
+- Rollout: stored challenges issued before the change still resolve by `challengeId`; with no signer configured the service issues stored challenges as before.
 
 Error contract: `400` malformed input or raw authority fields, `401` invalid token, session or nonce or an expired challenge, `403` wrong caller, product, client or policy, `409` consumed challenge with changed proof or an identity mapping conflict, `429` capacity, `503` repository unavailable.
 

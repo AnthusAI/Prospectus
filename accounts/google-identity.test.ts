@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { googleFixture } from "./testing/google-fixture";
@@ -386,4 +387,126 @@ test("JSON-lines real central harness resolves two pools with externally supplie
     lines.close();
     child.kill();
   }
+});
+const loginState = "synthetic-login-state-0123456789abcdefghijklmnop";
+const loginStateDigest = createHash("sha256").update(loginState).digest("hex");
+async function boundChallenge(f: ReturnType<typeof googleFixture>, digest: unknown = loginStateDigest) {
+  const issued = await f.request(0, "/v1/identities/google/challenge", { loginStateDigest: digest });
+  assert.equal(issued.status, 200);
+  return issued.body as { challengeId: string; nonce: string; expiresAt: number };
+}
+test("a challenge issued before sign-in resolves only with the original login state and keeps its lifetime", async () => {
+  const f = googleFixture();
+  const c = await boundChallenge(f);
+  assert.deepEqual(Object.keys(c).sort(), ["challengeId", "expiresAt", "nonce"]);
+  assert.equal(c.expiresAt, f.now + 300);
+  const proof = f.pair(0, c.nonce);
+  const resolve = (state?: unknown) =>
+    f.request(
+      0,
+      "/v1/identities/google/resolve",
+      { challengeId: c.challengeId, ...(state === undefined ? {} : { loginState: state }) },
+      proof,
+    );
+  for (const rejected of [undefined, "another-login-state-0123456789abcdefghij"])
+    assert.equal((await resolve(rejected)).status, 401);
+  assert.equal(f.repository.counts.people, 0);
+  const accepted = await resolve(loginState);
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(await resolve(loginState), accepted);
+  assert.equal(f.repository.counts.associations, 1);
+});
+test("a bound challenge still enforces the 300 second freshness and its own nonce", async () => {
+  const f = googleFixture();
+  const expiring = await boundChallenge(f);
+  const stale = f.pair(0, expiring.nonce);
+  f.advance(301);
+  const expired = await f.request(
+    0,
+    "/v1/identities/google/resolve",
+    { challengeId: expiring.challengeId, loginState },
+    stale,
+  );
+  assert.equal(expired.status, 401);
+  const fresh = await boundChallenge(f);
+  const oldAuthentication = f.pair(
+    0,
+    fresh.nonce,
+    "synthetic-google-a",
+    { auth_time: f.now - 301 },
+    { auth_time: f.now - 301 },
+  );
+  const denied = await f.request(
+    0,
+    "/v1/identities/google/resolve",
+    { challengeId: fresh.challengeId, loginState },
+    oldAuthentication,
+  );
+  assert.equal(denied.status, 401);
+  assert.equal(denied.body.error, "session_binding");
+  const wrongNonce = await f.request(
+    0,
+    "/v1/identities/google/resolve",
+    { challengeId: fresh.challengeId, loginState },
+    f.pair(0, "another-challenge-nonce"),
+  );
+  assert.equal(wrongNonce.status, 401);
+  assert.equal(f.repository.counts.people, 0);
+});
+test("a challenge issued without a digest rejects any supplied login state", async () => {
+  const f = googleFixture();
+  const c = await f.challenge();
+  const proof = f.pair(0, c.nonce);
+  const rejected = await f.request(
+    0,
+    "/v1/identities/google/resolve",
+    { challengeId: c.challengeId, loginState },
+    proof,
+  );
+  assert.equal(rejected.status, 401);
+  assert.equal((await f.resolve(0, c.challengeId, proof)).status, 200);
+});
+test("malformed login state fields fail before a challenge is stored or consumed", async () => {
+  const f = googleFixture();
+  for (const digest of [
+    "",
+    "ABC",
+    loginStateDigest.toUpperCase(),
+    loginStateDigest + "0",
+    7,
+    null,
+    {},
+    [loginStateDigest],
+    [],
+    0,
+  ]) {
+    const response = await f.request(0, "/v1/identities/google/challenge", { loginStateDigest: digest });
+    assert.equal(response.status, 400, JSON.stringify(digest));
+  }
+  assert.equal(
+    (await f.request(0, "/v1/identities/google/challenge", { loginStateDigest, extra: "x" })).status,
+    400,
+  );
+  const c = await boundChallenge(f);
+  for (const state of ["", "has space", "x".repeat(129), 7, null, {}, [loginState], [], 0]) {
+    const response = await f.request(
+      0,
+      "/v1/identities/google/resolve",
+      { challengeId: c.challengeId, loginState: state },
+      f.pair(0, c.nonce),
+    );
+    assert.equal(response.status, 400, JSON.stringify(state));
+  }
+  assert.equal(
+    (
+      await f.request(
+        0,
+        "/v1/identities/google/resolve",
+        { challengeId: c.challengeId, loginState, googleSubject: "raw" },
+        f.pair(0, c.nonce),
+      )
+    ).status,
+    400,
+  );
+  assert.equal(f.repository.counts.people, 0);
 });

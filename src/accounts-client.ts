@@ -15,10 +15,21 @@ export class DirectoryError extends Error {
     super(message);
   }
 }
+export interface AccountsChallenge {
+  challengeId: string;
+  nonce: string;
+  challengeToken?: string;
+}
 export interface AccountsBrowser extends DirectoryReader, OperatorReader {
   configured: boolean;
-  challenge(): Promise<{ challengeId: string; nonce: string }>;
-  resolve(challengeId: string, idToken: string, accessToken: string): Promise<void>;
+  challenge(): Promise<AccountsChallenge>;
+  loginChallenge(loginStateDigest: string): Promise<AccountsChallenge>;
+  resolve(
+    challenge: AccountsChallenge,
+    idToken: string,
+    accessToken: string,
+    loginState?: string,
+  ): Promise<void>;
 }
 export function accountsBrowser(
   base: string | undefined,
@@ -110,8 +121,39 @@ export function accountsBrowser(
       return value as DirectoryDetail;
     },
     challenge: () => request("/identity/challenge", "POST", {}),
-    resolve: async (challengeId, idToken, access) => {
-      await request("/identity/resolve", "POST", { challengeId, idToken }, access);
+    loginChallenge: async (loginStateDigest) => {
+      if (!root) throw new DirectoryError(503, "The Accounts service has not been configured.");
+      const response = await fetcher(`${root}/identity/login-challenge`, {
+        method: "POST",
+        cache: "no-store",
+        redirect: "error",
+        credentials: "omit",
+        signal: AbortSignal.timeout(5000),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ loginStateDigest }),
+      });
+      const value = await response.json().catch(() => null);
+      if (!response.ok || typeof value?.challengeId !== "string" || typeof value?.nonce !== "string")
+        throw new DirectoryError(response.status || 503, "A sign-in challenge could not be issued.");
+      return {
+        challengeId: value.challengeId,
+        nonce: value.nonce,
+        ...(typeof value.challengeToken === "string" ? { challengeToken: value.challengeToken } : {}),
+      };
+    },
+    resolve: async (challenge, idToken, access, loginState) => {
+      await request(
+        "/identity/resolve",
+        "POST",
+        {
+          ...(challenge.challengeToken
+            ? { challengeToken: challenge.challengeToken }
+            : { challengeId: challenge.challengeId }),
+          idToken,
+          ...(loginState ? { loginState } : {}),
+        },
+        access,
+      );
     },
   };
 }
