@@ -96,6 +96,7 @@ test("Google-first identity creation has no pre-enrollment gate and CRM roles ar
     LambdaConfig: Match.absent(),
   });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "prospectus-members" });
+  template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "kanbus:cyclotron/prospectus" });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "admin" });
   template.hasResourceProperties("AWS::Cognito::UserPoolDomain", { Domain: `prospectus-${TARGET_ACCOUNT}` });
   template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
@@ -130,6 +131,13 @@ test("every application API route requires verified JWT and access-token scope",
   const template = appTemplate();
   const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
   assert.equal(routes.length, 4);
+  const keys = routes.map((route) => route.Properties.RouteKey).sort();
+  assert.deepEqual(keys, [
+    "DELETE /cyclotron/prospectus/api/{proxy+}",
+    "GET /cyclotron/prospectus/api/{proxy+}",
+    "PATCH /cyclotron/prospectus/api/{proxy+}",
+    "POST /cyclotron/prospectus/api/{proxy+}",
+  ]);
   for (const route of routes) {
     assert.equal(route.Properties.AuthorizationType, "JWT");
     assert.deepEqual(route.Properties.AuthorizationScopes, ["openid"]);
@@ -152,8 +160,8 @@ test("every application API route requires verified JWT and access-token scope",
     Environment: {
       Variables: {
         KANBUS_BACKEND: "s3",
-        KANBUS_NAMESPACE: "cyclotron/prospectus",
-        KANBUS_REQUIRED_GROUP: "prospectus-members",
+        KANBUS_NAMESPACE: Match.absent(),
+        KANBUS_REQUIRED_GROUP: Match.absent(),
         KANBUS_OBJECT_BUCKET: Match.anyValue(),
         KANBUS_CATALOG_TABLE: Match.anyValue(),
       },

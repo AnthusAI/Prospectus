@@ -130,7 +130,8 @@ test("durable receipts recover a lost create response and preserve subsequent in
   let service = await openIntake(options);
   try {
     const first = submission();
-    await assert.rejects(service.submit(first), /Connection dropped/);
+    // The visitor is accepted even though the CRM response was lost; the inbox keeps it pending.
+    assert.equal((await service.submit(first)).receipt, first.submission_id);
     await service.close();
     service = await openIntake(options);
     await service.submit(first);
@@ -146,10 +147,9 @@ test("durable receipts recover a lost create response and preserve subsequent in
     assert.equal(updated.issue.custom!.next_action, "Prepare proposal");
     assert.equal((updated.issue.custom!.inquiries as unknown[]).length, 2);
     assert.equal(updated.issue.custom!.next_follow_up_at, "2026-10-19");
-    await assert.rejects(
-      service.submit({ ...first, message: "Changed receipt" }),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
+    // A reused receipt with other content is never rejected: it is stored as a new inquiry.
+    await service.submit({ ...first, message: "Changed receipt" });
+    assert.equal((records.get("prsp-example")!.issue.custom!.inquiries as unknown[]).length, 3);
   } finally {
     await service.close();
     await rm(directory, { recursive: true });
@@ -208,12 +208,11 @@ test("a contact awaiting private duplicate review does not block a different con
     },
   });
   try {
-    await assert.rejects(
-      service.submit(submission()),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
-    await service.submit(submission({ email: "independent@example.invalid" }));
+    // Duplicate matches are accepted and filed as a separate needs-review prospect.
+    await service.submit(submission());
     assert.equal(creates, 1);
+    await service.submit(submission({ email: "independent@example.invalid" }));
+    assert.equal(creates, 2);
   } finally {
     await service.close();
     await rm(directory, { recursive: true });
@@ -246,8 +245,10 @@ test("stale locks are not automatically reclaimed by competing workers", async (
 test("failed receipt storage prevents subsequent unjournaled backend writes", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prospectus-disk-"));
   let requests = 0;
-  const service = await openIntake({
+  const identityDirectory = await mkdtemp(join(tmpdir(), "prospectus-disk-controls-"));
+  const service = await IntakeService.open({
     directory,
+    identityStore: new FileControlStore(identityDirectory),
     workspace: "test/prospectus",
     owner: "seller",
     siteId: "review",
@@ -260,15 +261,14 @@ test("failed receipt storage prevents subsequent unjournaled backend writes", as
   try {
     await rm(directory, { recursive: true });
     const input = submission();
-    await assert.rejects(service.submit(input));
-    await assert.rejects(
-      service.submit(input),
-      (error: unknown) => error instanceof IntakeError && error.status === 503,
-    );
+    // The inquiry is stored in the inbox, but nothing is written to the CRM without a journal.
+    await service.submit(input);
+    await service.submit(input);
     assert.equal(requests, 0);
   } finally {
     await service.close();
     await rm(directory, { recursive: true, force: true });
+    await rm(identityDirectory, { recursive: true, force: true });
   }
 });
 
@@ -292,16 +292,16 @@ test("an operation mismatch retains the same saved intent rather than retrying w
     owner: "seller",
     siteId: "review",
     formId: "demo",
-    request: async (_path, init) => {
-      if (!init?.method) return { issues: [record] };
+    request: async (path, init) => {
+      if (!init?.method) return path.startsWith("/issues?") ? { issues: [record] } : record;
       operations.push(new Headers(init.headers).get("X-Operation-Id")!);
       throw new IntakeError(409, "Operation mismatch", "operation_conflict");
     },
   });
   try {
     const input = submission();
-    await assert.rejects(service.submit(input), /Operation mismatch/);
-    await assert.rejects(service.submit(input), /Operation mismatch/);
+    await service.submit(input);
+    await service.submit(input);
     assert.equal(operations.length, 2);
     assert.equal(new Set(operations).size, 1);
   } finally {

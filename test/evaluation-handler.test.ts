@@ -105,7 +105,11 @@ test("trusted canonical adapter fixes the actor, strips bearer headers and retai
     },
     body: JSON.stringify({ custom: { next_action: "Synthetic action" } }),
   });
-  assert.equal(captured.rawPath, "/api/issues/synthetic-id");
+  assert.equal(captured.rawPath, "/cyclotron/prospectus/api/issues/synthetic-id");
+  assert.equal(
+    captured.requestContext.authorizer.jwt.claims["cognito:groups"],
+    "kanbus:cyclotron/prospectus",
+  );
   assert.equal(captured.headers.authorization, undefined);
   assert.equal(captured.headers["if-match"], "opaque");
   assert.equal(captured.headers["x-operation-id"], "stable-operation");

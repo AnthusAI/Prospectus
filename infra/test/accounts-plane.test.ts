@@ -497,7 +497,7 @@ test("routes without an authorizer carry no authorization scopes", () => {
   assert.equal(challenge.Properties.AuthorizationType, "NONE");
   assert.equal(challenge.Properties.AuthorizerId, undefined);
   assert.ok(!(challenge.Properties.AuthorizationScopes ?? []).length);
-  const member = routes.find((r: any) => r.Properties.RouteKey === "GET /api/{proxy+}");
+  const member = routes.find((r: any) => r.Properties.RouteKey === "GET /cyclotron/prospectus/api/{proxy+}");
   assert.equal(member.Properties.AuthorizationType, "JWT");
   assert.deepEqual(member.Properties.AuthorizationScopes, ["openid"]);
 });

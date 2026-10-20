@@ -1,0 +1,38 @@
+{
+  "id": "kanbus-dc2901ae-9472-42c1-92d0-456f5941c31c",
+  "title": "Anthus One portal doc has a dead reference and stale status",
+  "description": "**Problem**\nThe Anthus One portal doc in the Prospectus repo links to a file that does not exist and its status is stale. The planned portal host one.anth.us has no DNS record.\n\n**Evidence**\n- docs/accounts/ANTHUS_ONE_PORTAL.md:16: \"`docs/accounts/ACCOUNTS_UI_SLICE.md`, which describes that slice.\" -- that file is not in the repo.\n- Status text in the same doc still describes the portal as planned work.\n- `dig +short one.anth.us` returns nothing.\n\n**Fix**\nRemove or repair the ACCOUNTS_UI_SLICE.md reference, update the doc's status section to match what is built, and either create the DNS record when the portal ships or state that the host is reserved but not yet live.\n\n**How to verify**\n`test -f docs/accounts/ACCOUNTS_UI_SLICE.md || ! grep -q ACCOUNTS_UI_SLICE docs/accounts/ANTHUS_ONE_PORTAL.md` succeeds, and the doc's status matches the board.\n\nSource: Anthus repo audit, 2026-10-20.",
+  "type": "bug",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "c578fe7c-fef3-4b65-942d-ca79cb4deb49",
+      "author": "home",
+      "text": "2026-10-20 drift fix, rechecked: dig +short one.anth.us still returns nothing (no A, AAAA or CNAME) and docs/accounts/ANTHUS_ONE_PORTAL.md:16 on origin/main still references the nonexistent docs/accounts/ACCOUNTS_UI_SLICE.md. No change to the issue's findings.",
+      "created_at": "2026-10-20T13:16:53.590734Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-opus-5-5",
+        "name": "drift-fix-20261020"
+      }
+    }
+  ],
+  "created_at": "2026-10-20T04:28:51.433514Z",
+  "updated_at": "2026-10-20T13:16:53.590746Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude-opus-5-5",
+    "name": "audit-filing"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

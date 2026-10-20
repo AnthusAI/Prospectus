@@ -4,6 +4,8 @@ export const SITE_DOMAIN = "prospectus.anth.us";
 // Preserve canonical paths during the account move; this is a data namespace, not hosting ownership.
 export const PROJECT_NAMESPACE = "cyclotron/prospectus";
 export const MEMBER_GROUP = "prospectus-members";
+// Kanbus multi-board grant group: kanbus:<tenant>/<project> (Kanbus#502).
+export const KANBUS_BOARD_GROUP = `kanbus:${PROJECT_NAMESPACE}`;
 export const SOURCE_REPOSITORY = "AnthusAI/Prospectus";
 export const AMPLIFY_APP_ID = "d15sc1sptohtqb";
 export const DEPLOYMENT_BRANCH = "main";

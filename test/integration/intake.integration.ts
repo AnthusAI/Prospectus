@@ -26,7 +26,8 @@ test("real Kanbus persistence: concurrent capture, replay/restart, edits, confli
         ...process.env,
         KANBUS_BACKEND: "file",
         KANBUS_ROOT: root,
-        KANBUS_NAMESPACE: "test/prospectus",
+        KANBUS_TENANT: "test",
+        KANBUS_PROJECT: "prospectus",
         KANBUS_PORT: "0",
         KANBUS_LOCAL_TOKEN: token,
       },
@@ -51,7 +52,7 @@ test("real Kanbus persistence: concurrent capture, replay/restart, edits, confli
         const match = data.toString().match(/http:\/\/127\.0\.0\.1:(\d+)/);
         if (match) {
           clearTimeout(timeout);
-          resolve(`${match[0]}/api`);
+          resolve(`${match[0]}/test/prospectus/api`);
         }
       });
     });
@@ -186,7 +187,8 @@ test("real Kanbus persistence: concurrent capture, replay/restart, edits, confli
       email: "corrected@example.invalid",
       message: "Committed inquiry with lost response",
     });
-    await assert.rejects(service.submit(uncertain), /Lost committed PATCH/);
+    // The visitor is accepted; the lost response leaves the inbox item pending for the retry below.
+    await service.submit(uncertain);
     await service.close();
     service = await IntakeService.open(options);
     await service.submit(uncertain);

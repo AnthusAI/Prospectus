@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { startLocalIntake } from "../server/local";
 import { FileControlStore } from "../server/control-store";
+import { KANBUS_API_PATH, KANBUS_PROJECT, KANBUS_TENANT } from "../src/board";
 
 const address = process.env.PROSPECTUS_LAN_ADDRESS;
 if (!address) throw new Error("Set the explicit private LAN address for synthetic review.");
@@ -23,13 +24,14 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 }
 const token = randomBytes(32).toString("hex"); // Memory only; never sent to the browser or logged.
-const backend = "http://127.0.0.1:5495/api";
+const backend = `http://127.0.0.1:5495${KANBUS_API_PATH}`;
 const apiProcess: ChildProcess = spawn(resolve(".build/kanbus-api-local"), [], {
   env: {
     ...process.env,
     KANBUS_BACKEND: "file",
     KANBUS_ROOT: root,
-    KANBUS_NAMESPACE: "cyclotron/prospectus",
+    KANBUS_TENANT,
+    KANBUS_PROJECT,
     KANBUS_PORT: "5495",
     KANBUS_LOCAL_TOKEN: token,
   },
@@ -125,8 +127,8 @@ const server = createServer(async (request, response) => {
       send(result.status, await result.json());
       return;
     }
-    if (url.pathname.startsWith("/api/")) {
-      const path = url.pathname.slice(4);
+    if (url.pathname.startsWith(`${KANBUS_API_PATH}/`)) {
+      const path = url.pathname.slice(KANBUS_API_PATH.length);
       const item = /^\/issues\/([a-zA-Z0-9-]+)(\/comments)?$/.exec(path);
       const allowed =
         (method === "GET" && (path === "/config" || path === "/issues" || (item && !item[2]))) ||

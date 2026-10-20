@@ -25,10 +25,22 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "7dabf933-5707-4acb-91e7-c290acd577ee",
+      "author": "home",
+      "text": "2026-10-20 drift fix: child kanbus-290c32 (local dev server with real sign-in) closed via PR #49 (2a19641), and kanbus-b92d01 (Anthus One admin redesign) closed via PR #51 (67ec7e0), both 2026-10-20. The epic's own status is unchanged: the 2026-10-16 reconciliation still holds that hosted mutation/conflict/customer-success acceptance and approved intake activation remain open.",
+      "created_at": "2026-10-20T13:16:53.448579Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-opus-5-5",
+        "name": "drift-fix-20261020"
+      }
     }
   ],
   "created_at": "2026-10-14T00:28:45.621780Z",
-  "updated_at": "2026-10-16T20:46:53.994358Z",
+  "updated_at": "2026-10-20T13:16:53.448602Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",

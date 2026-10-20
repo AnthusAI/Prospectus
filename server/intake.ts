@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { IssueRecord } from "../src/client";
 import type { ConditionalControlStore } from "./control-store";
 import { IdentityClaims, SharedReceiptConflict } from "./identity";
+import { IntakeInbox, derivedUuid, type StoredInboxItem } from "./inbox";
 import { SYNTHETIC_CONTACT_POLICY, type IntakeContactPolicy } from "./intake-contact-policy";
 import { matchesAttributePattern, waitlistLabels, type IntakeFormConfig } from "./intake-forms";
 
@@ -15,6 +16,15 @@ export class IntakeError extends Error {
     public code?: string,
   ) {
     super(message);
+  }
+}
+/** A well-formed inquiry that cannot be merged automatically; never shown to the visitor. */
+export class ReviewRequired extends IntakeError {
+  constructor(
+    public reason: string,
+    public related?: string,
+  ) {
+    super(409, "This inquiry needs private review.", reason);
   }
 }
 export interface Submission {
@@ -84,6 +94,15 @@ export interface IntakeOptions {
   identityStore: ConditionalControlStore;
   contactPolicy?: IntakeContactPolicy;
   form?: IntakeFormConfig;
+  /** Data-free diagnostics only: a reason code, never contact data. */
+  log?: (entry: { event: string; reason: string }) => void;
+}
+/** A short, data-free code for logs and the inbox; never the message text. */
+function reasonCode(cause: unknown): string {
+  if (cause === undefined) return "none";
+  if (cause instanceof IntakeError) return cause.code ?? `http_${cause.status}`;
+  const name = (cause as Error)?.name;
+  return typeof name === "string" && /^[A-Za-z]{1,40}$/.test(name) ? `unconfirmed_${name}` : "unconfirmed";
 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -246,8 +265,11 @@ export class IntakeService {
   private persistenceFailed = false;
   private locked = false;
   private identities: IdentityClaims;
+  private inbox: IntakeInbox;
+  private stored = new Map<string, StoredInboxItem<Inquiry>>();
   private constructor(private options: IntakeOptions) {
     this.identities = new IdentityClaims(options.identityStore, options.workspace);
+    this.inbox = new IntakeInbox(options.identityStore, options.workspace);
   }
 
   static async open(options: IntakeOptions): Promise<IntakeService> {
@@ -340,7 +362,7 @@ export class IntakeService {
   }
 
   submit(raw: unknown): Promise<{ receipt: string; message: string }> {
-    if (this.closing || this.persistenceFailed)
+    if (this.closing)
       return Promise.reject(
         new IntakeError(503, "Intake is unavailable. Restart after repairing local receipt storage."),
       );
@@ -350,40 +372,177 @@ export class IntakeService {
       : validateSubmission(raw, this.options.contactPolicy);
     const message = form ? "Waitlist signup received." : "Demo request received.";
     const run = this.queue.then(async () => {
-      if (!this.locked || this.persistenceFailed) throw new IntakeError(503, "Intake is unavailable.");
+      if (!this.locked) throw new IntakeError(503, "Intake is unavailable.");
       if (submission.website) return { receipt: submission.submission_id, message };
       const fingerprint = hash(
         JSON.stringify({ submission, siteId: this.options.siteId, formId: this.options.formId }),
       );
-      const existing = this.ledger.receipts[submission.submission_id];
-      if (existing && existing.fingerprint !== fingerprint)
-        throw new IntakeError(409, "This receipt belongs to a different submission. Reload the form.");
-      if (!existing) {
-        if (Object.keys(this.ledger.receipts).length >= 10000)
-          throw new IntakeError(503, "Local demo capacity reached.");
-        const { submission_id, website: _website, campaign, page_path, ...contact } = submission;
-        this.ledger.receipts[submission_id] = {
-          fingerprint,
-          complete: false,
-          inquiry: {
-            ...(form ? { company: "", message: "" } : {}),
-            ...contact,
-            fingerprint,
-            id: submission_id,
-            kind: form ? "waitlist" : "demo",
-            received_at: (this.options.now?.() ?? new Date()).toISOString(),
-            source: { site_id: this.options.siteId, form_id: this.options.formId, page_path, campaign },
-          } as Inquiry,
-        };
-        await this.save();
+      const received_at = (this.options.now?.() ?? new Date()).toISOString();
+      const build = (id: string) => this.buildInquiry(submission, fingerprint, id, received_at);
+      // Store first: once the full inquiry is durable the visitor's message cannot be lost.
+      let captured: StoredInboxItem<Inquiry> | undefined;
+      try {
+        captured = await this.inbox.capture(submission.submission_id, fingerprint, build);
+        this.stored.set(captured.item.inquiry.id, captured);
+      } catch (error) {
+        this.diagnose("inbox_unavailable", error);
+      }
+      const inquiry = captured?.item.inquiry ?? build(submission.submission_id);
+      const reply = { receipt: submission.submission_id, message };
+      if (this.persistenceFailed) {
+        // Never write to the CRM without a journal, but the stored inquiry is still safe.
+        if (!captured) throw new IntakeError(503, "Intake is unavailable.");
+        this.diagnose("ledger_unavailable", undefined);
+        return reply;
+      }
+      if (!this.ledger.receipts[inquiry.id]) {
+        if (Object.keys(this.ledger.receipts).length >= 10000) {
+          if (!captured) throw new IntakeError(503, "Local demo capacity reached.");
+          this.diagnose("local_capacity", undefined);
+          return reply;
+        }
+        this.ledger.receipts[inquiry.id] = { fingerprint, complete: false, inquiry };
+        try {
+          await this.save();
+        } catch (error) {
+          if (!captured) throw error;
+          this.diagnose("ledger_unavailable", error);
+          return reply;
+        }
       }
       for (const receipt of Object.values(this.ledger.receipts)) {
-        if (!receipt.complete && receipt.inquiry.email === submission.email) await this.process(receipt);
+        if (receipt.complete || receipt.inquiry.email !== submission.email) continue;
+        const outcome = await this.file(receipt);
+        const item = this.stored.get(receipt.inquiry.id);
+        if (item) {
+          if (outcome.status !== "pending" || outcome.reason !== item.item.reason)
+            await this.inbox
+              .mark(item, outcome.status, { reason: outcome.reason, issue_id: outcome.issueId })
+              .catch((error) => this.diagnose("inbox_mark_failed", error));
+        } else if (outcome.status === "pending" && receipt.inquiry.id === inquiry.id) throw outcome.error;
       }
-      return { receipt: submission.submission_id, message };
+      return reply;
     });
     this.queue = run.catch(() => undefined);
     return run;
+  }
+
+  /**
+   * Operator retry of inbox items left pending: files each stored inquiry exactly as a live
+   * submission would, with the same idempotency, and updates the inbox status.
+   */
+  refile(items: StoredInboxItem<Inquiry>[]): Promise<{ filed: number; review: number; pending: number }> {
+    const run = this.queue.then(async () => {
+      if (!this.locked || this.persistenceFailed) throw new IntakeError(503, "Intake is unavailable.");
+      const totals = { filed: 0, review: 0, pending: 0 };
+      for (const stored of items) {
+        if (stored.item.status !== "pending") continue;
+        const inquiry = stored.item.inquiry;
+        this.stored.set(inquiry.id, stored);
+        const receipt = (this.ledger.receipts[inquiry.id] ??= {
+          fingerprint: stored.item.fingerprint,
+          complete: false,
+          inquiry,
+        });
+        await this.save();
+        const outcome = await this.file(receipt);
+        totals[outcome.status]++;
+        if (outcome.status !== "pending")
+          await this.inbox.mark(stored, outcome.status, {
+            reason: outcome.reason,
+            issue_id: outcome.issueId,
+          });
+      }
+      return totals;
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private buildInquiry(
+    submission: Submission | WaitlistSubmission,
+    fingerprint: string,
+    id: string,
+    received_at: string,
+  ): Inquiry {
+    const form = this.options.form;
+    const { submission_id: _id, website: _website, campaign, page_path, ...contact } = submission;
+    return {
+      ...(form ? { company: "", message: "" } : {}),
+      ...contact,
+      fingerprint,
+      id,
+      kind: form ? "waitlist" : "demo",
+      received_at,
+      source: { site_id: this.options.siteId, form_id: this.options.formId, page_path, campaign },
+    } as Inquiry;
+  }
+
+  private diagnose(event: string, cause: unknown) {
+    const reason = reasonCode(cause);
+    const entry = { event, reason };
+    if (this.options.log) this.options.log(entry);
+    else console.warn(JSON.stringify(entry));
+  }
+
+  /** Files one stored inquiry. Never throws: failures leave the inbox item pending. */
+  private async file(
+    receipt: Receipt,
+  ): Promise<{ status: "filed" | "review" | "pending"; reason?: string; issueId?: string; error?: unknown }> {
+    try {
+      await this.process(receipt);
+      return {
+        status: "filed",
+        issueId: this.ledger.contacts[hash(`${this.options.workspace}\n${receipt.inquiry.email}`)],
+      };
+    } catch (error) {
+      const reason = reasonCode(error);
+      this.diagnose("intake_deferred", error);
+      if (!(error instanceof ReviewRequired)) return { status: "pending", reason, error };
+      try {
+        const issueId = await this.fileForReview(receipt, reason, error.related);
+        receipt.complete = true;
+        delete receipt.write;
+        await this.save();
+        return { status: "review", reason, issueId };
+      } catch (reviewFailure) {
+        this.diagnose("review_deferred", reviewFailure);
+        return { status: "pending", reason, error: reviewFailure };
+      }
+    }
+  }
+
+  /**
+   * A separate, labelled prospect carries the inquiry for the operator to merge. It deliberately has
+   * no contact_email (so it never joins the identity search) and no follow-up date.
+   */
+  private async fileForReview(receipt: Receipt, reason: string, related?: string): Promise<string> {
+    const inquiry = receipt.inquiry;
+    const record = (await this.options.request("/issues", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Operation-Id": derivedUuid(`${this.options.workspace}\nreview\n${inquiry.id}`),
+      },
+      body: JSON.stringify({
+        title: `Needs review: ${inquiry.name || inquiry.email}`,
+        type: "prospect",
+        assignee: this.options.owner,
+        description: `Filed for review (${reason}). Merge this inquiry into the matching prospect.\n\n${inquiry.message}`,
+        labels: ["needs-review"],
+        custom: {
+          company: inquiry.company,
+          review_contact_email: inquiry.email,
+          review_reason: reason,
+          ...(related ? { review_related_issue: related } : {}),
+          first_source: inquiry.source,
+          latest_source: inquiry.source,
+          latest_inquiry_at: inquiry.received_at,
+          inquiries: [inquiry],
+        },
+      }),
+    })) as IssueRecord;
+    return record.issue.id;
   }
 
   private demoCreateBody(inquiry: Inquiry) {
@@ -433,18 +592,12 @@ export class IntakeService {
     try {
       await this.identities.claimReceipt(receipt.inquiry.id, receipt.fingerprint, receipt.inquiry.email);
     } catch (error) {
-      if (error instanceof SharedReceiptConflict)
-        throw new IntakeError(
-          409,
-          "This receipt belongs to a different submission. Reload the form.",
-          "receipt_conflict",
-        );
+      if (error instanceof SharedReceiptConflict) throw new ReviewRequired("receipt_conflict");
       throw error;
     }
     const key = hash(`${this.options.workspace}\n${receipt.inquiry.email}`);
     for (let attempt = 0; attempt < 4; attempt++) {
       if (!receipt.write) {
-        let discovered: IssueRecord | undefined;
         const claim = await this.identities.getOrCreate(receipt.inquiry.email, async () => {
           const fields = JSON.stringify([
             { field: "custom.contact_email", operator: "eq", value: receipt.inquiry.email },
@@ -452,8 +605,9 @@ export class IntakeService {
           const result = (await this.options.request(
             `/issues?type=prospect&limit=2&fields=${encodeURIComponent(fields)}`,
           )) as { issues: IssueRecord[] };
-          if (result.issues.length > 1) throw new IntakeError(409, "Contact needs private duplicate review.");
-          discovered = result.issues[0];
+          if (result.issues.length > 1) throw new ReviewRequired("duplicate_contact");
+          // Search hits only identify the prospect; they are never used as the record to update.
+          const discovered = result.issues[0];
           if (discovered)
             return {
               version: 1,
@@ -476,10 +630,9 @@ export class IntakeService {
         });
         let record: IssueRecord;
         if (claim.issueId)
-          record =
-            discovered?.issue.id === claim.issueId
-              ? discovered
-              : ((await this.options.request(`/issues/${encodeURIComponent(claim.issueId)}`)) as IssueRecord);
+          record = (await this.options.request(
+            `/issues/${encodeURIComponent(claim.issueId)}`,
+          )) as IssueRecord;
         else {
           const create = claim.create!;
           record = (await this.options.request(create.path, {
@@ -498,13 +651,13 @@ export class IntakeService {
           !Array.isArray(inquiries) ||
           inquiries.some((item) => !item || typeof item !== "object" || typeof item.id !== "string")
         )
-          throw new IntakeError(409, "Contact inquiry history needs private review.");
+          throw new ReviewRequired("history_invalid", record.issue.id);
         const duplicate = inquiries.find((item: Inquiry) => item.id === receipt.inquiry.id) as
           | Inquiry
           | undefined;
         if (duplicate) {
           if (duplicate.fingerprint !== receipt.fingerprint)
-            throw new IntakeError(409, "This receipt needs private review.", "receipt_conflict");
+            throw new ReviewRequired("receipt_conflict", record.issue.id);
           receipt.complete = true;
           await this.save();
           return;
@@ -514,11 +667,7 @@ export class IntakeService {
             .trim()
             .toLowerCase() !== receipt.inquiry.email
         )
-          throw new IntakeError(
-            409,
-            "Contact identity changed and needs private review.",
-            "identity_changed",
-          );
+          throw new ReviewRequired("identity_changed", record.issue.id);
         const latestWaitlist =
           receipt.inquiry.kind === "waitlist"
             ? [...inquiries]
@@ -537,8 +686,7 @@ export class IntakeService {
           await this.save();
           return;
         }
-        if (inquiries.length >= 100)
-          throw new IntakeError(409, "Contact inquiry history needs private review.");
+        if (inquiries.length >= 100) throw new ReviewRequired("history_full", record.issue.id);
         const existingLabels = Array.isArray(record.issue.labels) ? (record.issue.labels as string[]) : [];
         const missingLabels = this.options.form
           ? waitlistLabels(this.options.form).filter((label) => !existingLabels.includes(label))
