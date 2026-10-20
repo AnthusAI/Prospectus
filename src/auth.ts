@@ -136,7 +136,10 @@ export async function finishSignIn(configuration: AuthenticationConfiguration): 
     parameters.get("state") !== login.state
   )
     throw new Error("Sign-in could not be verified. Please try again.");
-  if (parameters.has("error")) throw new Error("Sign-in was not completed.");
+  if (parameters.has("error"))
+    throw new Error(
+      `Sign-in was not completed: ${parameters.get("error_description") || parameters.get("error")}.`,
+    );
   if (!parameters.get("code")) throw new Error("Sign-in failed. Please try again.");
   const response = await fetch(new URL("/oauth2/token", configuration.domain), {
     method: "POST",

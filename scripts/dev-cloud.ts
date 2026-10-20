@@ -51,13 +51,15 @@ const vite = spawn(
     stdio: "inherit",
     env: {
       ...process.env,
-      VITE_KANBUS_API_URL: custom!.ApiUrl,
+      // The browser calls /api on localhost; vite.config.ts forwards it to the deployed API.
+      PROSPECTUS_CLOUD_API_ORIGIN: new URL(custom!.ApiUrl).origin,
+      VITE_KANBUS_API_URL: "",
       VITE_COGNITO_USER_POOL_ID: custom!.UserPoolId,
       VITE_COGNITO_CLIENT_ID: custom!.ClientId,
       VITE_COGNITO_DOMAIN_URL: custom!.CognitoDomainUrl,
       VITE_COGNITO_REDIRECT_URI: `${LOCAL_DEV_ORIGIN}/auth/callback`,
       VITE_COGNITO_LOGOUT_URI: `${LOCAL_DEV_ORIGIN}/`,
-      VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ?? "",
+      VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
       VITE_INTAKE_EVALUATION_URL: "",
     },
   },
