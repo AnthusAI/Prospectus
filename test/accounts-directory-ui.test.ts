@@ -23,7 +23,32 @@ test(
       page.on("pageerror", (error) => errors.push(error.message));
       let mode = "loading",
         release: (() => void) | undefined;
+      const posts: Array<{ name: string; requestKey: string }> = [];
+      let failNextCreate = false;
       await page.route("**/directory-fixture/accounts**", async (route) => {
+        if (route.request().method() === "POST") {
+          posts.push(route.request().postDataJSON());
+          if (failNextCreate) {
+            failNextCreate = false;
+            await route.fulfill({
+              status: 503,
+              body: JSON.stringify({ message: "Accounts are unavailable. Try again." }),
+            });
+            return;
+          }
+          await route.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+              account: {
+                id: "22222222-2222-4222-8222-222222222222",
+                name: posts.at(-1)!.name,
+                role: "owner",
+                products: [],
+              },
+            }),
+          });
+          return;
+        }
         if (mode === "loading")
           await new Promise<void>((resolve) => {
             release = resolve;
@@ -112,6 +137,28 @@ test(
         "explicitly assigned central Accounts administrator permission",
       );
       await expect(page.getByText("Synthetic Alpha")).toHaveCount(0);
+      // Any signed-in person can create an account; a failed submit retries with the same request key.
+      const nameField = page.getByLabel("Account name");
+      const createButton = page.getByRole("button", { name: "Create account" });
+      await expect(createButton).toBeEnabled();
+      await createButton.click();
+      await expect(page.getByRole("alert")).toContainText("Enter an account name of 2 to 80 characters.");
+      assert.equal(posts.length, 0);
+      await nameField.fill("  Data Parade ");
+      failNextCreate = true;
+      await createButton.click();
+      await expect(page.getByRole("alert")).toContainText("Accounts are unavailable");
+      await createButton.click();
+      await expect(page.getByRole("status").filter({ hasText: "Created Data Parade." })).toBeVisible();
+      assert.equal(posts.length, 2);
+      assert.equal(posts[0].name, "Data Parade");
+      assert.match(posts[0].requestKey, /^[0-9a-f-]{36}$/);
+      assert.equal(posts[1].requestKey, posts[0].requestKey);
+      await expect(nameField).toHaveValue("");
+      await nameField.fill("Distinctive Mark");
+      await createButton.click();
+      await expect(page.getByRole("status").filter({ hasText: "Created Distinctive Mark." })).toBeVisible();
+      assert.notEqual(posts[2].requestKey, posts[0].requestKey);
       await expect(page.getByRole("button", { name: "My memberships" })).toHaveCount(0);
       await page.goto(`${url}?mode=unconfigured`);
       await expect(page.getByRole("alert")).toContainText("not been configured");
@@ -146,7 +193,7 @@ test(
         person = { id: "synthetic-operator", createdAt: "2030-01-01" };
       const account = {
         id,
-        name: "Synthetic customer organization",
+        name: "Synthetic customer account",
         createdAt: "2030-01-01",
         revision: 3,
         activeMembers: 2,
@@ -186,22 +233,22 @@ test(
         });
       });
       await page.goto(`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html`);
-      await page.getByRole("button", { name: /Synthetic customer organization/ }).click();
-      await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
+      await page.getByRole("button", { name: /Synthetic customer account/ }).click();
+      await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
       await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
       await page
         .getByRole("navigation", { name: "Breadcrumb" })
         .getByRole("button", { name: "Accounts" })
         .click();
-      await expect(page.getByRole("button", { name: /Synthetic customer organization/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Synthetic customer account/ })).toBeVisible();
       await expect(page.getByRole("button", { name: "My memberships" })).toHaveCount(0);
       mode = "error";
       await page.getByRole("button", { name: "Refresh directory" }).click();
       await expect(page.getByRole("alert")).toContainText("permission may have changed");
       mode = "empty";
       await page.getByRole("button", { name: "Refresh directory" }).click();
-      await expect(page.getByRole("status")).toContainText("No organizations have been created");
+      await expect(page.getByRole("status")).toContainText("No accounts have been created");
       mode = "denied";
       const before = operatorReads;
       await page.getByRole("button", { name: "Refresh accounts" }).click();
@@ -209,7 +256,9 @@ test(
         "explicitly assigned central Accounts administrator permission",
       );
       assert.equal(operatorReads, before);
-      await expect(page.getByRole("button", { name: /Create|Delete|Invite|Save/ })).toHaveCount(0);
+      // The directory itself stays read-only: the only write control is the account creation form.
+      await expect(page.getByRole("button", { name: /Delete|Invite|Save/ })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Create/ })).toHaveText(["Create account"]);
     } finally {
       await browser.close();
       await server.close();

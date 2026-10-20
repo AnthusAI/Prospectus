@@ -61,7 +61,7 @@ Follow [accounts/PAPYRUS_SITES.md](accounts/PAPYRUS_SITES.md). The registry entr
 
 ### Enabling or changing the Accounts plane
 
-Before changing `enabled` or any role pair, get action-time approval for the exact synthesized changes: the Google policy review ID, the new runtime roles and trust policies, the OAuth client and its callback, logout and scopes, product capabilities, caller IAM route permissions and the REST API resource policy. Review the `s3:ListBucket` grant the native bridge needs, and the fact that enabling an execution pair lets already-enrolled sessions continue under that worker without a new login. Deployment never seeds an organization or grants a human membership. After activation, verify a fresh Google login, account persistence, read isolation, member visibility and rejection paths against the deployed IAM and S3 before claiming it works.
+Before changing `enabled` or any role pair, get action-time approval for the exact synthesized changes: the Google policy review ID, the new runtime roles and trust policies, the OAuth client and its callback, logout and scopes, product capabilities, caller IAM route permissions and the REST API resource policy. Review the `s3:ListBucket` grant the native bridge needs, and the fact that enabling an execution pair lets already-enrolled sessions continue under that worker without a new login. Deployment never seeds an account or grants a human membership. After activation, verify a fresh Google login, account persistence, read isolation, member visibility and rejection paths against the deployed IAM and S3 before claiming it works.
 
 ### Granting a product to an account
 

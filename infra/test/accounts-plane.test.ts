@@ -112,9 +112,16 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
   const invokeText = JSON.stringify(invoke);
   assert.ok(invokeText.includes("account-directory"));
   assert.ok(!invokeText.includes("account-directory*"));
-  assert.equal(invoke[0].Resource.length, 4);
+  assert.equal(invoke[0].Resource.length, 5);
   assert.ok(invokeText.includes("identities/google/resolve"));
-  assert.ok(!invokeText.includes("/v1/accounts"));
+  // The only account write: POST on exactly /v1/accounts, never a wildcard or an account sub-route.
+  const accountRoutes = invoke[0].Resource.map((value: any) => JSON.stringify(value)).filter(
+    (value: string) => value.includes("/v1/accounts"),
+  );
+  assert.equal(accountRoutes.length, 1);
+  assert.ok(accountRoutes[0].includes('/POST/v1/accounts"'));
+  assert.ok(!invokeText.includes("/v1/accounts/"));
+  assert.ok(!invokeText.includes("/v1/accounts*"));
   assert.ok(JSON.stringify(newResources).includes("prospectus-central/identities/*"));
   const bucketListStatements = policies.filter((value) =>
     (Array.isArray(value.Action) ? value.Action : [value.Action]).includes("s3:ListBucket"),

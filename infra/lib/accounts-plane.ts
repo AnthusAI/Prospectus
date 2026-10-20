@@ -207,6 +207,8 @@ export class AccountsPlane extends Construct {
       api.arnForExecuteApi("GET", "/v1/account-directory/*", "api"),
       api.arnForExecuteApi("POST", "/v1/identities/google/challenge", "api"),
       api.arnForExecuteApi("POST", "/v1/identities/google/resolve", "api"),
+      // Self-service account creation: exactly this path, never /v1/accounts/*.
+      api.arnForExecuteApi("POST", "/v1/accounts", "api"),
     ];
     bffRole.addToPolicy(new iam.PolicyStatement({ actions: ["execute-api:Invoke"], resources: invoke }));
     api.addToResourcePolicy(
@@ -218,9 +220,12 @@ export class AccountsPlane extends Construct {
           "execute-api:/api/GET/v1/account-directory/*",
           "execute-api:/api/POST/v1/identities/google/challenge",
           "execute-api:/api/POST/v1/identities/google/resolve",
+          "execute-api:/api/POST/v1/accounts",
         ],
       }),
     );
+    // Resource policy changes must publish to the existing API stage as well.
+    api.latestDeployment?.addToLogicalId({ directoryRoutes: "organization-creation-v1" });
     if (options.consolePairEnabled) {
       const consoleBffRoutes = [
         "GET/v1/identities/me",

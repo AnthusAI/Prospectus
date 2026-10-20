@@ -5,6 +5,9 @@ import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule
 import { AccountsClientError, type AccountsClient } from "../packages/accounts-client/src/client";
 const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
+const CREATE_ACCOUNT_PATH = "/api/saas/accounts";
+const ACCOUNT_NAME_MINIMUM = 2;
+const ACCOUNT_NAME_MAXIMUM = 80;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const CHALLENGE_TOKEN_PATTERN = /^v1\.[a-z0-9]{1,16}\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
@@ -46,6 +49,21 @@ const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
   rule((body) => body.idToken.length <= 16384, "The ID token is too long."),
 ];
 
+const createAccountRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule(
+    (body) => Object.keys(body).every((key) => ["name", "requestKey"].includes(key)),
+    "Only an account name and request key are accepted.",
+  ),
+  rule((body) => matchesStringPattern(body.requestKey, UUID_PATTERN), "A UUID request key is required."),
+  rule(
+    (body) =>
+      typeof body.name === "string" &&
+      body.name.trim().length >= ACCOUNT_NAME_MINIMUM &&
+      body.name.trim().length <= ACCOUNT_NAME_MAXIMUM,
+    `The account name must be ${ACCOUNT_NAME_MINIMUM} to ${ACCOUNT_NAME_MAXIMUM} characters.`,
+  ),
+];
+
 export interface BffEvent {
   rawPath: string;
   requestContext: { http: { method: string } };
@@ -61,7 +79,7 @@ export interface AccountsBffOptions {
   client: (access?: string, id?: string) => AccountsClient;
   nowSeconds?: () => number;
 }
-/** JWT-protected, read-only account BFF. Never accepts a runtime role, endpoint,
+/** JWT-protected account BFF: reads, identity confirmation and account creation. Never accepts a runtime role, endpoint,
  * subject, product, directory flag or account grant from browser input.
  */
 export function accountsBffHandler(options: AccountsBffOptions) {
@@ -103,6 +121,37 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         if (event.rawPath === "/api/saas/accounts") return jsonResponse(200, await client.directoryList());
         const match = /^\/api\/saas\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);
         if (match) return jsonResponse(200, await client.directoryDetail(match[1]));
+      }
+      if (method === "POST" && event.rawPath === CREATE_ACCOUNT_PATH) {
+        // The only account write a customer session can make: a new account the caller owns.
+        requireRules(
+          body,
+          createAccountRequestRules,
+          failWith(400, "invalid_account", "Enter an account name of 2 to 80 characters."),
+        );
+        try {
+          const { account } = await options.client(access!).create(body.name.trim(), body.requestKey);
+          return jsonResponse(200, {
+            account: {
+              id: account.id,
+              name: account.name,
+              role: account.role,
+              products: [{ product: account.entitlement.product, status: account.entitlement.status }],
+            },
+          });
+        } catch (error) {
+          if (!(error instanceof AccountsClientError)) throw error;
+          if (error.code === "identity_enrollment_required")
+            fail(403, error.code, "Confirm this Google sign-in on the Accounts page, then try again.");
+          if (error.status === 409)
+            fail(
+              409,
+              error.code,
+              "That request was already used for a different name. Reload and try again.",
+            );
+          if (error.status === 400) fail(400, error.code, "Enter an account name of 2 to 80 characters.");
+          throw error;
+        }
       }
       if (method === "POST" && event.rawPath === "/api/saas/identity/challenge") {
         if (Object.keys(body).length) fail(400, "body", "Challenge payload must be empty.");

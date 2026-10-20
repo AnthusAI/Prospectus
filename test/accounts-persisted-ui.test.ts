@@ -86,7 +86,7 @@ test(
         await expect(page.getByRole("status")).toContainText(
           "explicitly assigned central Accounts administrator permission",
         );
-        await expect(page.getByText("Persisted Papyrus organization")).toHaveCount(0);
+        await expect(page.getByText("Persisted Papyrus account")).toHaveCount(0);
       }
       await page.goto(
         `${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html?person=outsider`,
@@ -111,14 +111,14 @@ test(
         ],
       );
       await page.reload();
-      await page.getByRole("button", { name: /Persisted Papyrus organization/ }).click();
-      await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
+      await page.getByRole("button", { name: /Persisted Papyrus account/ }).click();
+      await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
       await page
         .getByRole("navigation", { name: "Breadcrumb" })
         .getByRole("button", { name: "Accounts" })
         .click();
-      await expect(page.getByRole("button", { name: /Persisted Papyrus organization/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Persisted Papyrus account/ })).toBeVisible();
       activeCentral = environment.handler();
       await page.getByRole("button", { name: "Refresh directory" }).click();
       await expect(page.getByRole("alert")).toContainText("permission may have changed");

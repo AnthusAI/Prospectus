@@ -15,7 +15,7 @@ Feature: Activate the approved Accounts directory without changing CRM authority
     Given a fresh verified Google identity without an account membership
     When the person connects Accounts
     Then the directory returns no permitted accounts
-    And no organization, membership or product privilege is created automatically
+    And no account, membership or product privilege is created automatically
 
   Scenario: Approved console execution stays bound to its enrolling BFF
     Given the exact approved console roles have verified Lambda-only trust

@@ -57,19 +57,19 @@ Feature: Anthus One admin workspace for Prospectus
     When the member chooses Mark lost
     Then the prospect moves to the closed stage without requiring a follow-up date
 
-  Scenario: Accounts lists every organization for central account administrators
+  Scenario: Accounts lists every account for central account administrators
     Given the member holds the central Accounts administrator permission
     When the member opens Accounts
-    Then each organization shows its name, active members and app entitlements
+    Then each account shows its name, active members and app entitlements
     And plan, quota, services and Anthus owner show as not yet available
     And filters that need billing data are shown but disabled
 
-  Scenario: Staff without the administrator permission see no organizations
+  Scenario: Staff without the administrator permission see no accounts
     Given the member lacks the central Accounts administrator permission
     When the member opens Accounts
     Then the page says the central administrator permission is required
-    And no organization, including ones the member belongs to, is listed
-    And CRM administrator status does not grant the organization directory
+    And no account, including ones the member belongs to, is listed
+    And CRM administrator status does not grant the account directory
 
   Scenario: People without staff access never see the admin console
     Given a signed-in person who is not a member of the Prospectus workspace
@@ -79,7 +79,7 @@ Feature: Anthus One admin workspace for Prospectus
 
   Scenario: An account page shows entitlements, members and its record
     Given the member holds the central Accounts administrator permission
-    When the member opens an organization from Accounts
+    When the member opens an account from Accounts
     Then the page shows its apps with capability codes, its memberships with roles and statuses
     And its account ID can be copied and its record version is shown
     And quota, services engagements and history show as not yet available
