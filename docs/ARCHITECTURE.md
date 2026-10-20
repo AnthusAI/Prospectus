@@ -143,12 +143,12 @@ Other Anthus apps send waitlist signups to Prospectus instead of running their o
 
 **Registry.** `intake-forms.json` lists the forms. Each entry names its app (`siteId`), `formId`, `kind` (`waitlist`), the `origins` allowed to post it, its own `noticeVersion`, the `owner` queue, a `defaultPagePath`, the `attributes` it accepts (each an enum `values` list or a fully anchored `pattern` that starts with `^` and ends with `$`) and an optional `throttle`. Source identity is decided from the entry that the request path selects and whose `origins` include the request `Origin`; the body can never name a site, form, owner or status. The same file drives the gateway CORS origins, the per-form route and throttle, and the Lambda's origin check, so each origin is accepted only for its own form: a Babulus origin cannot post to `/intake/demo`, and an anth.us origin cannot post a Babulus signup. Origins must be unique across forms and may not be a demo origin. An entry with `"enabled": false` adds no route, origin or configuration. Enabling one needs a recorded `approval` string and the `real-contacts` runtime, and deploys on merge.
 
-**Request.** `POST /intake/waitlist/<formId>` on the intake API (the `IntakeWaitlistBaseUrl` deployment output plus `/<formId>`). The deployed URL for Babulus is not live until Ryan approves and enables the entry.
+**Request.** `POST /intake/waitlist/<formId>` on the intake API (the `IntakeWaitlistBaseUrl` deployment output plus `/<formId>`). Babulus (`babulus-waitlist-v1`) is enabled for `https://babulus.anth.us` only (Ryan's approval is recorded in the entry); other Babulus origins are added by a later reviewed change. Its URL goes live when the change deploys, and real-cloud acceptance is a labelled test signup after that deploy.
 
 ```http
 POST /intake/waitlist/babulus-waitlist-v1 HTTP/1.1
 Host: <IntakeWaitlistBaseUrl host>
-Origin: https://babul.us
+Origin: https://babulus.anth.us
 Content-Type: application/json
 
 {

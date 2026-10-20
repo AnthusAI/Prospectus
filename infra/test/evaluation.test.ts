@@ -265,19 +265,31 @@ test("each enabled form gets its own throttle so one app cannot spend another's 
   });
 });
 
-test("the shipped registry file leaves the synthesized intake identical to having no forms", async () => {
+test("the shipped registry file enables only the Babulus waitlist for https://babulus.anth.us", async () => {
   const { readFileSync } = await import("node:fs");
   const shipped = parseIntakeFormRegistry(JSON.parse(readFileSync("../intake-forms.json", "utf8")));
-  assert.deepEqual(
-    new EvaluationIntake(
-      new cdk.Stack(new cdk.App(), "A", { env: { account: "712236451410", region: "us-east-1" } }),
-      "Intake",
-      lambda.Code.fromInline("x"),
-      "real-contacts",
-      shipped,
-    ).waitlistBaseUrl,
-    undefined,
+  const { template, intake } = synthesize(shipped, "real-contacts");
+  assert.deepEqual(routeKeys(template), ["POST /intake/demo", "POST /intake/waitlist/babulus-waitlist-v1"]);
+  assert.deepEqual(corsOrigins(template), [
+    "https://prospectus.anth.us",
+    "https://anth.us",
+    "https://www.anth.us",
+    "https://babulus.anth.us",
+  ]);
+  assert.equal(
+    lambdaEnvironment(template).PROSPECTUS_INTAKE_ALLOWED_ORIGINS,
+    "https://prospectus.anth.us,https://anth.us,https://www.anth.us",
+    "babulus.anth.us is not a demo origin",
   );
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  assert.deepEqual(stage.Properties.RouteSettings, {
+    "POST /intake/waitlist/babulus-waitlist-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+  });
+  assert.deepEqual(policyActions(template), policyActions(synthesize([], "real-contacts").template));
+  assert.deepEqual(unscopableRoutesWithScopes(template.toJSON()), []);
+  for (const route of Object.values(template.findResources("AWS::ApiGatewayV2::Route")) as any[])
+    assert.equal(route.Properties.AuthorizationScopes, undefined);
+  assert.match(intake.waitlistBaseUrl!, /\/intake\/waitlist$/);
 });
 
 test("a disabled registry form leaves routes, environment, stage settings and CORS exactly as before", () => {
