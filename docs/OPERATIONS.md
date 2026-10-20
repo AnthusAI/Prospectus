@@ -32,6 +32,8 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `http://localhost:5417` is in `APP_ORIGINS` (`infra/lib/scope.ts`), so the Cognito client's callback and logout URLs, the API's CORS origins and the accounts service's POST origin check accept it beside the production address. Cognito permits plain http only for localhost, so open `localhost`, not `127.0.0.1`. Google itself is unchanged: its OAuth client only ever redirects to the Cognito domain.
 
+To try the app from a tablet or phone on the same network, `npm run dev:cloud -- --lan <host>` serves it over HTTPS at https://<host>:5418 (Cognito accepts plain http only for localhost, so a network address needs HTTPS and a name, and that origin must be in `APP_ORIGINS`). One-time setup on the developer's Mac: point `<host>` at the Mac's network address in the `anth.us` Route 53 zone (an A record to a private address, so it only works on that network), and issue a certificate into the ignored `.build/lan-certs/` with `lego run --accept-tos --dns route53 --domains <host> --path .build/lan-certs` (`AWS_PROFILE=papyrus-production`, `AWS_HOSTED_ZONE_ID` set to the `anth.us` zone). Let's Encrypt certificates last 90 days; rerun with `lego renew` to renew. Update the A record if the Mac's address changes.
+
 `npm run preview:local` remains the fully offline option with synthetic data and a local token.
 
 The Kanbus API, the shared UI package and Virtuus are pinned independently in `source-lock.json`, so a UI-only release cannot replace the deployed API. `.github/workflows/package-backend.yml` builds a reviewed backend package on demand.
