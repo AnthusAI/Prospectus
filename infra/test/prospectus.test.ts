@@ -93,6 +93,7 @@ test("Google-first identity creation has no pre-enrollment gate and CRM roles ar
     LambdaConfig: Match.absent(),
   });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "prospectus-members" });
+  template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "kanbus:cyclotron/prospectus" });
   template.hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "admin" });
   template.hasResourceProperties("AWS::Cognito::UserPoolDomain", { Domain: `prospectus-${TARGET_ACCOUNT}` });
   template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
