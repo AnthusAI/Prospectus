@@ -16,7 +16,14 @@ import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import type { IntakeFormConfig } from "../../server/intake-forms";
 import { throttleRoutes } from "./throttle-routes";
-import { APP_ORIGINS, MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
+import {
+  APP_ORIGINS,
+  KANBUS_BOARD_GROUP,
+  MEMBER_GROUP,
+  PROJECT_NAMESPACE,
+  SITE_DOMAIN,
+  TARGET_ACCOUNT,
+} from "./scope";
 
 /** Separate private CRM data plane; public static assets contain no CRM records. */
 export class ProspectusBackend extends Construct {
@@ -107,6 +114,11 @@ export class ProspectusBackend extends Construct {
       groupName: MEMBER_GROUP,
       userPoolId: pool.userPoolId,
       description: "Explicit membership required by the Kanbus API after JWT verification.",
+    });
+    new cognito.CfnUserPoolGroup(this, "KanbusBoardGroup", {
+      groupName: KANBUS_BOARD_GROUP,
+      userPoolId: pool.userPoolId,
+      description: "Grants the cyclotron/prospectus board in the multi-board Kanbus API (kanbus-0ec206).",
     });
     new cognito.CfnUserPoolGroup(this, "AdministratorGroup", {
       groupName: "admin",
