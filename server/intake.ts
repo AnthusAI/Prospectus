@@ -5,6 +5,7 @@ import type { IssueRecord } from "../src/client";
 import type { ConditionalControlStore } from "./control-store";
 import { IdentityClaims, SharedReceiptConflict } from "./identity";
 import { SYNTHETIC_CONTACT_POLICY, type IntakeContactPolicy } from "./intake-contact-policy";
+import { matchesAttributePattern, waitlistLabels, type IntakeFormConfig } from "./intake-forms";
 
 export const NOTICE_VERSION = SYNTHETIC_CONTACT_POLICY.noticeVersion;
 export class IntakeError extends Error {
@@ -28,9 +29,20 @@ export interface Submission {
   page_path: string;
   campaign: Record<string, string>;
 }
+export interface WaitlistSubmission {
+  submission_id: string;
+  name: string;
+  email: string;
+  website: string;
+  notice_version: string;
+  marketing_opt_in: boolean;
+  page_path: string;
+  campaign: Record<string, string>;
+  attributes: Record<string, string>;
+}
 export interface Inquiry {
   id: string;
-  kind: "demo";
+  kind: "demo" | "waitlist";
   name: string;
   email: string;
   company: string;
@@ -39,6 +51,7 @@ export interface Inquiry {
   source: { site_id: string; form_id: string; page_path: string; campaign: Record<string, string> };
   notice_version: string;
   marketing_opt_in: boolean;
+  attributes?: Record<string, string>;
   fingerprint?: string;
 }
 interface WriteIntent {
@@ -70,10 +83,49 @@ export interface IntakeOptions {
   now?: () => Date;
   identityStore: ConditionalControlStore;
   contactPolicy?: IntakeContactPolicy;
+  form?: IntakeFormConfig;
 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const campaignKeys = ["utm_source", "utm_medium", "utm_campaign"];
+
+function readText(fields: Record<string, unknown>, key: string, max: number, required = false) {
+  const value = fields[key] ?? "";
+  if (
+    typeof value !== "string" ||
+    value.length > max ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)
+  )
+    throw new IntakeError(400, `Invalid ${key}.`);
+  const cleaned = value.trim();
+  if (required && !cleaned) throw new IntakeError(400, `${key} is required.`);
+  return cleaned;
+}
+
+function readCampaign(rawCampaign: unknown): Record<string, string> {
+  const campaign = rawCampaign ?? {};
+  if (!campaign || typeof campaign !== "object" || Array.isArray(campaign))
+    throw new IntakeError(400, "Invalid campaign.");
+  const attribution: Record<string, string> = {};
+  for (const [key, value] of Object.entries(campaign)) {
+    if (
+      !campaignKeys.includes(key) ||
+      typeof value !== "string" ||
+      value.length > 120 ||
+      !/^[\w .-]*$/.test(value)
+    )
+      throw new IntakeError(400, "Invalid campaign.");
+  }
+  for (const key of campaignKeys)
+    if (key in campaign) attribution[key] = (campaign as Record<string, string>)[key].trim();
+  return attribution;
+}
+
+function readPagePath(fields: Record<string, unknown>, fallback: string) {
+  const page_path = readText(fields, "page_path", 200) || fallback;
+  if (!/^\/[a-z0-9/_-]*$/i.test(page_path)) throw new IntakeError(400, "Invalid page path.");
+  return page_path;
+}
 
 export function validateSubmission(
   raw: unknown,
@@ -95,18 +147,7 @@ export function validateSubmission(
   ];
   if (Object.keys(fields).some((key) => !allowed.includes(key)))
     throw new IntakeError(400, "Unknown form field.");
-  function text(key: string, max: number, required = false) {
-    const value = fields[key] ?? "";
-    if (
-      typeof value !== "string" ||
-      value.length > max ||
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)
-    )
-      throw new IntakeError(400, `Invalid ${key}.`);
-    const cleaned = value.trim();
-    if (required && !cleaned) throw new IntakeError(400, `${key} is required.`);
-    return cleaned;
-  }
+  const text = (key: string, max: number, required = false) => readText(fields, key, max, required);
   const submission_id = text("submission_id", 36, true);
   if (!uuid.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
   const email = text("email", 254, true).toLowerCase();
@@ -117,23 +158,8 @@ export function validateSubmission(
     throw new IntakeError(400, contactPolicy.staleNoticeMessage);
   if (fields.marketing_opt_in !== undefined && typeof fields.marketing_opt_in !== "boolean")
     throw new IntakeError(400, "Invalid marketing preference.");
-  const campaign = fields.campaign ?? {};
-  if (!campaign || typeof campaign !== "object" || Array.isArray(campaign))
-    throw new IntakeError(400, "Invalid campaign.");
-  const attribution: Record<string, string> = {};
-  for (const [key, value] of Object.entries(campaign)) {
-    if (
-      !campaignKeys.includes(key) ||
-      typeof value !== "string" ||
-      value.length > 120 ||
-      !/^[\w .-]*$/.test(value)
-    )
-      throw new IntakeError(400, "Invalid campaign.");
-  }
-  for (const key of campaignKeys)
-    if (key in campaign) attribution[key] = (campaign as Record<string, string>)[key].trim();
-  const page_path = text("page_path", 200) || "/request-demo";
-  if (!/^\/[a-z0-9/_-]*$/i.test(page_path)) throw new IntakeError(400, "Invalid page path.");
+  const attribution = readCampaign(fields.campaign);
+  const page_path = readPagePath(fields, "/request-demo");
   return {
     submission_id,
     name: text("name", 150, true),
@@ -145,6 +171,63 @@ export function validateSubmission(
     marketing_opt_in: fields.marketing_opt_in === true,
     page_path,
     campaign: attribution,
+  };
+}
+
+export function validateWaitlistSubmission(
+  raw: unknown,
+  form: IntakeFormConfig,
+  contactPolicy: IntakeContactPolicy,
+): WaitlistSubmission {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new IntakeError(400, "Invalid request.");
+  const fields = raw as Record<string, unknown>;
+  const allowed = [
+    "submission_id",
+    "name",
+    "email",
+    "website",
+    "notice_version",
+    "marketing_opt_in",
+    "page_path",
+    "campaign",
+    "attributes",
+  ];
+  if (Object.keys(fields).some((key) => !allowed.includes(key)))
+    throw new IntakeError(400, "Unknown form field.");
+  const text = (key: string, max: number, required = false) => readText(fields, key, max, required);
+  const submission_id = text("submission_id", 36, true);
+  if (!uuid.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
+  const email = text("email", 254, true).toLowerCase();
+  if (!contactPolicy.emailPattern.test(email))
+    throw new IntakeError(400, contactPolicy.emailRejectionMessage);
+  const notice_version = text("notice_version", 50, true);
+  if (notice_version !== form.noticeVersion) throw new IntakeError(400, contactPolicy.staleNoticeMessage);
+  if (fields.marketing_opt_in !== undefined && typeof fields.marketing_opt_in !== "boolean")
+    throw new IntakeError(400, "Invalid marketing preference.");
+  const declared = fields.attributes ?? {};
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    throw new IntakeError(400, "Invalid attributes.");
+  const attributes: Record<string, string> = {};
+  for (const [name, value] of Object.entries(declared)) {
+    const rule = form.attributes[name];
+    if (!rule) throw new IntakeError(400, "Unknown attribute.");
+    if (typeof value !== "string" || value.length > 80) throw new IntakeError(400, `Invalid ${name}.`);
+    const matches = rule.values ? rule.values.includes(value) : matchesAttributePattern(rule.pattern!, value);
+    if (!matches) throw new IntakeError(400, `Invalid ${name}.`);
+    attributes[name] = value;
+  }
+  return {
+    submission_id,
+    name: text("name", 150),
+    email,
+    website: text("website", 200),
+    notice_version,
+    marketing_opt_in: fields.marketing_opt_in === true,
+    page_path: readPagePath(fields, form.defaultPagePath),
+    campaign: readCampaign(fields.campaign),
+    attributes: Object.fromEntries(
+      Object.entries(attributes).sort(([left], [right]) => left.localeCompare(right)),
+    ),
   };
 }
 
@@ -172,6 +255,14 @@ export class IntakeService {
       throw new Error("Intake requires an owner, workspace and trusted form source.");
     if (!options.identityStore)
       throw new Error("Intake requires an explicitly configured shared conditional identity store.");
+    if (
+      options.form &&
+      (options.form.siteId !== options.siteId ||
+        options.form.formId !== options.formId ||
+        options.form.owner !== options.owner ||
+        !options.contactPolicy)
+    )
+      throw new Error("Intake form source must come from its registry entry.");
     await mkdir(options.directory, { recursive: true, mode: 0o700 });
     const lock = join(options.directory, "worker.lock");
     try {
@@ -253,10 +344,14 @@ export class IntakeService {
       return Promise.reject(
         new IntakeError(503, "Intake is unavailable. Restart after repairing local receipt storage."),
       );
-    const submission = validateSubmission(raw, this.options.contactPolicy);
+    const form = this.options.form;
+    const submission: Submission | WaitlistSubmission = form
+      ? validateWaitlistSubmission(raw, form, this.options.contactPolicy!)
+      : validateSubmission(raw, this.options.contactPolicy);
+    const message = form ? "Waitlist signup received." : "Demo request received.";
     const run = this.queue.then(async () => {
       if (!this.locked || this.persistenceFailed) throw new IntakeError(503, "Intake is unavailable.");
-      if (submission.website) return { receipt: submission.submission_id, message: "Demo request received." };
+      if (submission.website) return { receipt: submission.submission_id, message };
       const fingerprint = hash(
         JSON.stringify({ submission, siteId: this.options.siteId, formId: this.options.formId }),
       );
@@ -271,23 +366,61 @@ export class IntakeService {
           fingerprint,
           complete: false,
           inquiry: {
+            ...(form ? { company: "", message: "" } : {}),
             ...contact,
             fingerprint,
             id: submission_id,
-            kind: "demo",
+            kind: form ? "waitlist" : "demo",
             received_at: (this.options.now?.() ?? new Date()).toISOString(),
             source: { site_id: this.options.siteId, form_id: this.options.formId, page_path, campaign },
-          },
+          } as Inquiry,
         };
         await this.save();
       }
       for (const receipt of Object.values(this.ledger.receipts)) {
         if (!receipt.complete && receipt.inquiry.email === submission.email) await this.process(receipt);
       }
-      return { receipt: submission.submission_id, message: "Demo request received." };
+      return { receipt: submission.submission_id, message };
     });
     this.queue = run.catch(() => undefined);
     return run;
+  }
+
+  private demoCreateBody(inquiry: Inquiry) {
+    return {
+      title: inquiry.name,
+      type: "prospect",
+      assignee: this.options.owner,
+      description: inquiry.message,
+      custom: {
+        company: inquiry.company,
+        contact_email: inquiry.email,
+        next_action: "Respond to demo request",
+        next_follow_up_at: nextBusinessDay(new Date(inquiry.received_at)),
+        first_source: inquiry.source,
+        latest_source: inquiry.source,
+        latest_inquiry_at: inquiry.received_at,
+        inquiries: [inquiry],
+      },
+    };
+  }
+
+  private waitlistCreateBody(inquiry: Inquiry) {
+    return {
+      title: inquiry.name || inquiry.email,
+      type: "prospect",
+      assignee: this.options.owner,
+      description: `Joined the ${inquiry.source.site_id} waitlist.`,
+      labels: waitlistLabels(this.options.form!),
+      custom: {
+        company: "",
+        contact_email: inquiry.email,
+        first_source: inquiry.source,
+        latest_source: inquiry.source,
+        latest_inquiry_at: inquiry.received_at,
+        inquiries: [inquiry],
+      },
+    };
   }
 
   private async process(receipt: Receipt): Promise<void> {
@@ -337,22 +470,7 @@ export class IntakeService {
               method: "POST",
               path: "/issues",
               operation: randomUUID(),
-              body: {
-                title: inquiry.name,
-                type: "prospect",
-                assignee: this.options.owner,
-                description: inquiry.message,
-                custom: {
-                  company: inquiry.company,
-                  contact_email: inquiry.email,
-                  next_action: "Respond to demo request",
-                  next_follow_up_at: nextBusinessDay(new Date(inquiry.received_at)),
-                  first_source: inquiry.source,
-                  latest_source: inquiry.source,
-                  latest_inquiry_at: inquiry.received_at,
-                  inquiries: [inquiry],
-                },
-              },
+              body: this.options.form ? this.waitlistCreateBody(inquiry) : this.demoCreateBody(inquiry),
             },
           };
         });
@@ -401,14 +519,37 @@ export class IntakeService {
             "Contact identity changed and needs private review.",
             "identity_changed",
           );
+        const latestWaitlist =
+          receipt.inquiry.kind === "waitlist"
+            ? [...inquiries]
+                .reverse()
+                .find(
+                  (item: Inquiry) =>
+                    item.kind === "waitlist" && item.source?.site_id === receipt.inquiry.source.site_id,
+                )
+            : undefined;
+        if (
+          latestWaitlist &&
+          latestWaitlist.marketing_opt_in === receipt.inquiry.marketing_opt_in &&
+          latestWaitlist.notice_version === receipt.inquiry.notice_version
+        ) {
+          receipt.complete = true;
+          await this.save();
+          return;
+        }
         if (inquiries.length >= 100)
           throw new IntakeError(409, "Contact inquiry history needs private review.");
+        const existingLabels = Array.isArray(record.issue.labels) ? (record.issue.labels as string[]) : [];
+        const missingLabels = this.options.form
+          ? waitlistLabels(this.options.form).filter((label) => !existingLabels.includes(label))
+          : [];
         receipt.write = {
           method: "PATCH",
           path: `/issues/${encodeURIComponent(record.issue.id)}`,
           operation: randomUUID(),
           revision: record.revision,
           body: {
+            ...(missingLabels.length ? { labels: [...existingLabels, ...missingLabels] } : {}),
             custom: {
               inquiries: [...inquiries, receipt.inquiry],
               latest_inquiry_at: receipt.inquiry.received_at,

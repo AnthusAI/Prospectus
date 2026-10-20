@@ -5,6 +5,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Code } from "aws-cdk-lib/aws-lambda";
 import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
+import { unscopableRoutesWithScopes } from "./route-auth";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
@@ -54,10 +55,9 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
       assert.deepEqual(RouteSettings, {
         "POST /api/saas/identity/login-challenge": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
       });
-      assert.deepEqual(
-        { ...after.Resources[id], Properties: undefined },
-        { ...resource, Properties: undefined },
-      );
+      const { DependsOn, ...stageRest } = after.Resources[id];
+      assert.deepEqual({ ...stageRest, Properties: undefined }, { ...resource, Properties: undefined });
+      assert.ok(DependsOn?.length, "Stage with RouteSettings must depend on its routes");
       continue;
     }
     assert.deepEqual(after.Resources[id], resource, `Existing CRM resource changed: ${id}`);
@@ -438,4 +438,74 @@ test("the parameter-store signer creates no KMS resource and grants only ssm:Get
     )![1];
     assert.deepEqual(policyWithSsm.Properties.Roles, [{ Ref: centralRole }]);
   }
+});
+
+/** Every stage RouteSettings key must name a Route in the same API that the Stage depends on. */
+function assertStageRoutesOrdered(synth: any): number {
+  const resources = synth.Resources as Record<string, any>;
+  let checked = 0;
+  for (const [stageId, stage] of Object.entries(resources)) {
+    if (stage.Type !== "AWS::ApiGatewayV2::Stage") continue;
+    const apiRef = stage.Properties.ApiId?.Ref;
+    const dependsOn: string[] = [stage.DependsOn ?? []].flat();
+    for (const key of Object.keys(stage.Properties.RouteSettings ?? {})) {
+      const match = Object.entries(resources).find(
+        ([, route]) =>
+          route.Type === "AWS::ApiGatewayV2::Route" &&
+          route.Properties.RouteKey === key &&
+          route.Properties.ApiId?.Ref === apiRef,
+      );
+      assert.ok(match, `${stageId} RouteSettings key "${key}" has no Route in the same API`);
+      assert.ok(
+        dependsOn.includes(match[0]),
+        `${stageId} must DependOn Route ${match[0]} for RouteSettings "${key}" (CloudFormation updates the stage before creating the route otherwise)`,
+      );
+      checked++;
+    }
+  }
+  return checked;
+}
+test("API stage depends on every route its RouteSettings reference", () => {
+  const synth = template(true);
+  assert.ok(assertStageRoutesOrdered(synth) >= 1);
+  const loginChallenge = Object.entries(synth.Resources as Record<string, any>).find(
+    ([, r]) =>
+      r.Type === "AWS::ApiGatewayV2::Route" &&
+      r.Properties.RouteKey === "POST /api/saas/identity/login-challenge",
+  );
+  const stage = Object.values(synth.Resources as Record<string, any>).find(
+    (r) => r.Type === "AWS::ApiGatewayV2::Stage",
+  );
+  assert.ok(loginChallenge && stage.DependsOn.includes(loginChallenge[0]));
+});
+test("the ordering check fails when a route setting lacks its dependency", () => {
+  const synth = JSON.parse(JSON.stringify(template(true)));
+  const stage: any = Object.values(synth.Resources).find((r: any) => r.Type === "AWS::ApiGatewayV2::Stage");
+  delete stage.DependsOn;
+  assert.throws(() => assertStageRoutesOrdered(synth), /must DependOn/);
+});
+
+test("routes without an authorizer carry no authorization scopes", () => {
+  const synth = template(true);
+  assert.deepEqual(unscopableRoutesWithScopes(synth), []);
+  const routes = Object.values(synth.Resources as Record<string, any>).filter(
+    (r: any) => r.Type === "AWS::ApiGatewayV2::Route",
+  );
+  const challenge = routes.find(
+    (r: any) => r.Properties.RouteKey === "POST /api/saas/identity/login-challenge",
+  );
+  assert.equal(challenge.Properties.AuthorizationType, "NONE");
+  assert.equal(challenge.Properties.AuthorizerId, undefined);
+  assert.ok(!(challenge.Properties.AuthorizationScopes ?? []).length);
+  const member = routes.find((r: any) => r.Properties.RouteKey === "GET /api/{proxy+}");
+  assert.equal(member.Properties.AuthorizationType, "JWT");
+  assert.deepEqual(member.Properties.AuthorizationScopes, ["openid"]);
+});
+test("the scope check fails for a NONE route that inherits scopes", () => {
+  const synth = JSON.parse(JSON.stringify(template(true)));
+  const route: any = Object.values(synth.Resources).find(
+    (r: any) => r.Type === "AWS::ApiGatewayV2::Route" && r.Properties.AuthorizationType === "NONE",
+  );
+  route.Properties.AuthorizationScopes = ["openid"];
+  assert.equal(unscopableRoutesWithScopes(synth).length, 1);
 });

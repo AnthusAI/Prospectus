@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-e6dcd7ab-ac64-4aaf-bc38-9d56289173d7",
+  "title": "Multi-app waitlist intake for Babulus (disabled until approved)",
+  "description": "As Ryan, I want Prospectus to accept waitlist signups for other Anthus apps, starting with Babulus, so apps stop running their own waitlist backends.\n\nFeature: Multi-app waitlist intake\n  Scenario: Observable acceptance\n    Given a config-driven registry of intake forms with origins bound to their own form\n    When a Babulus waitlist signup arrives from an allowed Babulus origin\n    Then it lands as a lead on the existing prospect for that email without creating accounts, memberships, entitlements or appointments\n    And the Babulus entry ships disabled until Ryan approves owner, privacy notice, retention, abuse controls and real-cloud acceptance",
+  "type": "story",
+  "status": "in_progress",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-ae9b7ee0-79ab-4f30-9eaf-87b5f4f6f9df",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-19T21:35:19.996731Z",
+  "updated_at": "2026-10-19T21:35:22.523882Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "Claude Opus 5.5",
+    "name": "waitlist-intake"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

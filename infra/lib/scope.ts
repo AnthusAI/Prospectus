@@ -7,6 +7,14 @@ export const MEMBER_GROUP = "prospectus-members";
 export const SOURCE_REPOSITORY = "AnthusAI/Prospectus";
 export const AMPLIFY_APP_ID = "d15sc1sptohtqb";
 export const DEPLOYMENT_BRANCH = "main";
+export const PRODUCTION_ORIGIN = `https://${SITE_DOMAIN}`;
+/**
+ * `npm run dev:cloud` serves this branch's frontend here, signed in through the deployed Cognito
+ * client and calling the deployed API. Cognito permits plain http only for localhost.
+ */
+export const LOCAL_DEV_ORIGIN = "http://localhost:5417";
+/** Browser origins allowed to sign in and call the API. */
+export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN] as const;
 
 export function assertDeploymentScope(scope: {
   account: string;

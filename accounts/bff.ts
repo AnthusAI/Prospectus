@@ -54,7 +54,8 @@ export interface BffEvent {
   isBase64Encoded?: boolean;
 }
 export interface AccountsBffOptions {
-  origin: string;
+  /** Browser origins allowed to make account POST requests. */
+  origins: readonly string[];
   registration: ProductRegistration;
   keys: KeyResolver;
   client: (access?: string, id?: string) => AccountsClient;
@@ -69,7 +70,8 @@ export function accountsBffHandler(options: AccountsBffOptions) {
       if (event.requestContext.http.method === "POST" && event.rawPath === LOGIN_CHALLENGE_PATH) {
         // Do not add other unauthenticated routes here.
         const { headers, body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
-        if (headers.origin !== options.origin) fail(403, "origin", "Request origin is not permitted.");
+        if (!options.origins.includes(headers.origin ?? ""))
+          fail(403, "origin", "Request origin is not permitted.");
         requireRules(
           body,
           loginChallengeRequestRules,
@@ -89,7 +91,7 @@ export function accountsBffHandler(options: AccountsBffOptions) {
       const method = event.requestContext.http.method;
       if (!["GET", "POST"].includes(method)) fail(405, "method", "Read-only accounts endpoint.");
       const { body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
-      if (method === "POST" && headers.origin !== options.origin)
+      if (method === "POST" && !options.origins.includes(headers.origin ?? ""))
         fail(403, "origin", "Request origin is not permitted.");
       if (method === "GET") {
         if (Object.keys(body).length) fail(400, "body", "Read payload must be empty.");

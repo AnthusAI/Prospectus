@@ -5,6 +5,13 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
+import {
+  assertDistinctFormOrigins,
+  enabledIntakeForms,
+  waitlistRoutePath,
+  type IntakeFormConfig,
+} from "../../server/intake-forms";
+import { throttleRoutes } from "./throttle-routes";
 import { PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 export type IntakeContactMode = "synthetic-only" | "real-contacts";
@@ -19,14 +26,21 @@ export function intakeFormOriginsForMode(contactMode: IntakeContactMode): string
 /** Additive inquiry intake. Synthetic-only unless real contacts are explicitly enabled. Existing CRM routes stay private. */
 export class EvaluationIntake extends Construct {
   readonly url: string;
+  readonly waitlistBaseUrl?: string;
   constructor(
     scope: Construct,
     id: string,
     code: lambda.Code,
     contactMode: IntakeContactMode = "synthetic-only",
+    registryForms: readonly IntakeFormConfig[] = [],
   ) {
     super(scope, id);
+    const forms = enabledIntakeForms(registryForms);
+    assertDistinctFormOrigins(registryForms);
+    if (forms.length && contactMode !== "real-contacts")
+      throw new Error("Registry waitlist forms collect real contacts and need the real-contacts runtime.");
     const formOrigins = intakeFormOriginsForMode(contactMode);
+    const corsOrigins = [...new Set([...formOrigins, ...forms.flatMap((form) => form.origins)])];
     const logGroup = logs.LogGroup.fromLogGroupName(this, "Logs", "/aws/lambda/prospectus-intake-evaluation");
     const role = new iam.Role(this, "Role", {
       roleName: "prospectus-intake-evaluation",
@@ -70,6 +84,7 @@ export class EvaluationIntake extends Construct {
       environment: {
         PROSPECTUS_INTAKE_ALLOWED_ORIGINS: formOrigins.join(","),
         PROSPECTUS_INTAKE_CONTACT_MODE: contactMode,
+        ...(forms.length ? { PROSPECTUS_INTAKE_FORMS: JSON.stringify(forms) } : {}),
         PROSPECTUS_EVALUATION_WORKSPACE: PROJECT_NAMESPACE,
         PROSPECTUS_EVALUATION_BUCKET: `prospectus-records-${TARGET_ACCOUNT}`,
         PROSPECTUS_CANONICAL_FUNCTION: "prospectus-api",
@@ -78,7 +93,7 @@ export class EvaluationIntake extends Construct {
     const api = new apigw.HttpApi(this, "Api", {
       apiName: "prospectus-intake-evaluation",
       corsPreflight: {
-        allowOrigins: formOrigins,
+        allowOrigins: corsOrigins,
         allowMethods: [apigw.CorsHttpMethod.POST],
         allowHeaders: ["content-type"],
         maxAge: cdk.Duration.minutes(10),
@@ -89,8 +104,27 @@ export class EvaluationIntake extends Construct {
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration("SyntheticSubmission", handler),
     });
+    const waitlistRoutes = forms.map((form, index) => ({
+      form,
+      route: api.addRoutes({
+        path: waitlistRoutePath(form),
+        methods: [apigw.HttpMethod.POST],
+        integration: new HttpLambdaIntegration(`WaitlistSubmission${index}`, handler),
+      })[0],
+    }));
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 2, throttlingRateLimit: 1 };
+    if (waitlistRoutes.length)
+      throttleRoutes(
+        api.defaultStage!,
+        waitlistRoutes.map(({ form, route }) => ({
+          routeKey: `POST ${waitlistRoutePath(form)}`,
+          route,
+          burstLimit: form.throttle.burst,
+          rateLimit: form.throttle.rate,
+        })),
+      );
     this.url = `${api.apiEndpoint}/intake/demo`;
+    this.waitlistBaseUrl = forms.length ? `${api.apiEndpoint}/intake/waitlist` : undefined;
   }
 }

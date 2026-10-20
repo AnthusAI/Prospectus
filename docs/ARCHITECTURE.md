@@ -11,7 +11,7 @@ Prospectus runs in AWS account `712236451410` (papyrus-production), region `us-e
 | Cognito pool and browser client | `infra/lib/prospectus-backend.ts` | Google-only sign-in for the CRM; groups `prospectus-members` and `admin` |
 | Accounts BFF | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}` | Browser-facing account routes, JWT protected; signs central requests |
 | Central accounts service | `prospectus-central-accounts` Lambda behind the IAM-protected `prospectus-accounts` REST API, stage `api` | Identity, accounts, memberships, entitlements, operator directory |
-| Inquiry intake | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` | Public inquiry capture into the CRM |
+| Inquiry intake | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` and one `POST /intake/waitlist/<formId>` route per enabled registry form | Public inquiry and app waitlist capture into the CRM |
 | Accounts client SDK | `packages/accounts-client` | Browser, React and server clients for hosts |
 | Native bridge | `local-dependencies/intake-control` (Rust, `prospectus-identity-files`) | Conditional file writes through pinned Virtuus for identities, accounts and intake controls |
 
@@ -123,6 +123,58 @@ Two modes, selected in `evaluation-deployment.json`:
 The route is throttled to one request per second with a burst of two. The Lambda reserves no concurrency, because the account allows 10 concurrent executions in total and AWS keeps them unreserved. Public anth.us is served by the AnthusAI/Anth.us-Papyrus repository, whose engage page is the real-contact form.
 
 Intake sends no email and creates no accounts, invitations, bookings, billing or permissions. Manual creation, import and email edits do not acquire intake claims, so uniqueness holds only among intake writers.
+
+## Integrating an app's waitlist
+
+Other Anthus apps send waitlist signups to Prospectus instead of running their own waitlist backend. A signup is intake: it creates or extends a lead (a `prospect`) and nothing else. It never creates an account, membership, entitlement, invitation, appointment or email, and it is not an Anthus One product access request.
+
+**Registry.** `intake-forms.json` lists the forms. Each entry names its app (`siteId`), `formId`, `kind` (`waitlist`), the `origins` allowed to post it, its own `noticeVersion`, the `owner` queue, a `defaultPagePath`, the `attributes` it accepts (each an enum `values` list or a fully anchored `pattern` that starts with `^` and ends with `$`) and an optional `throttle`. Source identity is decided from the entry that the request path selects and whose `origins` include the request `Origin`; the body can never name a site, form, owner or status. The same file drives the gateway CORS origins, the per-form route and throttle, and the Lambda's origin check, so each origin is accepted only for its own form: a Babulus origin cannot post to `/intake/demo`, and an anth.us origin cannot post a Babulus signup. Origins must be unique across forms and may not be a demo origin. An entry with `"enabled": false` adds no route, origin or configuration. Enabling one needs a recorded `approval` string and the `real-contacts` runtime, and deploys on merge.
+
+**Request.** `POST /intake/waitlist/<formId>` on the intake API (the `IntakeWaitlistBaseUrl` deployment output plus `/<formId>`). The deployed URL for Babulus is not live until Ryan approves and enables the entry.
+
+```http
+POST /intake/waitlist/babulus-waitlist-v1 HTTP/1.1
+Host: <IntakeWaitlistBaseUrl host>
+Origin: https://babul.us
+Content-Type: application/json
+
+{
+  "submission_id": "2f6b7c52-3d1e-4a52-9b0e-6a1a1f0c9d11",
+  "email": "casey@example.com",
+  "name": "Casey Example",
+  "marketing_opt_in": true,
+  "notice_version": "babulus-waitlist-v1",
+  "page_path": "/waitlist",
+  "campaign": { "utm_campaign": "launch" },
+  "website": "",
+  "attributes": { "persona": "creator", "source": "waitlist-page" }
+}
+```
+
+Only `submission_id` (a UUID the client generates once per form view and reuses on retry), `email` and `notice_version` are required. `name` is optional (150 characters). `marketing_opt_in` defaults to `false`; Babulus maps its `wantsUpdates` to it. `campaign` accepts `utm_source`, `utm_medium` and `utm_campaign`. `website` is the hidden honeypot field: leave it empty; a filled value gets a success response and nothing is stored. `attributes` accepts only the keys the entry declares. For `babulus-waitlist-v1` they are `persona` (`business`, `agency`, `marketer`, `creator`, `developer` or `other`) and `source` (a lowercase slug of up to 40 characters such as `waitlist-page`). Any other field, or an undeclared or invalid attribute, is a 400. Bodies are JSON, at most 16 KiB.
+
+**Responses.** All are JSON with `cache-control: no-store`. Browsers receive CORS headers from the gateway for the union of enabled form origins.
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| `202` | `{"receipt":"2f6b7c52-3d1e-4a52-9b0e-6a1a1f0c9d11","message":"Waitlist signup received."}` | Stored, already on the list, or honeypot. A repeat signup for the same email on the same app returns the same response and stores nothing new, so the response never reveals whether an address was already registered |
+| `400` | `{"message":"Invalid persona."}` and similar | Validation: bad email, stale notice (`Reload the page to read the current privacy notice.`), unknown field, invalid attribute, size or JSON |
+| `403` | `{"message":"This form origin is not allowed."}` | The Origin is not in this form's `origins` |
+| `404` | `{"message":"Not found."}` | Unknown form or method |
+| `409` | `{"message":"This receipt belongs to a different submission. Reload the form."}` | The `submission_id` was used with different content |
+| `415` | `{"message":"A JSON submission is required."}` | Content type is not `application/json` |
+| `429` | `{"message":"Too Many Requests"}` | The form's own route throttle (default 1 request per second, burst 2) |
+| `503` | `{"message":"The inquiry could not be confirmed. Retry the same receipt."}` | Retry with the same `submission_id` and body |
+
+```js
+await fetch(`${WAITLIST_BASE_URL}/babulus-waitlist-v1`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ submission_id, email, name, marketing_opt_in: wantsUpdates, notice_version: "babulus-waitlist-v1", attributes: { persona, source: "waitlist-page" }, website: "" }),
+});
+```
+
+**How it lands.** Identity is the normalized email within the workspace, as for demo intake, so a signup from a person who already exists resolves to the same prospect and appends a `kind: "waitlist"` inquiry with its `source` (`site_id`, `form_id`, `page_path`, `campaign`), `attributes`, `marketing_opt_in` and `received_at`. A new person gets a prospect in the `new` stage, assigned to the form's owner (`intake-queue`), titled with the name or else the email, and labelled `waitlist` and `app-<siteId>`; existing prospects gain missing labels and keep their stage, owner, notes, next action and follow-up. Waitlist signups set no `next_action` or `next_follow_up_at`, so the follow-up queue is not flooded. Deduplication is per email and app: a repeat signup from the same app is dropped when its `marketing_opt_in` and `notice_version` match the latest waitlist inquiry for that app (name and attribute changes alone are not stored). When either differs, the new inquiry is appended, so the latest consent choice is recorded and earlier consent stays in the history; no follow-up is added. Another app may still add its own inquiry. Receipt and identity claims use the existing `intake-receipts/` and `intake-identities/` prefixes and the same create-first pattern, so the intake role gains no permission and still has no `s3:ListBucket`. There is no localhost origin in the registry because it is a public endpoint; develop against the handler and service tests (`test/waitlist-intake.test.ts`).
 
 ## Infrastructure layout
 

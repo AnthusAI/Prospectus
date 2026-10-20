@@ -26,6 +26,14 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `amplify.yml` runs the backend pipeline: verify scope, check out the pinned Kanbus sources, build the shared UI, `npm ci`, typecheck, test, package the Linux Kanbus API, build the intake bundle when enabled, build the Accounts bundles, run the infrastructure checks and `ampx pipeline-deploy`. The frontend phase writes `.env.production.local` from the Amplify outputs (`infra/scripts/write-frontend-env.mjs`) and runs `npm run build`. Keep the reviewed pinned Node build image and `infra/hosting-settings.json`, including the single-page-app rewrite and disabled legacy CLI overrides.
 
+### Local development against the deployed backend
+
+`npm run dev:cloud` runs the working tree locally with real Google sign-in, the deployed API and the accounts service, and nothing is deployed. It reads the `main` branch's outputs once with `ampx generate outputs` (run `aws login` for papyrus-production first; refresh with `npm run dev:cloud -- --refresh`), caches them in the ignored `.build/cloud/`, and starts Vite at http://localhost:5417. The data is production data, so edits are real.
+
+`http://localhost:5417` is in `APP_ORIGINS` (`infra/lib/scope.ts`), so the Cognito client's callback and logout URLs, the API's CORS origins and the accounts service's POST origin check accept it beside the production address. Cognito permits plain http only for localhost, so open `localhost`, not `127.0.0.1`. Google itself is unchanged: its OAuth client only ever redirects to the Cognito domain.
+
+`npm run preview:local` remains the fully offline option with synthetic data and a local token.
+
 The Kanbus API, the shared UI package and Virtuus are pinned independently in `source-lock.json`, so a UI-only release cannot replace the deployed API. `.github/workflows/package-backend.yml` builds a reviewed backend package on demand.
 
 Do not rewrite canonical paths or delete data in a UI release.
@@ -41,6 +49,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
 | `evaluation-deployment.json` | Inquiry intake runtime and its mode (`synthetic-only` or `real-contacts`) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
+| `intake-forms.json` | App waitlist forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: false`; enabling it goes live for real contacts on merge and needs Ryan's approval of owner, privacy notice, retention, abuse controls and real-cloud acceptance |
 
 Whether a flag is deployed is a fact about the cloud account, not the repository. Check the Amplify build history before claiming an activation is live. The anth.us engage form is not a working Prospectus intake until the intake runtime is deployed and the public form's endpoint and privacy notice settings in AnthusAI/Anth.us-Papyrus point at the `EvaluationIntakeUrl` output.
 

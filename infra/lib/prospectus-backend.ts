@@ -14,7 +14,9 @@ import { AccountsPlane, type AccountsPlaneOptions } from "./accounts-plane";
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
-import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
+import type { IntakeFormConfig } from "../../server/intake-forms";
+import { throttleRoutes } from "./throttle-routes";
+import { APP_ORIGINS, MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 /** Separate private CRM data plane; public static assets contain no CRM records. */
 export class ProspectusBackend extends Construct {
@@ -26,6 +28,7 @@ export class ProspectusBackend extends Construct {
     evaluationCode?: lambda.Code,
     accounts?: AccountsPlaneOptions,
     intakeContactMode: IntakeContactMode = "synthetic-only",
+    intakeForms: readonly IntakeFormConfig[] = [],
   ) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
@@ -119,8 +122,8 @@ export class ProspectusBackend extends Construct {
       oAuth: {
         flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: [`${appUrl}/auth/callback`],
-        logoutUrls: [`${appUrl}/`],
+        callbackUrls: APP_ORIGINS.map((origin) => `${origin}/auth/callback`),
+        logoutUrls: APP_ORIGINS.map((origin) => `${origin}/`),
       },
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
@@ -218,7 +221,7 @@ export class ProspectusBackend extends Construct {
       defaultAuthorizer: jwt,
       defaultAuthorizationScopes: ["openid"],
       corsPreflight: {
-        allowOrigins: [appUrl],
+        allowOrigins: [...APP_ORIGINS],
         allowHeaders: ["authorization", "content-type", "if-match", "x-operation-id"],
         allowMethods: [
           apigw.CorsHttpMethod.GET,
@@ -266,16 +269,17 @@ export class ProspectusBackend extends Construct {
         methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsDirectory", accountsPlane.bff),
       });
-      api.addRoutes({
+      const [loginChallengeRoute] = api.addRoutes({
         path: LOGIN_CHALLENGE_PATH,
         methods: [apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsLoginChallenge", accountsPlane.bff),
         authorizer: new apigw.HttpNoneAuthorizer(),
+        // The API defaults to the "openid" scope, which API Gateway rejects on a NONE route.
+        authorizationScopes: [],
       });
-      const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
-      stage.routeSettings = {
-        [`POST ${LOGIN_CHALLENGE_PATH}`]: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
-      };
+      throttleRoutes(api.defaultStage!, [
+        { routeKey: `POST ${LOGIN_CHALLENGE_PATH}`, route: loginChallengeRoute, burstLimit: 2, rateLimit: 1 },
+      ]);
     }
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
@@ -291,13 +295,17 @@ export class ProspectusBackend extends Construct {
       ObjectBucketName: objects.bucketName,
       CatalogTableName: catalog.tableName,
     };
-    if (evaluationCode)
-      outputs.EvaluationIntakeUrl = new EvaluationIntake(
+    if (evaluationCode) {
+      const intake = new EvaluationIntake(
         this,
         "EvaluationIntake",
         evaluationCode,
         intakeContactMode,
-      ).url;
+        intakeForms,
+      );
+      outputs.EvaluationIntakeUrl = intake.url;
+      if (intake.waitlistBaseUrl) outputs.IntakeWaitlistBaseUrl = intake.waitlistBaseUrl;
+    }
     if (accountsPlane) {
       outputs.AccountsBffUrl = `${api.apiEndpoint}/api/saas`;
       outputs.AccountsApiUrl = accountsPlane.endpoint;

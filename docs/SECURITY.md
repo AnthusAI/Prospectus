@@ -4,12 +4,13 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 
 ## Principals and authentication
 
-| Surface                              | Who can call                     | How it is checked                                                                                                           |
-| ------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| CRM Kanbus API (`/api/{proxy+}`)     | Invited staff                    | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group                          |
-| Accounts BFF (`/api/saas/*`)         | Any signed-in person             | Same JWT authorizer; the BFF verifies the token again and signs central requests itself                                     |
-| Central accounts service             | Registered product roles only    | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal |
-| Inquiry intake (`POST /intake/demo`) | The public, from allowed origins | Origin and notice checks, throttling and a fixed intake actor; no read access                                               |
+| Surface                                                | Who can call                                        | How it is checked                                                                                                                                                          |
+| ------------------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CRM Kanbus API (`/api/{proxy+}`)                       | Invited staff                                       | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group                                                                         |
+| Accounts BFF (`/api/saas/*`)                           | Any signed-in person                                | Same JWT authorizer; the BFF verifies the token again and signs central requests itself                                                                                    |
+| Central accounts service                               | Registered product roles only                       | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal                                                |
+| Inquiry intake (`POST /intake/demo`)                   | The public, from allowed origins                    | Origin and notice checks, throttling and a fixed intake actor; no read access                                                                                              |
+| App waitlist intake (`POST /intake/waitlist/<formId>`) | The public, from the origins declared for that form | Per-form origin binding, per-form notice version, strict attribute allowlist, a route-level throttle and a fixed intake actor; no read access, no accounts or entitlements |
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 
@@ -85,4 +86,4 @@ Error contract: `400` malformed input or raw authority fields, `401` invalid tok
 
 ## Change control
 
-New persistent IAM or security resources, OAuth client or callback changes, and new operator grants need concrete approval before they are deployed. Pin Kanbus and Virtuus revisions; never deploy from a moving dependency branch.
+New persistent IAM or security resources, OAuth client or callback changes, and new operator grants need concrete approval before they are deployed. The browser origins allowed to sign in, call the API and post to the accounts service are exactly `APP_ORIGINS` in `infra/lib/scope.ts`: production and `http://localhost:5417` for `npm run dev:cloud`. A localhost origin lets a developer's own machine complete sign-in; the authorization-code flow still requires PKCE and matching state, and no token reaches any other host. Pin Kanbus and Virtuus revisions; never deploy from a moving dependency branch.

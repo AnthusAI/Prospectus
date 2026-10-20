@@ -23,3 +23,12 @@ Feature: Amplify owns a separate private Prospectus application
     Then the scope guards accept that exact app, account, region and branch
     And the existing Cyclotron proof branch remains unchanged
     And a different branch fails the replacement deployment scope check
+
+  Scenario: Local development uses the deployed backend with real sign-in
+    Given a developer logged in to papyrus-production on their own machine
+    When they run npm run dev:cloud
+    Then the deployed main branch's public outputs are read once and cached in the ignored .build directory
+    And Vite serves the working tree at http://localhost:5417 with instant reload
+    And Google sign-in completes through the deployed Cognito client and returns to localhost
+    And the deployed API and accounts service accept requests from that origin
+    And nothing is deployed and no cloud environment is created

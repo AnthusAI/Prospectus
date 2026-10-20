@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-290c32a9-9da3-4c45-860e-9395ffc55722",
+  "title": "Local development server with real sign-in against the deployed backend",
+  "description": "npm run dev:cloud serves the working tree at http://localhost:5417 with Vite, signing in through the deployed Cognito client and calling the deployed API and accounts service; nothing is deployed. LOCAL_DEV_ORIGIN joins the production origin in APP_ORIGINS (Cognito callback/logout, API CORS, accounts BFF origin checks). One-time deploy through main. Before deploy: Ryan re-reviews the Google federation policy for the added callback/logout URLs and updates googlePolicyReviewId in accounts/deployment.json. Spec: features/amplify-deployment.feature.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-4d64f341-9c13-479b-b2fd-edd409a096f9",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-19T23:27:19.530465Z",
+  "updated_at": "2026-10-19T23:42:03.575621Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
