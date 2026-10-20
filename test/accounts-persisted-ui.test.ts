@@ -119,6 +119,10 @@ test(
       await page.getByRole("button", { name: /Persisted Papyrus organization/ }).click();
       await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
       await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .getByRole("button", { name: "Accounts" })
+        .click();
       await page.getByRole("button", { name: "My memberships", exact: true }).click();
       await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
       await page.getByRole("button", { name: "Account administration", exact: true }).click();
