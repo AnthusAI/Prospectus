@@ -60,14 +60,6 @@ Feature: A website inquiry becomes an actionable private prospect
     And data problems are filed as a needs-review prospect with no follow-up
     And an operator can retry pending inbox items idempotently
 
-  Scenario: Never turn away a valid inquiry
-    Given a well-formed submission from a visitor
-    When the canonical API fails, the contact is duplicated, its identity changed or its history is full
-    Then the full inquiry is already stored in the intake inbox and the visitor receives 202 with the receipt
-    And a repeat contact with a new submission id appends to the same prospect fetched by id, not from a search hit
-    And data problems are filed as a needs-review prospect with no follow-up
-    And an operator can retry pending inbox items idempotently
-
   Scenario: Work the next action and hand off the customer
     Given an assigned active prospect with a due next action
     When its owner opens due follow-ups and corrects contact details
