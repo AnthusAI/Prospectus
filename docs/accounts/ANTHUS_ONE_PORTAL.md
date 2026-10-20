@@ -30,11 +30,15 @@ The backend that Anthus One needs mostly exists: `accounts/` implements people k
 
 ### Where it lives
 
-A new repository, `AnthusAI/Anthus-One` (name to be confirmed), deployed as its own Amplify app in papyrus-production with `one.anth.us` as its domain. It is not a route inside Prospectus and shares no build with it. Same stack as the CRM (Vite, React, TypeScript) so `@anthus/prospectus-accounts-client` and the Kanbus UI components are reusable. Public repository question: the CRM is MIT and public; the portal can be too, since it holds no secrets.
+Decided 2026-10-19: the portal lives in the Prospectus repository as a separate application, not in a separate repository. It has its own entry page (`portal/index.html`), its own code (`src/portal/`), its own Vite config (`vite.portal.config.ts`) and its own bundle (`dist-portal/`), and it is served at `one.anth.us`, never inside the staff console at prospectus.anth.us. It shares only the account service, the sign-in helpers and the Anthus One design tokens (`src/shared/`, `src/styles.css`). `test/portal-separation.test.ts` fails if portal code reaches staff console code or the reverse. The earlier `AnthusAI/Anthus-One` repository and its shell pull request are superseded.
+
+Local development: `npm run dev:portal` serves it at http://localhost:5421 against the deployed backend with real Google sign-in. Hosting `one.anth.us` (an Amplify app or branch serving `dist-portal`, plus DNS) is not set up yet; when it is, apply `infra/portal-hosting-settings.json` (single-page-app rewrite so `/auth/callback` serves `index.html`). Blocking go-live: the portal needs its own Cognito app client and Google OAuth client (kanbus-73f7b2), because the shared client's tokens are valid for the CRM API. `npm run verify:bundles` (CI, after `npm run build`) fails if either bundle contains the other application's modules.
 
 ### Sign-in
 
-Google only, through its own Cognito user pool and its own Google OAuth client, following the pattern already used for `p.apyr.us`. The portal registers with Prospectus as a product (`anthus-one`) through reviewed configuration, the same way Papyrus sites do in `accounts/papyrus-sites.json`, so the canonical person is the same across the portal, Papyrus sites, Cyclotron Lab and the CRM. Creating the pool, the Google client and the registration needs AWS work on Ryan's Mac.
+Interim, 2026-10-19: the portal signs in through the Prospectus Cognito client, with `https://one.anth.us` and `http://localhost:5421` added to `APP_ORIGINS`, and reads the customer routes the accounts BFF already serves (`/api/saas/accounts`). This works today because those routes already authorize only the signed-in person's own accounts. Still to decide: whether the portal moves to its own pool and Google client as recommended below.
+
+Recommended: Google only, through its own Cognito user pool and its own Google OAuth client, following the pattern already used for `p.apyr.us`. The portal registers with Prospectus as a product (`anthus-one`) through reviewed configuration, the same way Papyrus sites do in `accounts/papyrus-sites.json`, so the canonical person is the same across the portal, Papyrus sites, Cyclotron Lab and the CRM. Creating the pool, the Google client and the registration needs AWS work on Ryan's Mac.
 
 ### Backend
 
@@ -73,7 +77,7 @@ After the portal covers the same ground: delete `AccountsView.tsx`, the customer
 
 ## Decisions for Ryan
 
-1. Repository name. Recommendation: `AnthusAI/Anthus-One`.
+1. Repository. Decided 2026-10-19: the Prospectus repository, as a separate application.
 2. Own Cognito pool and Google OAuth client for the portal. Recommendation: yes, matching the per-site rule.
 3. Operator-only Accounts tab stays in the CRM. Recommendation: yes.
 4. Public repository. Recommendation: public and MIT like the CRM.

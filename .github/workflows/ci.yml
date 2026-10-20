@@ -39,6 +39,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run verify:bundles
       - run: npm ci --prefix infra
       - run: npm ci --prefix amplify
       - run: npm run check --prefix infra
@@ -57,7 +58,7 @@ jobs:
             node --import tsx --test accounts/durable-accounts.test.ts accounts/durable-google-identities.test.ts accounts/directory.test.ts accounts/execution-delegation.test.ts accounts/identity-files-session.test.ts
           fi
       - run: bash infra/scripts/test-browser-ci.sh
-      - run: PROSPECTUS_ACCOUNTS_UI=1 node --import tsx --test test/accounts-directory-ui.test.ts
+      - run: PROSPECTUS_ACCOUNTS_UI=1 node --import tsx --test test/accounts-directory-ui.test.ts test/portal-ui.test.ts
       - name: Verify the persisted Accounts browser flow when enabled
         run: |
           if node -e 'process.exit(require("./accounts/deployment.json").enabled ? 0 : 1)'; then

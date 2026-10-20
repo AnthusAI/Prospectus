@@ -12,7 +12,7 @@ import {
   validateFollowUp,
   websiteInquiries,
 } from "../prospect";
-import { Eyebrow } from "./ui";
+import { Eyebrow } from "../shared/ui";
 
 export type Write = (action: () => Promise<IssueRecord>) => Promise<boolean>;
 

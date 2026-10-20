@@ -15,8 +15,13 @@ export const PRODUCTION_ORIGIN = `https://${SITE_DOMAIN}`;
  * client and calling the deployed API. Cognito permits plain http only for localhost.
  */
 export const LOCAL_DEV_ORIGIN = "http://localhost:5417";
+/** The Anthus One customer portal: a separate application that shares only the account service. */
+export const PORTAL_DOMAIN = "one.anth.us";
+export const PORTAL_ORIGIN = `https://${PORTAL_DOMAIN}`;
+/** `npm run dev:portal` serves the portal here against the deployed backend. */
+export const PORTAL_DEV_ORIGIN = "http://localhost:5421";
 /** Browser origins allowed to sign in and call the API. */
-export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN] as const;
+export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN] as const;
 
 export function assertDeploymentScope(scope: {
   account: string;

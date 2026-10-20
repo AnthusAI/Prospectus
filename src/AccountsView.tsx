@@ -7,8 +7,8 @@ import type {
   OperatorDetail,
   OperatorList,
 } from "../packages/accounts-client/src/directory";
-import { initials } from "./prospect";
-import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./admin/ui";
+import { initials } from "./shared/initials";
+import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./shared/ui";
 
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
 

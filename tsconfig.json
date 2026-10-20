@@ -25,6 +25,7 @@
     "scripts",
     "test",
     "vite.config.ts",
+    "vite.portal.config.ts",
     "playwright.config.ts",
     "accounts",
     "packages/accounts-client/src"

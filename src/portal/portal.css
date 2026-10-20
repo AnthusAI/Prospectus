@@ -1,0 +1,264 @@
+/* Anthus One customer portal. Shares the .one tokens and components in styles.css. */
+.one-stripe.portal {
+  background: linear-gradient(90deg, var(--blue), var(--blue) 55%, var(--accent-ink) 80%, var(--accent));
+}
+.one.portal .one-nav {
+  gap: 28px;
+}
+.portal-content {
+  flex: 999 1 560px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.portal-content > .one-main {
+  flex: 1 0 auto;
+}
+.portal-workspace select {
+  min-width: 200px;
+}
+.one a.portal-quota {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 14px;
+}
+.portal-quota-bar {
+  display: block;
+  width: 96px;
+  height: 8px;
+  border: 1px dashed var(--line-strong);
+  background: var(--panel-2);
+}
+.one a.portal-applink {
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+.portal-help {
+  gap: 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.one-main.portal-home {
+  gap: 56px;
+}
+.portal-quota-card {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 28px;
+  padding: 28px;
+  box-shadow: 6px 6px 0 0 var(--blue);
+}
+.portal-quota-ring {
+  flex: none;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 28px solid var(--panel-2);
+  outline: 1px dashed var(--line-strong);
+  outline-offset: -1px;
+}
+.portal-quota-card .one-cellstack {
+  flex: 1 1 280px;
+  gap: 12px;
+}
+.portal-quota-title {
+  font-size: 20px;
+  line-height: 28px;
+}
+.portal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.portal-section h2 {
+  font-size: 30px;
+  line-height: 36px;
+}
+.portal-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+.portal-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--ink);
+  transition:
+    transform 120ms linear,
+    box-shadow 120ms linear;
+}
+.portal-tile:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 0 var(--blue);
+}
+.portal-tile h3 {
+  font-size: 20px;
+  line-height: 28px;
+}
+.portal-tile p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  flex: 1 1 auto;
+}
+.portal-tile.add {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--panel);
+}
+.portal-domain {
+  font-size: 12px;
+}
+.portal-open {
+  align-self: flex-start;
+}
+.portal-applist {
+  background: var(--surface);
+  border: 1px solid var(--ink);
+  padding: 4px 20px;
+}
+.portal-approw h2 {
+  font-size: 18px;
+  line-height: 24px;
+}
+.portal-appname {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.portal-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.portal-member code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.portal-people {
+  min-width: 560px;
+}
+.portal-footnote {
+  font-size: 13px;
+  line-height: 18px;
+}
+.portal-card-title {
+  font-size: 22px;
+  line-height: 28px;
+}
+.portal-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 14px;
+}
+.portal-theme {
+  align-self: flex-start;
+}
+
+/* Sign-in */
+.portal-signin {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.portal-signin-split {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+}
+.portal-signin-pitch {
+  flex: 1 1 420px;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  background-color: var(--panel-2);
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 24px 24px;
+  border-right: 1px solid var(--ink);
+}
+.portal-wordmark {
+  font-size: 24px;
+  line-height: 32px;
+}
+.portal-signin-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.portal-signin-copy h1 {
+  font-size: 52px;
+  line-height: 56px;
+  letter-spacing: -0.03em;
+  max-width: 520px;
+}
+.portal-signin-copy p {
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+  max-width: 480px;
+}
+.portal-made-by {
+  font-size: 13px;
+}
+.portal-signin-main {
+  flex: 1 1 520px;
+  padding: 48px;
+  display: flex;
+  align-items: center;
+}
+.portal-signin-form {
+  width: min(100%, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.portal-signin-form h2 {
+  font-size: 36px;
+  line-height: 44px;
+}
+.portal-google {
+  min-height: 52px;
+  font-size: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-tile {
+    transition: none;
+  }
+  .portal-tile:hover {
+    transform: none;
+  }
+}
+@media (max-width: 800px) {
+  .portal-signin-pitch,
+  .portal-signin-main {
+    padding: 24px 16px;
+  }
+  .portal-signin-pitch {
+    border-right: 0;
+    border-bottom: 1px solid var(--ink);
+  }
+  .portal-signin-copy h1 {
+    font-size: 36px;
+    line-height: 40px;
+  }
+  .portal-workspace select {
+    min-width: 0;
+  }
+}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { initials } from "../prospect";
-import { BrandMark, Icon, Wordmark, type IconName } from "./ui";
+import { initials } from "../shared/initials";
+import { BrandMark, Icon, Wordmark, type IconName } from "../shared/ui";
 
 export type Page = "today" | "pipeline" | "accounts" | "engagements" | "billing" | "team" | "settings";
 
