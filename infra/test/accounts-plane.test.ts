@@ -5,6 +5,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Code } from "aws-cdk-lib/aws-lambda";
 import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
+import { unscopableRoutesWithScopes } from "./route-auth";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
@@ -482,4 +483,29 @@ test("the ordering check fails when a route setting lacks its dependency", () =>
   const stage: any = Object.values(synth.Resources).find((r: any) => r.Type === "AWS::ApiGatewayV2::Stage");
   delete stage.DependsOn;
   assert.throws(() => assertStageRoutesOrdered(synth), /must DependOn/);
+});
+
+test("routes without an authorizer carry no authorization scopes", () => {
+  const synth = template(true);
+  assert.deepEqual(unscopableRoutesWithScopes(synth), []);
+  const routes = Object.values(synth.Resources as Record<string, any>).filter(
+    (r: any) => r.Type === "AWS::ApiGatewayV2::Route",
+  );
+  const challenge = routes.find(
+    (r: any) => r.Properties.RouteKey === "POST /api/saas/identity/login-challenge",
+  );
+  assert.equal(challenge.Properties.AuthorizationType, "NONE");
+  assert.equal(challenge.Properties.AuthorizerId, undefined);
+  assert.ok(!(challenge.Properties.AuthorizationScopes ?? []).length);
+  const member = routes.find((r: any) => r.Properties.RouteKey === "GET /api/{proxy+}");
+  assert.equal(member.Properties.AuthorizationType, "JWT");
+  assert.deepEqual(member.Properties.AuthorizationScopes, ["openid"]);
+});
+test("the scope check fails for a NONE route that inherits scopes", () => {
+  const synth = JSON.parse(JSON.stringify(template(true)));
+  const route: any = Object.values(synth.Resources).find(
+    (r: any) => r.Type === "AWS::ApiGatewayV2::Route" && r.Properties.AuthorizationType === "NONE",
+  );
+  route.Properties.AuthorizationScopes = ["openid"];
+  assert.equal(unscopableRoutesWithScopes(synth).length, 1);
 });

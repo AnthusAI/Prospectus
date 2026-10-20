@@ -6,6 +6,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import { Template } from "aws-cdk-lib/assertions";
 import { EvaluationIntake } from "../lib/evaluation-intake";
 import { ProspectusBackend } from "../lib/prospectus-backend";
+import { unscopableRoutesWithScopes } from "./route-auth";
 
 const lambdaEnvironment = (template: Template) =>
   (Object.values(template.findResources("AWS::Lambda::Function"))[0] as any).Properties.Environment.Variables;
@@ -50,6 +51,7 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
     DefaultRouteSettings: { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
   });
+  assert.deepEqual(unscopableRoutesWithScopes(template.toJSON()), []);
   const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap(
     (r: any) => r.Properties.PolicyDocument.Statement,
   );

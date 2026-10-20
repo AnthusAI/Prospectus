@@ -272,6 +272,8 @@ export class ProspectusBackend extends Construct {
         methods: [apigw.HttpMethod.POST],
         integration: new HttpLambdaIntegration("AccountsLoginChallenge", accountsPlane.bff),
         authorizer: new apigw.HttpNoneAuthorizer(),
+        // The API defaults to the "openid" scope, which API Gateway rejects on a NONE route.
+        authorizationScopes: [],
       });
       throttleRoutes(api.defaultStage!, [
         { routeKey: `POST ${LOGIN_CHALLENGE_PATH}`, route: loginChallengeRoute, burstLimit: 2, rateLimit: 1 },
