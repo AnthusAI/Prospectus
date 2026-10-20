@@ -186,7 +186,8 @@ test("real Kanbus persistence: concurrent capture, replay/restart, edits, confli
       email: "corrected@example.invalid",
       message: "Committed inquiry with lost response",
     });
-    await assert.rejects(service.submit(uncertain), /Lost committed PATCH/);
+    // The visitor is accepted; the lost response leaves the inbox item pending for the retry below.
+    await service.submit(uncertain);
     await service.close();
     service = await IntakeService.open(options);
     await service.submit(uncertain);
