@@ -4,6 +4,7 @@ import type {
   OperatorDetail,
   OperatorList,
   DirectoryReader,
+  DirectoryCreator,
   DirectoryDetail,
   DirectoryList,
 } from "../packages/accounts-client/src/directory";
@@ -20,7 +21,7 @@ export interface AccountsChallenge {
   nonce: string;
   challengeToken?: string;
 }
-export interface AccountsBrowser extends DirectoryReader, OperatorReader {
+export interface AccountsBrowser extends DirectoryReader, DirectoryCreator, OperatorReader {
   configured: boolean;
   challenge(): Promise<AccountsChallenge>;
   loginChallenge(loginStateDigest: string): Promise<AccountsChallenge>;
@@ -37,7 +38,13 @@ export function accountsBrowser(
   token: () => string | null = getAccessToken,
 ): AccountsBrowser {
   const root = base?.replace(/\/$/, "");
-  async function request(path: string, method = "GET", body?: unknown, access = token()) {
+  async function request(
+    path: string,
+    method = "GET",
+    body?: unknown,
+    access = token(),
+    showServerMessage = false,
+  ) {
     if (!root) throw new DirectoryError(503, "The Accounts service has not been configured.");
     if (!access) throw new DirectoryError(401, "Sign in again to view accounts.");
     const response = await fetcher(`${root}${path}`, {
@@ -51,11 +58,13 @@ export function accountsBrowser(
     if (!response.ok)
       throw new DirectoryError(
         response.status,
-        response.status === 403
-          ? "You do not have access to this account."
-          : response.status === 401
-            ? "Sign in again to view accounts."
-            : "Accounts could not be loaded. Try again.",
+        showServerMessage && typeof value?.message === "string"
+          ? value.message
+          : response.status === 403
+            ? "You do not have access to this account."
+            : response.status === 401
+              ? "Sign in again to view accounts."
+              : "Accounts could not be loaded. Try again.",
       );
     return value;
   }
@@ -119,6 +128,17 @@ export function accountsBrowser(
       )
         throw new DirectoryError(503, "Invalid account response.");
       return value as DirectoryDetail;
+    },
+    create: async (name, requestKey) => {
+      const value = (await request("/accounts", "POST", { name, requestKey }, token(), true))?.account;
+      if (
+        typeof value?.id !== "string" ||
+        typeof value.name !== "string" ||
+        !["owner", "admin", "member", "viewer"].includes(value.role) ||
+        !Array.isArray(value.products)
+      )
+        throw new DirectoryError(503, "Invalid account response.");
+      return value;
     },
     challenge: () => request("/identity/challenge", "POST", {}),
     loginChallenge: async (loginStateDigest) => {

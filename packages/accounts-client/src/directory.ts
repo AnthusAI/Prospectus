@@ -16,6 +16,9 @@ export interface DirectoryList {
   accounts: DirectoryAccount[];
   operatorAccess?: boolean;
 }
+export interface DirectoryCreator {
+  create(name: string, requestKey: string): Promise<DirectoryAccount>;
+}
 export interface DirectoryDetail extends DirectoryAccount {
   createdAt: string;
   revision: number;

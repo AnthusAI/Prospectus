@@ -49,6 +49,37 @@ export function AccountsView({
   const [connecting, setConnecting] = useState(false);
   const [reload, setReload] = useState(0);
   const [operatorReload, setOperatorReload] = useState(0);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [created, setCreated] = useState("");
+  // One request key per distinct submission: a retry of the same name reuses it, so it can never create twice.
+  const attempt = useRef<{ name: string; key: string } | null>(null);
+
+  async function createOrganization() {
+    const name = newName.trim();
+    if (creating) return;
+    if (name.length < 2 || name.length > 80) {
+      setCreateError("Enter an organization name of 2 to 80 characters.");
+      return;
+    }
+    if (attempt.current?.name !== name) attempt.current = { name, key: crypto.randomUUID() };
+    setCreating(true);
+    setCreateError("");
+    setCreated("");
+    try {
+      const account = await client.create(name, attempt.current.key);
+      attempt.current = null;
+      setNewName("");
+      setCreated(`Created ${account.name}.`);
+      setReload((value) => value + 1);
+      setOperatorReload((value) => value + 1);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "The organization could not be created.");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function connect() {
     if (connectingRef.current) return;
@@ -229,6 +260,45 @@ export function AccountsView({
             {connecting ? "Opening Google…" : "Continue with Google"}
           </button>
           {connecting && <p role="status">Opening Google to confirm this sign-in…</p>}
+        </section>
+      )}
+
+      {data?.person && (
+        <section className="one-card cool" aria-labelledby="create-organization">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createOrganization();
+            }}
+          >
+            <h2 id="create-organization">Create organization</h2>
+            <label htmlFor="new-organization-name">Organization name</label>{" "}
+            <input
+              id="new-organization-name"
+              type="text"
+              value={newName}
+              maxLength={80}
+              autoComplete="off"
+              disabled={creating}
+              onChange={(event) => setNewName(event.target.value)}
+            />{" "}
+            <button type="submit" className="one-button primary" disabled={creating || !newName.trim()}>
+              {creating ? "Creating…" : "Create organization"}
+            </button>
+            <p className="one-muted">
+              You become the owner. No apps are turned on until an operator grants them.
+            </p>
+            {createError && (
+              <p role="alert" className="one-alert">
+                {createError}
+              </p>
+            )}
+            {created && (
+              <p role="status" className="one-status">
+                {created}
+              </p>
+            )}
+          </form>
         </section>
       )}
 
