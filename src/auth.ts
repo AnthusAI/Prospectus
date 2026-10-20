@@ -116,7 +116,15 @@ export async function signIn(
   window.location.assign(destination);
 }
 
-export async function finishSignIn(configuration: AuthenticationConfiguration): Promise<boolean> {
+/**
+ * Completes the Google redirect. `onSession` runs as soon as the access token is stored, so the CRM can load
+ * while a sign-in-bound Accounts confirmation finishes. Only an explicit Accounts confirmation opens Accounts
+ * or reports an Accounts error; for an ordinary sign-in a failed confirmation is retried from Accounts.
+ */
+export async function finishSignIn(
+  configuration: AuthenticationConfiguration,
+  onSession?: () => void,
+): Promise<boolean> {
   const parameters = new URLSearchParams(window.location.search);
   if (!parameters.has("code") && !parameters.has("error")) return false;
   let login: Login | null = null;
@@ -159,7 +167,9 @@ export async function finishSignIn(configuration: AuthenticationConfiguration): 
     SESSION_KEY,
     JSON.stringify({ accessToken: result.access_token, expiresAt: Date.now() + result.expires_in * 1000 }),
   );
+  onSession?.();
   if (login.accounts) {
+    const explicit = !login.accountsChallengeBoundToLoginState;
     try {
       if (!result.id_token || !configuration.accountsBffUrl)
         throw new Error("Accounts sign-in evidence is unavailable.");
@@ -171,11 +181,12 @@ export async function finishSignIn(configuration: AuthenticationConfiguration): 
         login.accountsChallengeBoundToLoginState ? login.state : undefined,
       );
     } catch {
+      if (!explicit) return true;
       window.history.replaceState({}, "", "/?view=accounts");
       throw new AccountsConfirmationError();
     }
     sessionStorage.removeItem(ACCOUNTS_CONFIRMATION_ATTEMPTED_KEY);
-    window.history.replaceState({}, "", "/?view=accounts");
+    if (explicit) window.history.replaceState({}, "", "/?view=accounts");
   }
   return true;
 }

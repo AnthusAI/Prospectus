@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "vite";
 import { chromium, expect } from "@playwright/test";
 test(
-  "Accounts UI renders loading empty error and scoped list/detail without granting actions",
+  "Accounts UI renders loading, error and confirmation, and shows no customer memberships to non-administrators",
   { skip: !process.env.PROSPECTUS_ACCOUNTS_UI },
   async () => {
     const server = await createServer({
@@ -72,7 +72,9 @@ test(
       await expect(page.getByRole("status")).toHaveText("Loading accounts…");
       mode = "empty";
       release!();
-      await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
+      await expect(page.getByRole("status")).toContainText(
+        "explicitly assigned central Accounts administrator permission",
+      );
       mode = "error";
       await page.getByRole("button", { name: "Refresh accounts" }).click();
       await expect(page.getByRole("alert")).toContainText("could not be loaded");
@@ -85,7 +87,7 @@ test(
         const style = getComputedStyle(element);
         return { border: style.borderTopWidth, padding: style.paddingLeft, minHeight: style.minHeight };
       });
-      assert.deepEqual(styles, { border: "2px", padding: "16px", minHeight: "44px" });
+      assert.deepEqual(styles, { border: "1px", padding: "14px", minHeight: "44px" });
       await expect(page.locator(".account-empty p")).toHaveCSS("user-select", "text");
       let connectCalls = 0,
         releaseConnect: (() => void) | undefined;
@@ -103,26 +105,14 @@ test(
       await expect(page.getByRole("alert")).toContainText("Google confirmation could not be completed");
       await expect(connect).toBeEnabled();
       assert.equal(connectCalls, 1);
-      for (const role of ["viewer", "admin"]) {
-        mode = role;
-        await page.getByRole("button", { name: "Refresh accounts" }).click();
-        await page.getByRole("button", { name: /Synthetic Alpha/ }).click();
-        await expect(
-          page.getByRole("heading", {
-            name: role === "admin" ? "Memberships" : "Your membership",
-            exact: true,
-          }),
-        ).toBeVisible();
-        await expect(page.getByRole("heading", { name: "Product entitlements" })).toBeVisible();
-      }
-      mode = "loading";
-      await page.getByRole("button", { name: /Synthetic Alpha/ }).click();
-      await expect(page.getByRole("status")).toHaveText("Loading account details…");
-      mode = "admin";
+      // A customer with memberships but no administrator permission sees none of them in the staff console.
+      mode = "viewer";
       await page.getByRole("button", { name: "Refresh accounts" }).click();
-      await expect(page.getByText("Select an account to see details.")).toBeVisible();
-      release!();
-      await expect(page.getByText("Select an account to see details.")).toBeVisible();
+      await expect(page.getByRole("status")).toContainText(
+        "explicitly assigned central Accounts administrator permission",
+      );
+      await expect(page.getByText("Synthetic Alpha")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "My memberships" })).toHaveCount(0);
       await page.goto(`${url}?mode=unconfigured`);
       await expect(page.getByRole("alert")).toContainText("not been configured");
       assert.deepEqual(errors, []);
@@ -196,18 +186,16 @@ test(
         });
       });
       await page.goto(`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html`);
-      await expect(page.getByRole("button", { name: "Account administration", exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
       await page.getByRole("button", { name: /Synthetic customer organization/ }).click();
       await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
-      await page.getByRole("button", { name: "My memberships", exact: true }).click();
-      await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
-      await expect(page.getByText("Synthetic customer organization")).toHaveCount(0);
-      await page.getByRole("button", { name: "Account administration", exact: true }).click();
+      await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .getByRole("button", { name: "Accounts" })
+        .click();
       await expect(page.getByRole("button", { name: /Synthetic customer organization/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: "My memberships" })).toHaveCount(0);
       mode = "error";
       await page.getByRole("button", { name: "Refresh directory" }).click();
       await expect(page.getByRole("alert")).toContainText("permission may have changed");

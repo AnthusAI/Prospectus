@@ -380,3 +380,28 @@ test("a signed challenge token is kept for the redirect and sent instead of the 
   assert.equal(resolved.challengeId, undefined);
   assert.equal(resolved.loginState, login.state);
 });
+
+test("an ordinary sign-in stores the session before Accounts confirmation and stays on the CRM", async (context) => {
+  for (const confirmation of [200, 500]) {
+    const environment = browser(context, "?code=fresh-code&state=expected");
+    environment.values.set(
+      "prospectus.login",
+      JSON.stringify({
+        state: "expected",
+        verifier: "saved",
+        accounts: { challengeId: "11111111-1111-4111-8111-111111111111", nonce: "central-nonce" },
+        accountsChallengeBoundToLoginState: true,
+      }),
+    );
+    const order: string[] = [];
+    context.mock.method(globalThis, "fetch", async (input: any) => {
+      if (String(input).includes("oauth2/token"))
+        return Response.json({ access_token: "access", id_token: "id", expires_in: 3600 });
+      order.push("resolve");
+      return new Response("{}", { status: confirmation });
+    });
+    assert.equal(await finishSignIn(bffConfiguration, () => order.push(`session:${getAccessToken()}`)), true);
+    assert.deepEqual(order, ["session:access", "resolve"]);
+    assert.equal(environment.cleaned(), "/");
+  }
+});

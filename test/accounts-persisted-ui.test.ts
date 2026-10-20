@@ -10,7 +10,7 @@ import { directoryFixture } from "../accounts/testing/directory-fixture";
 import { accountsBffHandler } from "../accounts/bff";
 import { AccountsClient, decode } from "../packages/accounts-client/src/client";
 test(
-  "browser list and owner/member detail come from real persisted canonical account responses",
+  "customers see none of their accounts in the staff console; the operator directory comes from real persisted canonical responses",
   { skip: !process.env.PROSPECTUS_ACCOUNTS_UI },
   async () => {
     const environment = await directoryFixture();
@@ -82,20 +82,15 @@ test(
         await page.goto(
           `${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html?person=${name}`,
         );
-        await page.getByRole("button", { name: /Persisted Papyrus organization/ }).click();
-        await expect(
-          page.getByRole("heading", {
-            name: name === "owner" ? "Memberships" : "Your membership",
-            exact: true,
-          }),
-        ).toBeVisible();
-        await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
+        // Customers, even account owners, see none of their accounts in the staff console.
+        await expect(page.getByRole("status")).toContainText(
+          "explicitly assigned central Accounts administrator permission",
+        );
+        await expect(page.getByText("Persisted Papyrus organization")).toHaveCount(0);
       }
       await page.goto(
         `${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html?person=outsider`,
       );
-      await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
-      await page.getByRole("button", { name: "Account administration", exact: true }).click();
       await expect(page.getByRole("status")).toContainText(
         "explicitly assigned central Accounts administrator permission",
       );
@@ -119,9 +114,10 @@ test(
       await page.getByRole("button", { name: /Persisted Papyrus organization/ }).click();
       await expect(page.getByRole("heading", { name: "Organization memberships" })).toBeVisible();
       await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "My memberships", exact: true }).click();
-      await expect(page.getByRole("status")).toContainText("do not have any SaaS accounts");
-      await page.getByRole("button", { name: "Account administration", exact: true }).click();
+      await page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .getByRole("button", { name: "Accounts" })
+        .click();
       await expect(page.getByRole("button", { name: /Persisted Papyrus organization/ })).toBeVisible();
       activeCentral = environment.handler();
       await page.getByRole("button", { name: "Refresh directory" }).click();

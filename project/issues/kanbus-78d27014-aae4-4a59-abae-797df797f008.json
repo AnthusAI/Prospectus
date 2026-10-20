@@ -1,7 +1,7 @@
 {
   "id": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
-  "title": "Anthus One customer account portal at 1.anth.us",
-  "description": "Separate customer-facing web app (new repo, own Amplify app, domain 1.anth.us) for signing up, signing in, managing accounts and members, and launching into Anthus products, backed by Prospectus as the single account service. Design: docs/accounts/ANTHUS_ONE_PORTAL.md. Blocked on Ryan's decisions listed there.",
+  "title": "Anthus One customer account portal at one.anth.us",
+  "description": "Separate customer-facing web app (new repo, own Amplify app, domain one.anth.us) for signing up, signing in, managing accounts and members, and launching into Anthus products, backed by Prospectus as the single account service. Design: docs/accounts/ANTHUS_ONE_PORTAL.md. Blocked on Ryan's decisions listed there.",
   "type": "epic",
   "status": "open",
   "priority": 2,
@@ -22,10 +22,17 @@
         "model": "claude-sonnet-5-5",
         "name": "status-handoff-2026-10-19"
       }
+    },
+    {
+      "id": "b1062eb5-2006-4604-b283-484058a8a38d",
+      "author": "home",
+      "text": "2026-10-19: Ryan confirmed the domain is one.anth.us, not 1.anth.us. Titles, descriptions and docs/accounts/ANTHUS_ONE_PORTAL.md corrected; earlier comments keep the old spelling.",
+      "created_at": "2026-10-19T21:59:30.376214Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-18T19:47:19.248911Z",
-  "updated_at": "2026-10-19T16:45:21.881982297Z",
+  "updated_at": "2026-10-19T21:59:30.376250Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

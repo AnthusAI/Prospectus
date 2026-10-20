@@ -1,17 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import {
-  Card,
-  IssueCollection,
-  IssueDetailPanel,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  type KanbanIssue,
-} from "@kanbus/ui";
+import { useCallback, useEffect, useState } from "react";
 import { AccountsView } from "./AccountsView";
 import { accountsBrowser } from "./accounts-client";
-import { ApiError, KanbusClient, type Configuration, type IssueRecord, type Query } from "./client";
+import { ApiError, KanbusClient, type Configuration, type IssueRecord } from "./client";
 import {
   AccountsConfirmationError,
   finishSignIn,
@@ -22,6 +12,10 @@ import {
   signOut,
   type AuthenticationConfiguration,
 } from "./auth";
+import { AdminShell, PAGES, pageHref, readLocation, type Page } from "./admin/Shell";
+import { PipelineView } from "./admin/PipelineView";
+import { TodayView, type TodaySummary } from "./admin/TodayView";
+import { BrandMark, Eyebrow, Unavailable, Wordmark } from "./admin/ui";
 
 const syntheticReview = import.meta.env.MODE === "synthetic-review";
 const authentication: AuthenticationConfiguration | null =
@@ -40,45 +34,72 @@ const api = new KanbusClient(
   undefined,
   syntheticReview,
 );
-import { isActiveStage, contactChanges, validateFollowUp } from "./prospect";
 const directory = accountsBrowser(import.meta.env.VITE_ACCOUNTS_BFF_URL);
-type View = "pipeline" | "followups" | "customers" | "accounts";
+
+const UNAVAILABLE_PAGES: Partial<Record<Page, string>> = {
+  engagements: "Services engagements will be tracked here, inside the account each one is for.",
+  billing:
+    "Plans, quota use and invoices for every account will appear here once Anthus One records billing.",
+  team: "Anthus staff and their CRM roles will be managed here. Roles are assigned in the identity service for now.",
+  settings: "Workspace settings for Prospectus will live here.",
+};
 
 export function App() {
   const [signedIn, setSignedIn] = useState(
     syntheticReview || (!/[?&](code|error)=/.test(window.location.search) && Boolean(getAccessToken())),
   );
+  // True while returning from Google: show progress, never the sign-in screen again.
+  const [completingSignIn, setCompletingSignIn] = useState(
+    () => Boolean(authentication) && /[?&](code|error)=/.test(window.location.search),
+  );
   const [accessDenied, setAccessDenied] = useState(false);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
-  const [records, setRecords] = useState<IssueRecord[]>([]);
-  const [selected, setSelected] = useState<IssueRecord | null>(null);
-  const [view, setView] = useState<View>(
-    new URLSearchParams(window.location.search).get("view") === "accounts" ? "accounts" : "pipeline",
-  );
-  const [layout, setLayout] = useState<"board" | "list">("board");
+  const [{ page, account }, setLocation] = useState(() => readLocation());
   const [search, setSearch] = useState("");
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [selected, setSelected] = useState<IssueRecord | null>(null);
   const [creating, setCreating] = useState(false);
+  const [focusNextAction, setFocusNextAction] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const requestSequence = useRef(0);
+  const [version, setVersion] = useState(0);
+  const [today, setToday] = useState<TodaySummary | null>(null);
+
+  const navigate = useCallback((next: Page, nextAccount: string | null = null) => {
+    window.history.pushState(null, "", pageHref(next, nextAccount));
+    setLocation({ page: next, account: nextAccount });
+    setError("");
+    setNotice("");
+    if (next !== "pipeline") {
+      setSelected(null);
+      setCreating(false);
+    }
+  }, []);
+  useEffect(() => {
+    const restore = () => setLocation(readLocation());
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  useEffect(() => {
+    document.title = `${PAGES[page].label} · Prospectus · Anthus`;
+  }, [page]);
 
   useEffect(() => {
     if (authentication)
-      void finishSignIn(authentication)
+      void finishSignIn(authentication, () => setSignedIn(true))
         .then(() => {
           setSignedIn(Boolean(getAccessToken()));
-          if (new URLSearchParams(window.location.search).get("view") === "accounts") setView("accounts");
+          setLocation(readLocation());
         })
         .catch((cause: Error) => {
           if (cause instanceof AccountsConfirmationError) {
             setSignedIn(Boolean(getAccessToken()));
-            setView("accounts");
+            navigate("accounts");
           }
           setError(cause.message);
-        });
-  }, []);
+        })
+        .finally(() => setCompletingSignIn(false));
+  }, [navigate]);
   useEffect(() => {
     if (!signedIn) return;
     void api
@@ -90,50 +111,10 @@ export function App() {
       });
   }, [signedIn]);
 
-  const query = useMemo<Query>(
-    () => ({
-      type: "prospect",
-      search,
-      limit: 100,
-      ...(view === "customers" ? { status: "customer" } : {}),
-      ...(view === "followups" && configuration
-        ? {
-            assignee: configuration.actor_id,
-            fields: [
-              {
-                field: "custom.next_follow_up_at",
-                operator: "lte" as const,
-                value: new Date().toISOString().slice(0, 10),
-              },
-            ],
-          }
-        : {}),
-    }),
-    [view, search, configuration],
-  );
-
-  const refresh = useCallback(
-    async (next?: string) => {
-      const sequence = ++requestSequence.current;
-      try {
-        const result = await api.issues({ ...query, ...(next ? { cursor: next } : {}) });
-        if (requestSequence.current !== sequence) return;
-        const issues =
-          view === "followups" && configuration
-            ? result.issues.filter((record) => isActiveStage(record.issue.status, configuration))
-            : result.issues;
-        setRecords((previous) => (next ? [...previous, ...issues] : issues));
-        setCursor(result.next_cursor);
-      } catch (cause) {
-        if (requestSequence.current === sequence) setError((cause as Error).message);
-      }
-    },
-    [query, view, configuration],
-  );
-
-  useEffect(() => {
-    if (configuration && view !== "accounts") void refresh();
-  }, [configuration, refresh, view]);
+  const reportError = useCallback((message: string) => {
+    setNotice("");
+    setError(message);
+  }, []);
 
   async function write(action: () => Promise<IssueRecord>) {
     setBusy(true);
@@ -141,16 +122,15 @@ export function App() {
     setNotice("");
     try {
       const result = await action();
-      requestSequence.current += 1;
       setSelected(result);
       setCreating(false);
-      setRecords((previous) => [...previous.filter((record) => record.issue.id !== result.issue.id), result]);
-      if (result.catalog_pending)
-        setNotice("Saved. The shared view is catching up; this record contains your latest changes.");
-      else {
-        setNotice("Saved.");
-        await refresh();
-      }
+      setFocusNextAction(false);
+      setNotice(
+        result.catalog_pending
+          ? "Saved. The shared view is catching up; this record contains your latest changes."
+          : "Saved.",
+      );
+      setVersion((value) => value + 1);
       return true;
     } catch (cause) {
       setError(
@@ -164,89 +144,38 @@ export function App() {
     }
   }
 
-  function createProspect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const fields = new FormData(event.currentTarget);
-    if (!configuration) return;
-    const custom = contactChanges(fields);
-    const problem = validateFollowUp(
-      configuration.initial_status,
-      String(fields.get("assignee")),
-      custom.next_action,
-      custom.next_follow_up_at ?? "",
-      configuration,
-    );
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    void write(() =>
-      api.create({
-        title: String(fields.get("title")),
-        type: "prospect",
-        assignee: String(fields.get("assignee")).trim(),
-        description: String(fields.get("description")),
-        custom,
-      }),
-    );
+  function openProspect(record: IssueRecord, nextStep = false) {
+    navigate("pipeline");
+    setSelected(record);
+    setCreating(false);
+    setFocusNextAction(nextStep);
+    if (nextStep) setNotice("Set the next action and follow-up date, then save changes.");
   }
 
-  function saveProspect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selected || !configuration) return;
-    const fields = new FormData(event.currentTarget);
-    const status = String(fields.get("status"));
-    const custom = contactChanges(fields, selected.issue);
-    const problem = validateFollowUp(
-      status,
-      String(fields.get("assignee")),
-      custom.next_action,
-      custom.next_follow_up_at ?? "",
-      configuration,
+  if (!signedIn && completingSignIn && !error)
+    return (
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
+        <h1>Prospectus</h1>
+        <p role="status">Signing you in…</p>
+      </SignInFrame>
     );
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    void write(() =>
-      api.update(selected.issue.id, selected.revision, {
-        status,
-        assignee: String(fields.get("assignee")).trim(),
-        custom: {
-          ...custom,
-          ...(status === "customer" &&
-          selected.issue.status !== "customer" &&
-          !selected.issue.custom?.converted_at
-            ? { converted_at: new Date().toISOString() }
-            : {}),
-        },
-      }),
-    );
-  }
-
-  function addNote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selected) return;
-    const form = event.currentTarget;
-    const text = String(new FormData(form).get("note"));
-    void write(() => api.comment(selected.issue.id, selected.revision, text)).then((saved) => {
-      if (saved) form.reset();
-    });
-  }
 
   if (!signedIn)
     return (
-      <main className="sign-in">
-        <p className="eyebrow">Anthus</p>
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
         <h1>Prospectus</h1>
-        <p>Your sales conversations, with a clear next step.</p>
+        <p>Your sales conversations and customer accounts, with a clear next step.</p>
         {error && (
-          <p role="alert" className="error">
+          <p role="alert" className="one-alert">
             {error}
           </p>
         )}
         {authentication ? (
           <button
+            type="button"
+            className="one-button primary tall"
             onClick={() => void signIn(authentication).catch((cause: Error) => setError(cause.message))}
           >
             Sign in with Google
@@ -263,358 +192,200 @@ export function App() {
               Local access token
               <input name="token" type="password" required autoComplete="off" />
             </label>
-            <button>Open local workspace</button>
+            <button className="one-button primary tall">Open local workspace</button>
           </form>
         ) : (
           <p>Workspace sign-in has not been configured.</p>
         )}
-        <small>Private workspace · Sign in with Google, then request workspace access.</small>
-      </main>
+        {!authentication && import.meta.env.DEV ? (
+          <small>
+            Local preview · Google sign-in is off here. Paste the token that npm run preview:local wrote to
+            local-data/review-token.txt.
+          </small>
+        ) : (
+          <small>Private workspace · Sign in with Google, then request workspace access.</small>
+        )}
+      </SignInFrame>
     );
 
-  if (accessDenied && view !== "accounts")
+  // The admin console is for Anthus staff only: without CRM access, nothing of it is shown.
+  if (accessDenied)
     return (
-      <main className="sign-in">
-        <p className="eyebrow">Anthus · Prospectus</p>
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
         <h1>Workspace access pending</h1>
-        <p>You are signed in. An administrator must assign workspace access before you can view prospects.</p>
+        <p>
+          You are signed in. Prospectus is the Anthus staff console; an administrator must assign workspace
+          access before you can use it.
+        </p>
         <p>If access was just assigned, refresh your sign-in to load the new permissions.</p>
         {authentication && (
           <button
+            type="button"
+            className="one-button primary tall"
             onClick={() => void signIn(authentication).catch((cause: Error) => setError(cause.message))}
           >
             Refresh access
           </button>
         )}
-        <button onClick={() => setView("accounts")}>View SaaS accounts</button>
-        <button className="quiet" onClick={() => signOut(authentication)}>
+        <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
           Sign out
         </button>
-      </main>
+      </SignInFrame>
     );
 
-  return (
-    <Tabs
-      value={view}
-      onValueChange={(value) => {
-        setView(value as View);
-        setSelected(null);
-      }}
-      className="application kb-theme-organizer"
-    >
-      {syntheticReview && (
-        <p className="demo-notice">
-          <strong>LAN synthetic review only.</strong> Made-up .invalid contacts only. No email, accounts, or
-          production records.
-        </p>
-      )}
-      <header>
-        <div>
-          <p className="eyebrow">Anthus</p>
-          <h1>Prospectus</h1>
-        </div>
-        <div className="header-actions">
-          {syntheticReview ? (
-            <a href="/request-demo">Synthetic inquiry form</a>
-          ) : (
-            <button className="quiet" onClick={() => signOut(authentication)}>
-              Sign out
-            </button>
-          )}
-          {view !== "accounts" && (
-            <button
-              onClick={() => {
-                setCreating(true);
-                setSelected(null);
-              }}
-            >
-              New prospect
-            </button>
-          )}
-        </div>
-      </header>
+  if (!configuration)
+    return (
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
+        <h1>Prospectus</h1>
+        {error ? (
+          <p role="alert" className="one-alert">
+            {error}
+          </p>
+        ) : (
+          <p role="status">Checking workspace access…</p>
+        )}
+        <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
+          Sign out
+        </button>
+      </SignInFrame>
+    );
 
-      <div className="toolbar">
-        <TabsList aria-label="Workspace views">
-          {(
-            [
-              ["pipeline", "Pipeline"],
-              ["followups", "My due follow-ups"],
-              ["customers", "Customers"],
-              ["accounts", "Accounts"],
-            ] as const
-          ).map(([key, label]) => (
-            <TabsTrigger key={key} value={key}>
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {view !== "accounts" && (
-          <div className="filters">
-            <input
-              type="search"
-              aria-label="Search prospects"
-              placeholder="Search conversations"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <select
-              aria-label="Layout"
-              value={layout}
-              onChange={(event) => setLayout(event.target.value as "board" | "list")}
-            >
-              <option value="board">Board</option>
-              <option value="list">List</option>
-            </select>
-            <button className="quiet" onClick={() => void refresh()}>
-              Refresh
-            </button>
+  const person = configuration.actor_id;
+  return (
+    <AdminShell
+      page={page}
+      onNavigate={(next) => navigate(next)}
+      counts={today ? { today: { value: today.due, alert: today.overdue > 0 } } : {}}
+      search={search}
+      onSearch={(value) => {
+        setSearch(value);
+        if (page === "today" || UNAVAILABLE_PAGES[page]) navigate("pipeline");
+      }}
+      searchPlaceholder={page === "accounts" ? "Search accounts" : "Search prospects"}
+      onNewProspect={() => {
+        navigate("pipeline");
+        setSelected(null);
+        setCreating(true);
+      }}
+      person={person}
+      onSignOut={syntheticReview ? undefined : () => signOut(authentication)}
+      banner={
+        syntheticReview && (
+          <p className="one-demo">
+            <strong>LAN synthetic review only.</strong> Made-up .invalid contacts only. No email, accounts, or
+            production records. <a href="/request-demo">Synthetic inquiry form</a>
+          </p>
+        )
+      }
+    >
+      <div style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {page !== "accounts" && (error || notice) && (
+          <div style={{ padding: "16px 28px 0" }}>
+            {error ? (
+              <div role="alert" className="one-alert">
+                <span>{error}</span>
+                {selected && (
+                  <button
+                    type="button"
+                    className="one-button small"
+                    onClick={() =>
+                      void api.issue(selected.issue.id).then((record) => {
+                        setSelected(record);
+                        setError("");
+                      })
+                    }
+                  >
+                    Reload latest record
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p role="status" className="one-status notice">
+                {notice}
+              </p>
+            )}
           </div>
         )}
-      </div>
-      {view !== "accounts" && error && (
-        <div role="alert" className="error">
-          {error}
-          {selected && (
-            <button
-              className="quiet"
-              onClick={() =>
-                void api.issue(selected.issue.id).then((record) => {
-                  setSelected(record);
-                  setError("");
-                })
-              }
-            >
-              Reload latest record
-            </button>
-          )}
-        </div>
-      )}
-      {view !== "accounts" && notice && (
-        <p role="status" className="notice">
-          {notice}
-        </p>
-      )}
-      {view === "accounts" ? (
-        <TabsContent value="accounts">
+        {page === "accounts" ? (
           <AccountsView
             client={directory}
+            search={search}
+            account={account}
+            onAccountChange={(id) => navigate("accounts", id)}
             automaticConfirmationAllowed={() => !hasAttemptedAccountsConfirmation()}
             onConnect={async () => {
               if (!authentication) throw new Error("Sign-in is not configured.");
               await signIn(authentication, await directory.challenge());
             }}
           />
-        </TabsContent>
-      ) : (
-        <TabsContent value={view} asChild>
-          <main className="workspace">
-            <section className="collection" aria-label="Prospect workspace">
-              {configuration ? (
-                <IssueCollection
-                  issues={records.map((record) => record.issue)}
-                  config={configuration}
-                  query={query}
-                  view={layout}
-                  selectedIssueId={selected?.issue.id}
-                  onSelectIssue={(issue: KanbanIssue) => {
-                    setSelected(records.find((record) => record.issue.id === issue.id) ?? null);
-                    setCreating(false);
-                  }}
-                  initialScroll="start"
-                  detailOpen={Boolean(selected || creating)}
-                  columnStateKey={`prospectus:anthus:${configuration.actor_id}:pipeline`}
-                  emptyMessage="No prospects match this view."
-                />
-              ) : (
-                <p>Loading workspace…</p>
-              )}
-              {cursor && <button onClick={() => void refresh(cursor)}>Load more</button>}
-            </section>
-            {creating && (
-              <aside>
-                <Card className="prospect-panel">
-                  <div className="panel-heading">
-                    <h2>New prospect</h2>
-                    <button className="quiet" onClick={() => setCreating(false)}>
-                      Close
-                    </button>
-                  </div>
-                  <form onSubmit={createProspect}>
-                    <fieldset disabled={busy}>
-                      <label>
-                        Name
-                        <input name="title" required maxLength={250} />
-                      </label>
-                      <label>
-                        Company
-                        <input name="company" />
-                      </label>
-                      <label>
-                        Email
-                        <input name="email" type="email" />
-                      </label>
-                      <label>
-                        Owner
-                        <input name="assignee" defaultValue={configuration?.actor_id} required />
-                      </label>
-                      <label>
-                        Next action
-                        <input name="next_action" defaultValue="Follow up" required maxLength={250} />
-                      </label>
-                      <label>
-                        Next follow-up
-                        <input name="followup" type="date" required />
-                      </label>
-                      <label>
-                        Conversation
-                        <textarea name="description" rows={4} />
-                      </label>
-                      <button disabled={busy}>{busy ? "Saving…" : "Create prospect"}</button>
-                    </fieldset>
-                  </form>
-                </Card>
-              </aside>
-            )}
-            {selected && configuration && (
-              <aside key={`${selected.issue.id}-${selected.revision}`}>
-                <IssueDetailPanel
-                  issue={selected.issue}
-                  onClose={() => setSelected(null)}
-                  className="prospect-panel"
-                  fields={[
-                    { label: "Company", value: String(selected.issue.custom?.company ?? "") },
-                    { label: "Contact", value: String(selected.issue.custom?.contact_email ?? "") },
-                  ]}
-                >
-                  <form onSubmit={saveProspect}>
-                    <fieldset disabled={busy}>
-                      <label>
-                        Company
-                        <input
-                          name="company"
-                          defaultValue={String(selected.issue.custom?.company ?? "")}
-                          maxLength={150}
-                        />
-                      </label>
-                      <label>
-                        Email
-                        <input
-                          name="email"
-                          type="email"
-                          defaultValue={String(selected.issue.custom?.contact_email ?? "")}
-                          maxLength={254}
-                        />
-                      </label>
-                      <label>
-                        Stage
-                        <select name="status" defaultValue={selected.issue.status}>
-                          {configuration.statuses
-                            .filter(
-                              (status) =>
-                                status.key === selected.issue.status ||
-                                (configuration.workflows?.prospect ?? configuration.workflows?.default)?.[
-                                  selected.issue.status
-                                ]?.includes(status.key),
-                            )
-                            .map((status) => (
-                              <option key={status.key} value={status.key}>
-                                {status.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <label>
-                        Owner
-                        <input name="assignee" defaultValue={selected.issue.assignee} required />
-                      </label>
-                      <label>
-                        Next action
-                        <input
-                          name="next_action"
-                          defaultValue={String(selected.issue.custom?.next_action ?? "")}
-                          maxLength={250}
-                        />
-                      </label>
-                      <label>
-                        Next follow-up
-                        <input
-                          name="followup"
-                          type="date"
-                          defaultValue={String(selected.issue.custom?.next_follow_up_at ?? "")}
-                        />
-                      </label>
-                      <button disabled={busy}>Save changes</button>
-                    </fieldset>
-                  </form>
-                  <InquiryHistory custom={selected.issue.custom} />
-                  <h3>Conversation</h3>
-                  <ol className="notes">
-                    {selected.issue.comments?.map((comment, index) => (
-                      <li key={comment.id ?? index}>
-                        <p>{comment.text}</p>
-                        <small>
-                          {comment.author} · {new Date(comment.created_at).toLocaleString()}
-                        </small>
-                      </li>
-                    ))}
-                  </ol>
-                  <form onSubmit={addNote}>
-                    <label>
-                      Add a note
-                      <textarea name="note" rows={3} required />
-                    </label>
-                    <button disabled={busy}>Add note</button>
-                  </form>
-                </IssueDetailPanel>
-              </aside>
-            )}
+        ) : UNAVAILABLE_PAGES[page] ? (
+          <main className="one-main narrow" aria-label={PAGES[page].label}>
+            <div className="one-pagehead">
+              <div>
+                <Eyebrow>
+                  •••••• {PAGES[page].group} / {PAGES[page].label}
+                </Eyebrow>
+                <h1>{PAGES[page].label}</h1>
+              </div>
+            </div>
+            <Unavailable title="Not yet available">
+              <span>{UNAVAILABLE_PAGES[page]}</span>
+            </Unavailable>
           </main>
-        </TabsContent>
-      )}
-      <footer>Prospectus · Powered by Kanbus</footer>
-    </Tabs>
+        ) : page === "today" ? (
+          <TodayView
+            api={api}
+            configuration={configuration}
+            version={version}
+            write={write}
+            busy={busy}
+            onOpen={(record) => openProspect(record)}
+            onComplete={(record) => openProspect(record, true)}
+            onNavigatePipeline={() => navigate("pipeline")}
+            onNavigateAccounts={() => navigate("accounts")}
+            onSummary={setToday}
+            onError={reportError}
+          />
+        ) : (
+          <PipelineView
+            api={api}
+            configuration={configuration}
+            version={version}
+            search={search}
+            selected={selected}
+            onSelect={(record) => {
+              setSelected(record);
+              setFocusNextAction(false);
+            }}
+            creating={creating}
+            onCreating={setCreating}
+            busy={busy}
+            write={write}
+            onError={reportError}
+            focusNextAction={focusNextAction}
+          />
+        )}
+      </div>
+    </AdminShell>
   );
 }
 
-function InquiryHistory({ custom }: { custom?: Record<string, unknown> }) {
-  const inquiries = Array.isArray(custom?.inquiries)
-    ? custom.inquiries.filter((item): item is Record<string, unknown> =>
-        Boolean(item && typeof item === "object"),
-      )
-    : [];
-  if (!inquiries.length) return null;
+function SignInFrame({ children }: { children: React.ReactNode }) {
   return (
-    <section aria-label="Website inquiries">
-      <h3>Website inquiries</h3>
-      <ol className="notes">
-        {inquiries.map((inquiry, index) => {
-          const source =
-            inquiry.source && typeof inquiry.source === "object"
-              ? (inquiry.source as Record<string, unknown>)
-              : {};
-          const campaign =
-            source.campaign && typeof source.campaign === "object"
-              ? (source.campaign as Record<string, unknown>)
-              : {};
-          return (
-            <li key={String(inquiry.id ?? index)}>
-              <p>{String(inquiry.message ?? "")}</p>
-              <small>
-                {String(inquiry.name ?? "")} · {String(inquiry.received_at ?? "")}
-                <br />
-                Source: {String(source.site_id ?? "Unknown")} / {String(source.form_id ?? "")}
-                <br />
-                {Object.entries(campaign)
-                  .map(([key, value]) => `${key}: ${String(value)}`)
-                  .join(" · ")}
-                <br />
-                Marketing opt-in: {inquiry.marketing_opt_in === true ? "Recorded" : "Not recorded"}
-              </small>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+    <div className="one one-signin">
+      <div className="one-stripe" aria-hidden="true" />
+      <header className="one-header">
+        <span className="one-brand">
+          <BrandMark />
+          <Wordmark />
+        </span>
+        <span className="one-tag">ADMIN · PROSPECTUS</span>
+      </header>
+      <div className="one-signin-body">
+        <main className="one-signin-card sign-in">{children}</main>
+      </div>
+    </div>
   );
 }
