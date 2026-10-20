@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-f92a6667-336d-4ad3-83ab-263766f50cc2",
+  "title": "[Anthus-One] Repo README is a placeholder and the repo is empty",
+  "description": "**Problem**\nThe AnthusAI/Anthus-One repo is empty: its README is a 72-byte placeholder with the title and a one-line description, and there is no code or docs. A visitor to the repo learns nothing about what Anthus One is or its status.\n\n**Evidence**\n- https://github.com/AnthusAI/Anthus-One README: \"# Anthus-One / Anthus One: unified account portal for Anthus AI Solutions\" and nothing else.\n- The design lives in the Prospectus repo at docs/accounts/ANTHUS_ONE_PORTAL.md.\n\n**Fix**\nWrite a README that says what Anthus One is, its status (planned or built), and links to the design doc; or archive/make private the repo until work starts.\n\n**How to verify**\n`gh api repos/AnthusAI/Anthus-One/readme --jq .size` returns more than 500 bytes, or the repo is archived/private.\n\nSource: Anthus repo audit, 2026-10-20.",
+  "type": "bug",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-20T04:28:51.454507Z",
+  "updated_at": "2026-10-20T04:28:51.454525Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude-opus-5-5",
+    "name": "audit-filing"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
