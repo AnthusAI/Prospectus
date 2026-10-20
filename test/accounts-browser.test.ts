@@ -4,7 +4,7 @@ import { accountsBrowser, DirectoryError } from "../src/accounts-client";
 test("accounts browser uses bearer BFF reads and preserves actual account response fields", async () => {
   const account = {
     id: "11111111-1111-4111-8111-111111111111",
-    name: "Persisted organization",
+    name: "Persisted account",
     role: "viewer",
     products: [{ product: "cyclotron", status: "active" }],
   };
@@ -81,7 +81,7 @@ test("account creation posts only the name and request key and surfaces the serv
     async (input, init) => {
       calls.push({ url: String(input), body: JSON.parse(String(init?.body)) });
       return calls.length === 1
-        ? new Response(JSON.stringify({ message: "Enter an organization name of 2 to 80 characters." }), {
+        ? new Response(JSON.stringify({ message: "Enter an account name of 2 to 80 characters." }), {
             status: 400,
           })
         : new Response(

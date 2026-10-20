@@ -3,7 +3,7 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     Given a signed-in user opens Accounts without a configured directory service
     When the Accounts view loads or is refreshed
     Then it explicitly reports that the service is not configured
-    And it shows no invented organizations or account-management actions
+    And it shows no invented accounts or account-management actions
 
   Scenario: The staff console shows nothing to people without staff access
     Given a signed-in identity without Prospectus staff membership
@@ -34,15 +34,15 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     Given a verified canonical person with current Google session proof
     And an explicitly approved accounts:admin:read grant for that exact product, issuer and subject
     When they open Account administration
-    Then they can read all central organizations, entitlements and memberships
-    And no organization membership or product entitlement is granted to them
+    Then they can read all central accounts, entitlements and memberships
+    And no account membership or product entitlement is granted to them
     And the staff console offers no personal memberships view
 
   Scenario: Operator access is inactive without an approved grant
     Given a CRM administrator or account owner without a central operator grant
-    When they request the operator list or organization detail
+    When they request the operator list or account detail
     Then access is denied
-    And no organizations or memberships are disclosed
+    And no accounts or memberships are disclosed
     When an operator's grant is removed or their current identity proof is absent
     Then operator reads are denied
 
@@ -104,18 +104,18 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     Then the BFF forwards exactly the token and the login state
     And a request carrying both a challenge ID and a token is rejected
 
-  Scenario: A signed-in person creates an organization they own
+  Scenario: A signed-in person creates an account they own
     Given a signed-in person with a confirmed Accounts session
-    When they submit a trimmed organization name of 2 to 80 characters
-    Then the BFF creates the organization with that person as its only owner
+    When they submit a trimmed account name of 2 to 80 characters
+    Then the BFF creates the account with that person as its only owner
     And no product beyond the directory is turned on for it
-    And the Accounts page lists the new organization after the submit
+    And the Accounts page lists the new account after the submit
     When the same submit is repeated with the same request key
-    Then the same organization is returned and no second one is created
+    Then the same account is returned and no second one is created
     When the same request key is used with a different name
     Then the request is rejected as a conflict
 
-  Scenario: Organization creation accepts nothing but a name and a request key
+  Scenario: Account creation accepts nothing but a name and a request key
     Given a signed-in person
     When a create request is unauthenticated, from another origin, too short, too long or carries a role or product
     Then it is rejected before the account service is called

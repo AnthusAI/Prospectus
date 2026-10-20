@@ -207,7 +207,7 @@ export class AccountsPlane extends Construct {
       api.arnForExecuteApi("GET", "/v1/account-directory/*", "api"),
       api.arnForExecuteApi("POST", "/v1/identities/google/challenge", "api"),
       api.arnForExecuteApi("POST", "/v1/identities/google/resolve", "api"),
-      // Self-service organization creation: exactly this path, never /v1/accounts/*.
+      // Self-service account creation: exactly this path, never /v1/accounts/*.
       api.arnForExecuteApi("POST", "/v1/accounts", "api"),
     ];
     bffRole.addToPolicy(new iam.PolicyStatement({ actions: ["execute-api:Invoke"], resources: invoke }));

@@ -39,7 +39,7 @@ The Kanbus API requires a verified Cognito JWT from the Google-only browser clie
 
 Decisions recorded by Ryan on 2026-10-17:
 
-- **One account, per-product entitlements.** An account is one organization. Its document carries the memberships and a set of product entitlements, so one organization has a single account with a per-product on/off state rather than a separate account per product. An app sees only the accounts entitled to it, and membership in an account entitled to Cyclotron is Cyclotron Lab access.
+- **One account, per-product entitlements.** An account is the one place a customer exists. Its document carries the memberships and a set of product entitlements, so each customer has a single account with a per-product on/off state rather than a separate account per product. An app sees only the accounts entitled to it, and membership in an account entitled to Cyclotron is Cyclotron Lab access.
 - **Operators grant products.** Only reviewed operators can turn a product on or off for an account. An account owner cannot self-grant a product. Operator authority comes from `accounts/operator-grants.json` (see [SECURITY.md](SECURITY.md#operator-access)).
 - **Roles live in Prospectus.** Each membership has a role of `owner`, `admin`, `member` or `viewer`. Apps own permissions on their own objects, keyed by Prospectus person and account IDs, and never exceed the Prospectus role. A new cross-app role such as editor or publisher is added to Prospectus, not invented in an app.
 - **Prospectus is the single account service.** The hosted Papyrus newsroom sites, Cyclotron Lab and Papyrus site cutovers all ask Prospectus for memberships, roles and Lab access. No site keeps its own account or membership tables. Each Papyrus site keeps its own Google project and OAuth client for sign-in only.
@@ -98,7 +98,7 @@ All are reached with SigV4 from a registered role and are restricted by both the
 
 The CRM host exposes JWT-protected routes under `/api/saas`: `GET /accounts`, `GET /accounts/{id}`, `GET /operator/accounts`, `GET /operator/accounts/{id}`, `POST /identity/challenge` and `POST /identity/resolve`. The one exception is `POST /identity/login-challenge`, which has no JWT authorizer because it runs before sign-in (see Sign-in flow). Only the server signs central requests; the browser bundle contains no AWS signing code. POST routes require the configured browser origin. The deployment output `AccountsBffUrl` supplies `VITE_ACCOUNTS_BFF_URL`; without it the Accounts view says the service is not configured instead of showing an empty directory.
 
-The Accounts view exists separately from prospects. Any signed-in person can open it, it never grants CRM access, and it shows distinct states for unknown identity, empty list, loading, unconfigured and failure. There are no demo organizations.
+The Accounts view exists separately from prospects. Any signed-in person can open it, it never grants CRM access, and it shows distinct states for unknown identity, empty list, loading, unconfigured and failure. There are no demo accounts.
 
 ## Sign-in flow
 

@@ -9,7 +9,7 @@ import { VirtuusIdentityFiles, VirtuusAccountFiles } from "./identity-files";
 import { accountsBffHandler } from "./bff";
 import { FakeChallengeSigner } from "./testing/fake-challenge-signer";
 import { AccountsClient, decode } from "../packages/accounts-client/src/client";
-test("canonical directory filters organizations by membership, never CRM admin or product alone", async () => {
+test("canonical directory filters accounts by membership, never CRM admin or product alone", async () => {
   const environment = await directoryFixture();
   try {
     const request = (actor: typeof environment.ownerDirectory, path: string) =>
@@ -89,7 +89,7 @@ test("owner and admin see memberships; members and viewers see only themselves; 
           )
         ).body,
       ).account.name,
-      "Persisted Papyrus organization",
+      "Persisted Papyrus account",
     );
     await environment.service.setMembership(
       environment.owner.context,
@@ -210,7 +210,7 @@ test("JWT BFF returns actual persisted accounts and rejects browser authority or
     await rm(environment.root, { recursive: true, force: true });
   }
 });
-test("BFF creates organizations for the signed-in caller, once per request key", async () => {
+test("BFF creates accounts for the signed-in caller, once per request key", async () => {
   const environment = await directoryFixture();
   let forwarded = 0;
   try {
@@ -273,14 +273,14 @@ test("BFF creates organizations for the signed-in caller, once per request key",
       environment.account.id,
     ); // GET still works
 
-    // Submitting the same key again returns the same organization and creates nothing new.
+    // Submitting the same key again returns the same account and creates nothing new.
     const repeated = JSON.parse((await post({ name: "Data Parade", requestKey: key })).body);
     assert.equal(repeated.account.id, account.id);
     assert.equal((await list()).accounts.length, before + 1);
-    // The same key with a different name is a conflict, not a second organization.
+    // The same key with a different name is a conflict, not a second account.
     assert.equal((await post({ name: "Distinctive Mark", requestKey: key })).statusCode, 409);
     assert.equal((await list()).accounts.length, before + 1);
-    // A new key makes a new organization.
+    // A new key makes a new account.
     assert.equal(
       (await post({ name: "Distinctive Mark", requestKey: "0b1a5e9c-4d62-4a44-8c0e-6b7d2e9f3a10" }))
         .statusCode,
@@ -478,7 +478,7 @@ test("BFF pre-sign-in challenge is public but origin-checked, digest-only and bo
     await rm(environment.root, { recursive: true, force: true });
   }
 });
-test("explicit central operator reads cross-organization records without membership or CRM-admin inheritance", async () => {
+test("explicit central operator reads cross-account records without membership or CRM-admin inheritance", async () => {
   const environment = await directoryFixture();
   try {
     const grants = [

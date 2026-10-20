@@ -6,8 +6,8 @@ import { AccountsClientError, type AccountsClient } from "../packages/accounts-c
 const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 const CREATE_ACCOUNT_PATH = "/api/saas/accounts";
-const ORGANIZATION_NAME_MINIMUM = 2;
-const ORGANIZATION_NAME_MAXIMUM = 80;
+const ACCOUNT_NAME_MINIMUM = 2;
+const ACCOUNT_NAME_MAXIMUM = 80;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const CHALLENGE_TOKEN_PATTERN = /^v1\.[a-z0-9]{1,16}\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
@@ -52,15 +52,15 @@ const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
 const createAccountRequestRules: ValidationRule<Record<string, any>>[] = [
   rule(
     (body) => Object.keys(body).every((key) => ["name", "requestKey"].includes(key)),
-    "Only an organization name and request key are accepted.",
+    "Only an account name and request key are accepted.",
   ),
   rule((body) => matchesStringPattern(body.requestKey, UUID_PATTERN), "A UUID request key is required."),
   rule(
     (body) =>
       typeof body.name === "string" &&
-      body.name.trim().length >= ORGANIZATION_NAME_MINIMUM &&
-      body.name.trim().length <= ORGANIZATION_NAME_MAXIMUM,
-    `The organization name must be ${ORGANIZATION_NAME_MINIMUM} to ${ORGANIZATION_NAME_MAXIMUM} characters.`,
+      body.name.trim().length >= ACCOUNT_NAME_MINIMUM &&
+      body.name.trim().length <= ACCOUNT_NAME_MAXIMUM,
+    `The account name must be ${ACCOUNT_NAME_MINIMUM} to ${ACCOUNT_NAME_MAXIMUM} characters.`,
   ),
 ];
 
@@ -79,7 +79,7 @@ export interface AccountsBffOptions {
   client: (access?: string, id?: string) => AccountsClient;
   nowSeconds?: () => number;
 }
-/** JWT-protected account BFF: reads, identity confirmation and organization creation. Never accepts a runtime role, endpoint,
+/** JWT-protected account BFF: reads, identity confirmation and account creation. Never accepts a runtime role, endpoint,
  * subject, product, directory flag or account grant from browser input.
  */
 export function accountsBffHandler(options: AccountsBffOptions) {
@@ -123,11 +123,11 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         if (match) return jsonResponse(200, await client.directoryDetail(match[1]));
       }
       if (method === "POST" && event.rawPath === CREATE_ACCOUNT_PATH) {
-        // The only account write a customer session can make: a new organization the caller owns.
+        // The only account write a customer session can make: a new account the caller owns.
         requireRules(
           body,
           createAccountRequestRules,
-          failWith(400, "invalid_organization", "Enter an organization name of 2 to 80 characters."),
+          failWith(400, "invalid_account", "Enter an account name of 2 to 80 characters."),
         );
         try {
           const { account } = await options.client(access!).create(body.name.trim(), body.requestKey);
@@ -149,8 +149,7 @@ export function accountsBffHandler(options: AccountsBffOptions) {
               error.code,
               "That request was already used for a different name. Reload and try again.",
             );
-          if (error.status === 400)
-            fail(400, error.code, "Enter an organization name of 2 to 80 characters.");
+          if (error.status === 400) fail(400, error.code, "Enter an account name of 2 to 80 characters.");
           throw error;
         }
       }

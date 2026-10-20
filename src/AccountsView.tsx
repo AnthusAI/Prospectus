@@ -13,7 +13,7 @@ import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./admin/ui";
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
 
 /**
- * The staff organization directory. It requires the central Accounts administrator permission, which its
+ * The staff account directory. It requires the central Accounts administrator permission, which its
  * transport enforces independently. Customers see their own accounts in the Anthus One portal, never here.
  */
 export function AccountsView({
@@ -56,11 +56,11 @@ export function AccountsView({
   // One request key per distinct submission: a retry of the same name reuses it, so it can never create twice.
   const attempt = useRef<{ name: string; key: string } | null>(null);
 
-  async function createOrganization() {
+  async function createAccount() {
     const name = newName.trim();
     if (creating) return;
     if (name.length < 2 || name.length > 80) {
-      setCreateError("Enter an organization name of 2 to 80 characters.");
+      setCreateError("Enter an account name of 2 to 80 characters.");
       return;
     }
     if (attempt.current?.name !== name) attempt.current = { name, key: crypto.randomUUID() };
@@ -75,7 +75,7 @@ export function AccountsView({
       setReload((value) => value + 1);
       setOperatorReload((value) => value + 1);
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "The organization could not be created.");
+      setCreateError(error instanceof Error ? error.message : "The account could not be created.");
     } finally {
       setCreating(false);
     }
@@ -169,7 +169,7 @@ export function AccountsView({
       .catch(
         () =>
           sequence === request.current &&
-          setDetailError("Organization details are unavailable or administrator access has changed."),
+          setDetailError("Account details are unavailable or administrator access has changed."),
       )
       .finally(() => sequence === request.current && setDetailLoading(false));
   }, [account, client, operatorAllowed]);
@@ -211,8 +211,8 @@ export function AccountsView({
           <Eyebrow>•••••• Serve / Accounts</Eyebrow>
           <h1>Accounts</h1>
           <p>
-            Customer organizations on Anthus One, with their memberships and app entitlements. These are
-            separate from prospects and contacts.
+            Customer accounts on Anthus One, with their memberships and app entitlements. These are separate
+            from prospects and contacts.
           </p>
         </div>
         <div className="one-toolbar">
@@ -248,8 +248,8 @@ export function AccountsView({
           <h2>Finish signing in to Accounts</h2>
           <p>
             You are signed in to Prospectus. Confirm this Google sign-in to check your Accounts administrator
-            permission. A new sign-in session requires confirmation again. This does not create an
-            organization or grant access.
+            permission. A new sign-in session requires confirmation again. This does not create an account or
+            grant access.
           </p>
           <button
             type="button"
@@ -264,26 +264,27 @@ export function AccountsView({
       )}
 
       {data?.person && (
-        <section className="one-card cool" aria-labelledby="create-organization">
+        <section className="one-card cool" aria-labelledby="create-account">
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void createOrganization();
+              void createAccount();
             }}
           >
-            <h2 id="create-organization">Create organization</h2>
-            <label htmlFor="new-organization-name">Organization name</label>{" "}
+            <h2 id="create-account">Create account</h2>
+            <label htmlFor="new-account-name">Account name</label>{" "}
             <input
-              id="new-organization-name"
+              id="new-account-name"
               type="text"
               value={newName}
               maxLength={80}
+              placeholder="For example, Data Parade"
               autoComplete="off"
               disabled={creating}
               onChange={(event) => setNewName(event.target.value)}
             />{" "}
-            <button type="submit" className="one-button primary" disabled={creating || !newName.trim()}>
-              {creating ? "Creating…" : "Create organization"}
+            <button type="submit" className="one-button primary" disabled={creating}>
+              {creating ? "Creating…" : "Create account"}
             </button>
             <p className="one-muted">
               You become the owner. No apps are turned on until an operator grants them.
@@ -326,14 +327,14 @@ export function AccountsView({
               </button>
             ))}
           </div>
-          {operatorLoading && <p role="status">Loading organization directory…</p>}
+          {operatorLoading && <p role="status">Loading account directory…</p>}
           {operatorError && (
             <p role="alert" className="one-alert">
               {operatorError}
             </p>
           )}
           {operator?.accounts.length === 0 && (
-            <p role="status">No organizations have been created in the central account directory.</p>
+            <p role="status">No accounts have been created in the central account directory.</p>
           )}
           {rows.length > 0 && (
             <>
@@ -519,7 +520,7 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
           <section className="one-card strong" aria-labelledby="members-heading">
             <div className="one-section-head">
               <h2 id="members-heading" className="small">
-                Organization memberships
+                Account memberships
               </h2>
               <span>{activeMembers.length} active</span>
             </div>
@@ -572,7 +573,7 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
             </dl>
             <p className="one-note">
               You’re viewing as Anthus staff. Administrator access is read-only and does not make you a member
-              of this organization.
+              of this account.
             </p>
           </section>
         </aside>
