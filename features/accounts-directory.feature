@@ -78,6 +78,13 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     And the login completion stores the session and then confirms Accounts with the original login state
     And no second Google login is needed to open Accounts
 
+  Scenario: Returning from Google never shows the sign-in screen again
+    Given I have just signed in with Google
+    When the browser returns to the application
+    Then it shows that sign-in is finishing until the session is stored
+    And the workspace loads as soon as the session is stored, without waiting for the Accounts confirmation
+    And an ordinary sign-in stays on the workspace whether that confirmation succeeds or fails
+
   Scenario: Sign-in still works when the login challenge cannot be issued
     Given the login-challenge route is throttled or unavailable
     When I choose Sign in

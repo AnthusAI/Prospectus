@@ -48,6 +48,10 @@ export function App() {
   const [signedIn, setSignedIn] = useState(
     syntheticReview || (!/[?&](code|error)=/.test(window.location.search) && Boolean(getAccessToken())),
   );
+  // True while returning from Google: show progress, never the sign-in screen again.
+  const [completingSignIn, setCompletingSignIn] = useState(
+    () => Boolean(authentication) && /[?&](code|error)=/.test(window.location.search),
+  );
   const [accessDenied, setAccessDenied] = useState(false);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [{ page, account }, setLocation] = useState(() => readLocation());
@@ -82,7 +86,7 @@ export function App() {
 
   useEffect(() => {
     if (authentication)
-      void finishSignIn(authentication)
+      void finishSignIn(authentication, () => setSignedIn(true))
         .then(() => {
           setSignedIn(Boolean(getAccessToken()));
           setLocation(readLocation());
@@ -93,7 +97,8 @@ export function App() {
             navigate("accounts");
           }
           setError(cause.message);
-        });
+        })
+        .finally(() => setCompletingSignIn(false));
   }, [navigate]);
   useEffect(() => {
     if (!signedIn) return;
@@ -146,6 +151,15 @@ export function App() {
     setFocusNextAction(nextStep);
     if (nextStep) setNotice("Set the next action and follow-up date, then save changes.");
   }
+
+  if (!signedIn && completingSignIn && !error)
+    return (
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
+        <h1>Prospectus</h1>
+        <p role="status">Signing you in…</p>
+      </SignInFrame>
+    );
 
   if (!signedIn)
     return (
