@@ -5,11 +5,12 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     Then it explicitly reports that the service is not configured
     And it shows no invented organizations or account-management actions
 
-  Scenario: CRM membership is separate from SaaS account access
+  Scenario: The staff console shows nothing to people without staff access
     Given a signed-in identity without Prospectus staff membership
-    When the user opens the Accounts section
-    Then no CRM issue listing or prospect controls are exposed
-    And the directory requires its own authorized service response
+    When they open prospectus.anth.us
+    Then they see only the access-pending screen
+    And no admin navigation, CRM issue listing, prospect controls or Accounts view is exposed
+    And customers manage their own accounts in the Anthus One portal, not here
 
   Scenario: Account detail responses cannot replace a newer refreshed list
     Given an account detail request is still pending
@@ -20,7 +21,7 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
   Scenario: Confirmation controls explain the current sign-in and remain usable
     Given I am signed in to Prospectus without confirmation for this Accounts session
     When I open Accounts
-    Then I see that Google confirmation loads my existing memberships
+    Then I see that Google confirmation checks my Accounts administrator permission
     And the explanatory text can be selected
     And Refresh and Continue with Google have visible button styling
     When I start Google confirmation twice before it finishes
@@ -35,7 +36,7 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     When they open Account administration
     Then they can read all central organizations, entitlements and memberships
     And no organization membership or product entitlement is granted to them
-    And their My memberships view remains restricted to their own active memberships
+    And the staff console offers no personal memberships view
 
   Scenario: Operator access is inactive without an approved grant
     Given a CRM administrator or account owner without a central operator grant

@@ -24,7 +24,9 @@ test("shared column collapse survives layout switching and reload", async ({ pag
 });
 const apiOrigin = process.env.PROSPECTUS_LOCAL_API_ORIGIN ?? "http://127.0.0.1:5418";
 
-test("a signed-in identity without membership sees access pending and no CRM controls", async ({ page }) => {
+test("a signed-in identity without membership sees only access pending, never the admin console", async ({
+  page,
+}) => {
   test.skip(!token, "Run with the isolated local proof fixture.");
   const issueRequests: string[] = [];
   page.on("request", (request) => {
@@ -43,10 +45,13 @@ test("a signed-in identity without membership sees access pending and no CRM con
   await expect(page.getByRole("heading", { name: "Workspace access pending" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New prospect", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "View SaaS accounts", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Accounts", exact: true })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("The Accounts service has not been configured.");
-  await expect(page.getByRole("button", { name: "New prospect", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "View SaaS accounts" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
+  // A deep link into the console still shows only the access-pending screen.
+  await page.goto("/?view=accounts");
+  await expect(page.getByRole("heading", { name: "Workspace access pending" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Accounts", exact: true })).toHaveCount(0);
   expect(issueRequests).toEqual([]);
 });
 

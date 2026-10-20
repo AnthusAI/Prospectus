@@ -64,11 +64,18 @@ Feature: Anthus One admin workspace for Prospectus
     And plan, quota, services and Anthus owner show as not yet available
     And filters that need billing data are shown but disabled
 
-  Scenario: Members without the administrator permission see only their own accounts
+  Scenario: Staff without the administrator permission see no organizations
     Given the member lacks the central Accounts administrator permission
     When the member opens Accounts
-    Then only accounts the member belongs to are listed
+    Then the page says the central administrator permission is required
+    And no organization, including ones the member belongs to, is listed
     And CRM administrator status does not grant the organization directory
+
+  Scenario: People without staff access never see the admin console
+    Given a signed-in person who is not a member of the Prospectus workspace
+    When they open the application
+    Then they see only the access-pending screen with refresh and sign-out
+    And no admin navigation, page or accounts view is rendered, even before access is known
 
   Scenario: An account page shows entitlements, members and its record
     Given the member holds the central Accounts administrator permission

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountsBrowser } from "./accounts-client";
 import { appForProduct } from "./apps";
 import type {
-  DirectoryDetail,
   DirectoryList,
   DirectoryMembership,
   OperatorDetail,
@@ -11,21 +10,11 @@ import type {
 import { initials } from "./prospect";
 import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./admin/ui";
 
-type Scope = "memberships" | "operator";
-type Detail = (DirectoryDetail & { scope: "memberships" }) | (OperatorDetail & { scope: "operator" });
-interface Row {
-  id: string;
-  name: string;
-  members: string;
-  products: DirectoryList["accounts"][number]["products"];
-  status: string;
-}
-
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
 
 /**
- * Accounts for Anthus staff. The organization directory requires the central Accounts administrator
- * permission, which its transport enforces independently; everyone else sees only their own memberships.
+ * The staff organization directory. It requires the central Accounts administrator permission, which its
+ * transport enforces independently. Customers see their own accounts in the Anthus One portal, never here.
  */
 export function AccountsView({
   client,
@@ -48,15 +37,13 @@ export function AccountsView({
   const openAccount = onAccountChange ?? setLocalAccount;
   const [data, setData] = useState<DirectoryList | null>(null),
     [operator, setOperator] = useState<OperatorList | null>(null),
-    [detail, setDetail] = useState<Detail | null>(null),
+    [detail, setDetail] = useState<OperatorDetail | null>(null),
     [loading, setLoading] = useState(true),
     [operatorLoading, setOperatorLoading] = useState(false),
     [detailLoading, setDetailLoading] = useState(false),
     [error, setError] = useState(""),
     [operatorError, setOperatorError] = useState(""),
     [detailError, setDetailError] = useState("");
-  const [scope, setScope] = useState<Scope>("memberships");
-  const scopeChosen = useRef(false);
   const request = useRef(0);
   const connectingRef = useRef(false);
   const [connecting, setConnecting] = useState(false);
@@ -90,9 +77,7 @@ export function AccountsView({
     void client
       .list()
       .then((value) => {
-        if (!current) return;
-        setData(value);
-        if (!scopeChosen.current && value.operatorAccess) setScope("operator");
+        if (current) setData(value);
       })
       .catch(() => {
         if (current)
@@ -120,7 +105,7 @@ export function AccountsView({
     let current = true;
     setOperator(null);
     setOperatorError("");
-    if (!operatorAllowed || scope !== "operator") return;
+    if (!operatorAllowed) return;
     setOperatorLoading(true);
     void client
       .operatorList()
@@ -136,10 +121,10 @@ export function AccountsView({
     return () => {
       current = false;
     };
-  }, [client, operatorAllowed, scope, operatorReload]);
+  }, [client, operatorAllowed, operatorReload]);
 
   useEffect(() => {
-    if (!account || !data?.person) {
+    if (!account || !operatorAllowed) {
       setDetail(null);
       return;
     }
@@ -147,48 +132,29 @@ export function AccountsView({
     setDetail(null);
     setDetailLoading(true);
     setDetailError("");
-    const load: Promise<Detail> =
-      scope === "operator" && operatorAllowed
-        ? client.operatorDetail(account).then((value) => ({ ...value, scope: "operator" as const }))
-        : client.detail(account).then((value) => ({ ...value, scope: "memberships" as const }));
-    void load
+    void client
+      .operatorDetail(account)
       .then((value) => sequence === request.current && setDetail(value))
       .catch(
         () =>
           sequence === request.current &&
-          setDetailError(
-            scope === "operator"
-              ? "Organization details are unavailable or administrator access has changed."
-              : "Account details are unavailable or access has changed. Refresh your accounts.",
-          ),
+          setDetailError("Organization details are unavailable or administrator access has changed."),
       )
       .finally(() => sequence === request.current && setDetailLoading(false));
-  }, [account, client, data, scope, operatorAllowed]);
+  }, [account, client, operatorAllowed]);
 
-  const rows: Row[] = useMemo(() => {
-    const all: Row[] =
-      scope === "operator"
-        ? (operator?.accounts ?? []).map((item) => ({
-            id: item.id,
-            name: item.name,
-            members: `${item.activeMembers} active ${item.activeMembers === 1 ? "member" : "members"}`,
-            products: item.products,
-            status: item.products.some((product) => product.status === "active")
-              ? "Active"
-              : "No active apps",
-          }))
-        : (data?.accounts ?? []).map((item) => ({
-            id: item.id,
-            name: item.name,
-            members: `Your role: ${item.role}`,
-            products: item.products,
-            status: item.products.some((product) => product.status === "active")
-              ? "Active"
-              : "No active apps",
-          }));
+  const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return term ? all.filter((row) => row.name.toLowerCase().includes(term)) : all;
-  }, [scope, operator, data, search]);
+    return (operator?.accounts ?? [])
+      .filter((item) => !term || item.name.toLowerCase().includes(term))
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        members: `${item.activeMembers} active ${item.activeMembers === 1 ? "member" : "members"}`,
+        products: item.products as DirectoryList["accounts"][number]["products"],
+        status: item.products.some((product) => product.status === "active") ? "Active" : "No active apps",
+      }));
+  }, [operator, search]);
 
   if (account)
     return (
@@ -206,7 +172,7 @@ export function AccountsView({
       </main>
     );
 
-  const total = scope === "operator" ? operator?.accounts.length : data?.accounts.length;
+  const total = operator?.accounts.length;
   return (
     <main className="one-main narrow accounts-workspace" aria-label="Accounts">
       <div className="one-pagehead">
@@ -227,7 +193,7 @@ export function AccountsView({
           >
             Refresh accounts
           </button>
-          {scope === "operator" && operatorAllowed && (
+          {operatorAllowed && (
             <button
               type="button"
               className="one-button"
@@ -250,8 +216,8 @@ export function AccountsView({
         <section className="one-card cool account-empty">
           <h2>Finish signing in to Accounts</h2>
           <p>
-            You are signed in to Prospectus. Confirm this Google sign-in to load your existing account
-            memberships. A new sign-in session requires confirmation again. This does not create an
+            You are signed in to Prospectus. Confirm this Google sign-in to check your Accounts administrator
+            permission. A new sign-in session requires confirmation again. This does not create an
             organization or grant access.
           </p>
           <button
@@ -266,7 +232,13 @@ export function AccountsView({
         </section>
       )}
 
-      {data?.person && (
+      {data?.person && !operatorAllowed && (
+        <p role="status" className="one-status">
+          An explicitly assigned central Accounts administrator permission is required. CRM administrator
+          status does not grant this access.
+        </p>
+      )}
+      {operatorAllowed && (
         <>
           <div className="one-stats">
             <Stat value={total === undefined ? "…" : String(total)} label="ACCOUNTS" />
@@ -274,60 +246,24 @@ export function AccountsView({
             <Stat value={null} label="IN TRIAL" note="Needs plan data" />
             <Stat value={null} label="SERVICES ENGAGEMENTS" note="Not yet recorded" hot />
           </div>
-          <div className="one-toolbar" style={{ justifyContent: "space-between" }}>
-            <div className="one-segmented" role="group" aria-label="Account views">
-              <button
-                type="button"
-                aria-pressed={scope === "operator"}
-                onClick={() => {
-                  scopeChosen.current = true;
-                  setScope("operator");
-                }}
-              >
-                Account administration
+          <div className="one-filters" role="group" aria-label="Show">
+            <button type="button" aria-pressed="true">
+              All <span>{rows.length}</span>
+            </button>
+            {UNAVAILABLE_FILTERS.map((label) => (
+              <button key={label} type="button" disabled title="Not yet available: needs billing data">
+                {label} <span>—</span>
               </button>
-              <button
-                type="button"
-                aria-pressed={scope === "memberships"}
-                onClick={() => {
-                  scopeChosen.current = true;
-                  setScope("memberships");
-                }}
-              >
-                My memberships
-              </button>
-            </div>
-            <div className="one-filters" role="group" aria-label="Show">
-              <button type="button" aria-pressed="true">
-                All <span>{rows.length}</span>
-              </button>
-              {UNAVAILABLE_FILTERS.map((label) => (
-                <button key={label} type="button" disabled title="Not yet available: needs billing data">
-                  {label} <span>—</span>
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
-
-          {scope === "operator" && !operatorAllowed && (
-            <p role="status" className="one-status">
-              An explicitly assigned central Accounts administrator permission is required. CRM administrator
-              status does not grant this access.
-            </p>
-          )}
-          {scope === "operator" && operatorLoading && <p role="status">Loading organization directory…</p>}
-          {scope === "operator" && operatorError && (
+          {operatorLoading && <p role="status">Loading organization directory…</p>}
+          {operatorError && (
             <p role="alert" className="one-alert">
               {operatorError}
             </p>
           )}
-          {scope === "operator" && operator?.accounts.length === 0 && (
+          {operator?.accounts.length === 0 && (
             <p role="status">No organizations have been created in the central account directory.</p>
-          )}
-          {scope === "memberships" && data.accounts.length === 0 && (
-            <p role="status">
-              You do not have any SaaS accounts available. Ask an existing account owner for access.
-            </p>
           )}
           {rows.length > 0 && (
             <>
@@ -403,7 +339,7 @@ export function AccountsView({
   );
 }
 
-function AccountPage({ detail }: { detail: Detail }) {
+function AccountPage({ detail }: { detail: OperatorDetail }) {
   const [copied, setCopied] = useState(false);
   const activeApps = detail.entitlements.filter((entitlement) => entitlement.status === "active").length;
   const activeMembers = detail.memberships.filter((member) => member.status === "active");
@@ -414,7 +350,6 @@ function AccountPage({ detail }: { detail: Detail }) {
     year: "numeric",
     timeZone: "UTC",
   });
-  const showMemberships = detail.scope === "operator" || detail.membershipsVisible;
   return (
     <>
       <section className="one-account-head">
@@ -423,7 +358,6 @@ function AccountPage({ detail }: { detail: Detail }) {
           <span className={`one-badge${activeApps ? " ok" : ""}`}>
             {activeApps ? "Active" : "No active apps"}
           </span>
-          {detail.scope === "memberships" && <span className="one-badge">Your role: {detail.role}</span>}
         </div>
         <h1>{detail.name}</h1>
         <span className="one-account-meta">Customer since {created}</span>
@@ -515,17 +449,10 @@ function AccountPage({ detail }: { detail: Detail }) {
           <section className="one-card strong" aria-labelledby="members-heading">
             <div className="one-section-head">
               <h2 id="members-heading" className="small">
-                {detail.scope === "operator"
-                  ? "Organization memberships"
-                  : showMemberships
-                    ? "Memberships"
-                    : "Your membership"}
+                Organization memberships
               </h2>
               <span>{activeMembers.length} active</span>
             </div>
-            {!showMemberships && (
-              <p className="one-note">Only account owners and administrators can view other memberships.</p>
-            )}
             {detail.memberships.map((member) => (
               <Member key={member.personId} member={member} />
             ))}
@@ -538,9 +465,7 @@ function AccountPage({ detail }: { detail: Detail }) {
               <dt>Anthus owner</dt>
               <dd className="one-na">Not yet available</dd>
               <dt>Account owner</dt>
-              <dd>
-                {owner ? <code>{owner.personId}</code> : showMemberships ? "None" : "Hidden for your role"}
-              </dd>
+              <dd>{owner ? <code>{owner.personId}</code> : "None"}</dd>
               <dt>Next follow-up</dt>
               <dd className="one-na">Not yet linked to the CRM</dd>
             </dl>
@@ -575,12 +500,10 @@ function AccountPage({ detail }: { detail: Detail }) {
               <dt>Record version</dt>
               <dd>{detail.revision}</dd>
             </dl>
-            {detail.scope === "operator" && (
-              <p className="one-note">
-                You’re viewing as Anthus staff. Administrator access is read-only and does not make you a
-                member of this organization.
-              </p>
-            )}
+            <p className="one-note">
+              You’re viewing as Anthus staff. Administrator access is read-only and does not make you a member
+              of this organization.
+            </p>
           </section>
         </aside>
       </div>

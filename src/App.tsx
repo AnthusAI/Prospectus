@@ -194,12 +194,16 @@ export function App() {
       </SignInFrame>
     );
 
-  if (accessDenied && page !== "accounts")
+  // The admin console is for Anthus staff only: without CRM access, nothing of it is shown.
+  if (accessDenied)
     return (
       <SignInFrame>
         <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
         <h1>Workspace access pending</h1>
-        <p>You are signed in. An administrator must assign workspace access before you can view prospects.</p>
+        <p>
+          You are signed in. Prospectus is the Anthus staff console; an administrator must assign workspace
+          access before you can use it.
+        </p>
         <p>If access was just assigned, refresh your sign-in to load the new permissions.</p>
         {authentication && (
           <button
@@ -210,17 +214,31 @@ export function App() {
             Refresh access
           </button>
         )}
-        <button type="button" className="one-button tall" onClick={() => navigate("accounts")}>
-          View SaaS accounts
-        </button>
         <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
           Sign out
         </button>
       </SignInFrame>
     );
 
-  const crm = Boolean(configuration);
-  const person = configuration?.actor_id ?? "you";
+  if (!configuration)
+    return (
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
+        <h1>Prospectus</h1>
+        {error ? (
+          <p role="alert" className="one-alert">
+            {error}
+          </p>
+        ) : (
+          <p role="status">Checking workspace access…</p>
+        )}
+        <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
+          Sign out
+        </button>
+      </SignInFrame>
+    );
+
+  const person = configuration.actor_id;
   return (
     <AdminShell
       page={page}
@@ -232,15 +250,11 @@ export function App() {
         if (page === "today" || UNAVAILABLE_PAGES[page]) navigate("pipeline");
       }}
       searchPlaceholder={page === "accounts" ? "Search accounts" : "Search prospects"}
-      onNewProspect={
-        crm
-          ? () => {
-              navigate("pipeline");
-              setSelected(null);
-              setCreating(true);
-            }
-          : undefined
-      }
+      onNewProspect={() => {
+        navigate("pipeline");
+        setSelected(null);
+        setCreating(true);
+      }}
       person={person}
       onSignOut={syntheticReview ? undefined : () => signOut(authentication)}
       banner={
@@ -305,10 +319,6 @@ export function App() {
             <Unavailable title="Not yet available">
               <span>{UNAVAILABLE_PAGES[page]}</span>
             </Unavailable>
-          </main>
-        ) : !configuration ? (
-          <main className="one-main">
-            <p role="status">Loading workspace…</p>
           </main>
         ) : page === "today" ? (
           <TodayView
