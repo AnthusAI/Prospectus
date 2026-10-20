@@ -1,10 +1,20 @@
 // Local development against the deployed Prospectus backend: real Google sign-in through the
 // deployed Cognito client, the deployed API and accounts service, and Vite's instant reload.
-// Nothing is deployed. The deployed backend accepts this origin (LOCAL_DEV_ORIGIN in infra/lib/scope.ts).
+// Nothing is deployed. The deployed backend accepts these origins (APP_ORIGINS in infra/lib/scope.ts).
+// `--portal` serves the Anthus One customer portal instead of the staff console.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { AMPLIFY_APP_ID, DEPLOYMENT_BRANCH, LOCAL_DEV_ORIGIN, TARGET_REGION } from "../infra/lib/scope";
+import {
+  AMPLIFY_APP_ID,
+  DEPLOYMENT_BRANCH,
+  LOCAL_DEV_ORIGIN,
+  PORTAL_DEV_ORIGIN,
+  TARGET_REGION,
+} from "../infra/lib/scope";
+
+const portal = process.argv.includes("--portal");
+const origin = portal ? PORTAL_DEV_ORIGIN : LOCAL_DEV_ORIGIN;
 
 const outputDirectory = resolve(".build/cloud");
 const outputs = resolve(outputDirectory, "amplify_outputs.json");
@@ -43,10 +53,18 @@ const { custom } = JSON.parse(readFileSync(outputs, "utf8")) as { custom?: Recor
 for (const key of ["ApiUrl", "UserPoolId", "ClientId", "CognitoDomainUrl"])
   if (!custom?.[key]) throw new Error(`The deployed outputs are missing ${key}. Refresh with --refresh.`);
 
-const port = new URL(LOCAL_DEV_ORIGIN).port;
+const port = new URL(origin).port;
 const vite = spawn(
   process.execPath,
-  ["node_modules/vite/bin/vite.js", "--host", "localhost", "--port", port, "--strictPort"],
+  [
+    "node_modules/vite/bin/vite.js",
+    ...(portal ? ["--config", "vite.portal.config.ts"] : []),
+    "--host",
+    "localhost",
+    "--port",
+    port,
+    "--strictPort",
+  ],
   {
     stdio: "inherit",
     env: {
@@ -57,13 +75,15 @@ const vite = spawn(
       VITE_COGNITO_USER_POOL_ID: custom!.UserPoolId,
       VITE_COGNITO_CLIENT_ID: custom!.ClientId,
       VITE_COGNITO_DOMAIN_URL: custom!.CognitoDomainUrl,
-      VITE_COGNITO_REDIRECT_URI: `${LOCAL_DEV_ORIGIN}/auth/callback`,
-      VITE_COGNITO_LOGOUT_URI: `${LOCAL_DEV_ORIGIN}/`,
+      VITE_COGNITO_REDIRECT_URI: `${origin}/auth/callback`,
+      VITE_COGNITO_LOGOUT_URI: `${origin}/`,
       VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
       VITE_INTAKE_EVALUATION_URL: "",
     },
   },
 );
-console.log(`Prospectus against the deployed backend: ${LOCAL_DEV_ORIGIN}/ (real data; edits are real)`);
+console.log(
+  `${portal ? "Anthus One portal" : "Prospectus"} against the deployed backend: ${origin}/ (real data; edits are real)`,
+);
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => vite.kill(signal));
 vite.once("exit", (code) => process.exit(code ?? 0));

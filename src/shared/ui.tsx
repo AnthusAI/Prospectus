@@ -48,6 +48,33 @@ const ICON_PATHS = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  home: (
+    <>
+      <path d="M3 11l9-7 9 7" />
+      <path d="M5 10v10h14V10" />
+    </>
+  ),
+  apps: (
+    <>
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+    </>
+  ),
+  usage: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 12V3a9 9 0 0 1 9 9z" />
+    </>
+  ),
+  keys: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 12l9-9M17 6l3 3" />
+    </>
+  ),
+  external: <path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" />,
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

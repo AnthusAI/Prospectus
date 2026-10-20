@@ -44,9 +44,8 @@ test("contact correction normalizes email while preserving inquiry and conversio
 });
 
 test("follow-ups bucket by local date and interests round-trip through the form", async () => {
-  const { followUpBucket, addDays, interestChanges, prospectInterests, initials } = await import(
-    "../src/prospect"
-  );
+  const { followUpBucket, addDays, interestChanges, prospectInterests } = await import("../src/prospect");
+  const { initials } = await import("../src/shared/initials");
   assert.equal(followUpBucket("2026-10-18", "2026-10-19"), "overdue");
   assert.equal(followUpBucket("2026-10-19", "2026-10-19"), "today");
   assert.equal(followUpBucket("2026-10-25", "2026-10-19"), "week");

@@ -15,6 +15,15 @@ export default defineConfig({
             headers: { origin: "https://prospectus.anth.us" },
           }
         : (process.env.PROSPECTUS_LOCAL_API_ORIGIN ?? "http://127.0.0.1:5418"),
+      ...(process.env.PROSPECTUS_CLOUD_API_ORIGIN
+        ? {
+            "/api/saas": {
+              target: process.env.PROSPECTUS_CLOUD_API_ORIGIN,
+              changeOrigin: true,
+              headers: { origin: "https://prospectus.anth.us" },
+            },
+          }
+        : {}),
       "/intake": process.env.PROSPECTUS_LOCAL_INTAKE_ORIGIN ?? "http://127.0.0.1:5491",
     },
   },
