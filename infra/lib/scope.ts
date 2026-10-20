@@ -20,16 +20,8 @@ export const PORTAL_DOMAIN = "one.anth.us";
 export const PORTAL_ORIGIN = `https://${PORTAL_DOMAIN}`;
 /** `npm run dev:portal` serves the portal here against the deployed backend. */
 export const PORTAL_DEV_ORIGIN = "http://localhost:5421";
-/** `npm run dev:portal -- --lan dev.one.anth.us` serves it over HTTPS on the local network for tablets and phones. */
-export const PORTAL_LAN_DEV_ORIGIN = "https://dev.one.anth.us:5422";
 /** Browser origins allowed to sign in and call the API. */
-export const APP_ORIGINS = [
-  PRODUCTION_ORIGIN,
-  LOCAL_DEV_ORIGIN,
-  PORTAL_ORIGIN,
-  PORTAL_DEV_ORIGIN,
-  PORTAL_LAN_DEV_ORIGIN,
-] as const;
+export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN] as const;
 
 export function assertDeploymentScope(scope: {
   account: string;

@@ -56,7 +56,6 @@ export function PortalApp() {
     if (!authentication) return;
     void finishSignIn(authentication, () => setSignedIn(true))
       .then(() => {
-        // The sign-in helper may leave a staff-console address; the portal always starts at Home.
         window.history.replaceState(null, "", portalHref("home", null));
         setLocation(readPortalLocation());
       })

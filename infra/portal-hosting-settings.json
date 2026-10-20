@@ -1,0 +1,15 @@
+{
+  "enableBranchAutoBuild": true,
+  "enableAutoBranchCreation": false,
+  "environmentVariables": {
+    "_CUSTOM_IMAGE": "public.ecr.aws/docker/library/node@sha256:c4d5523090a817b7aa86d2111241fdd4f66d1e27782b44160e6aa63b357ecb2d",
+    "_LIVE_UPDATES": "[]"
+  },
+  "customRules": [
+    {
+      "source": "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json)$)([^.]+$)/>",
+      "target": "/index.html",
+      "status": "200"
+    }
+  ]
+}

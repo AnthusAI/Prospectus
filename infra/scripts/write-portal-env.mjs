@@ -1,5 +1,4 @@
 import { readFileSync, writeFileSync } from "node:fs";
-// Public sign-in configuration for the Anthus One portal build; the same identifiers ship in the bundle.
 const { domain, signIn } = JSON.parse(readFileSync("infra/portal-app.json", "utf8"));
 for (const key of ["cognitoDomainUrl", "clientId", "accountsBffUrl"])
   if (typeof signIn?.[key] !== "string" || !signIn[key])

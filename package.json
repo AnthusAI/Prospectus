@@ -10,6 +10,7 @@
     "dev:portal": "node --import tsx scripts/dev-cloud.ts --portal",
     "build:portal": "vite build --config vite.portal.config.ts",
     "build": "tsc --noEmit && vite build && vite build --config vite.portal.config.ts",
+    "verify:bundles": "node scripts/verify-bundles.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts accounts/google-identity.test.ts",
     "intake:local": "node --import tsx server/local.ts",

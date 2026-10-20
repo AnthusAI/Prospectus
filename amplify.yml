@@ -13,7 +13,6 @@ backend:
         - npm ci --prefix packages/accounts-client
         - npm run typecheck
         - npm test
-        # The Anthus One portal app builds only its frontend; every backend step is Prospectus only.
         - if [ "$PROSPECTUS_APP" = "prospectus" ]; then bash infra/scripts/build-backend.sh; fi
         - if [ "$PROSPECTUS_APP" = "prospectus" ]; then node infra/scripts/build-evaluation-if-enabled.mjs; fi
         - if [ "$PROSPECTUS_APP" = "prospectus" ]; then node --import tsx accounts/build-deployment.ts; fi

@@ -32,7 +32,7 @@ The backend that Anthus One needs mostly exists: `accounts/` implements people k
 
 Decided 2026-10-19: the portal lives in the Prospectus repository as a separate application, not in a separate repository. It has its own entry page (`portal/index.html`), its own code (`src/portal/`), its own Vite config (`vite.portal.config.ts`) and its own bundle (`dist-portal/`), and it is served at `one.anth.us`, never inside the staff console at prospectus.anth.us. It shares only the account service, the sign-in helpers and the Anthus One design tokens (`src/shared/`, `src/styles.css`). `test/portal-separation.test.ts` fails if portal code reaches staff console code or the reverse. The earlier `AnthusAI/Anthus-One` repository and its shell pull request are superseded.
 
-Local development: `npm run dev:portal` serves it at http://localhost:5421 against the deployed backend with real Google sign-in. Hosting `one.anth.us` (an Amplify app or branch serving `dist-portal`, plus DNS) is not set up yet.
+Local development: `npm run dev:portal` serves it at http://localhost:5421 against the deployed backend with real Google sign-in. Hosting `one.anth.us` (an Amplify app or branch serving `dist-portal`, plus DNS) is not set up yet; when it is, apply `infra/portal-hosting-settings.json` (single-page-app rewrite so `/auth/callback` serves `index.html`). Blocking go-live: the portal needs its own Cognito app client and Google OAuth client (kanbus-73f7b2), because the shared client's tokens are valid for the CRM API. `npm run verify:bundles` (CI, after `npm run build`) fails if either bundle contains the other application's modules.
 
 ### Sign-in
 

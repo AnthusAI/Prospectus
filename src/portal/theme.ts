@@ -17,9 +17,7 @@ export function usePortalTheme(): [PortalTheme, (theme: PortalTheme) => void] {
     try {
       if (theme === "system") localStorage.removeItem(THEME_KEY);
       else localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      /* The preference simply is not remembered. */
-    }
+    } catch {}
   }, [theme]);
   return [theme, setTheme];
 }

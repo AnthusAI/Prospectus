@@ -74,3 +74,20 @@ test("the portal build deploys no backend and signs in at one.anth.us", () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("portal hosting serves client routes such as /auth/callback as index.html with 200", () => {
+  const settings = JSON.parse(readFileSync("infra/portal-hosting-settings.json", "utf8"));
+  const [rule] = settings.customRules;
+  assert.equal(settings.customRules.length, 1);
+  assert.equal(rule.target, "/index.html");
+  assert.equal(rule.status, "200");
+  const route = new RegExp(rule.source.slice(2, -2));
+  for (const path of ["/auth/callback", "/", "/workspaces/acme", "/people/ada.lovelace"])
+    assert.ok(route.test(path), path);
+  for (const path of ["/assets/portal.js", "/assets/portal.css", "/favicon.ico", "/config.json"])
+    assert.ok(!route.test(path), path);
+  assert.equal(settings.environmentVariables._LIVE_UPDATES, "[]");
+  assert.equal(settings.enableAutoBranchCreation, false);
+  const crm = JSON.parse(readFileSync("infra/hosting-settings.json", "utf8"));
+  assert.deepEqual(settings.customRules, crm.customRules, "the portal rewrite matches the CRM's");
+});

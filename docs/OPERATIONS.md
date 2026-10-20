@@ -34,8 +34,6 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421.
 
-To try the portal from a tablet or phone on the same network, `npm run dev:portal -- --lan dev.one.anth.us` serves it over HTTPS at https://dev.one.anth.us:5422 (Cognito accepts plain http only for localhost, so a network address needs HTTPS and a name). One-time setup on the developer's Mac: point `dev.one.anth.us` at the Mac's network address in the `anth.us` Route 53 zone (an A record to a private address, so it only works on that network), and issue a certificate into the ignored `.build/lan-certs/` with `lego run --accept-tos --dns route53 --domains dev.one.anth.us --path .build/lan-certs` (`AWS_PROFILE=papyrus-production`, `AWS_HOSTED_ZONE_ID` set to the `anth.us` zone). Let's Encrypt certificates last 90 days; rerun with `lego renew` to renew. Update the A record if the Mac's address changes.
-
 `npm run preview:local` remains the fully offline option with synthetic data and a local token.
 
 The Kanbus API, the shared UI package and Virtuus are pinned independently in `source-lock.json`, so a UI-only release cannot replace the deployed API. `.github/workflows/package-backend.yml` builds a reviewed backend package on demand.

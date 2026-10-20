@@ -1,6 +1,4 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-// The same source builds two Amplify apps: Prospectus (backend and staff console) and the frontend-only
-// Anthus One portal, whose app ID is recorded in infra/portal-app.json once it exists.
 const portal = JSON.parse(readFileSync("infra/portal-app.json", "utf8"));
 const isPortal = Boolean(portal.appId) && process.env.AWS_APP_ID === portal.appId;
 if (
@@ -13,7 +11,6 @@ if (
   );
 mkdirSync(".build", { recursive: true });
 if (isPortal) {
-  // The portal deploys no backend and needs no AWS credentials.
   writeFileSync(".build/deployment.env", "export PROSPECTUS_APP=portal\n");
   console.log("Verified the Anthus One portal app and main branch; building the portal frontend only.");
 } else {

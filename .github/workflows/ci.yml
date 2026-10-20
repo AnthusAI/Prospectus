@@ -39,6 +39,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run verify:bundles
       - run: npm ci --prefix infra
       - run: npm ci --prefix amplify
       - run: npm run check --prefix infra
