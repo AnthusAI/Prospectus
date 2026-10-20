@@ -28,8 +28,12 @@ for (const [name, directory] of [
     const dirty = execFileSync("git", ["-C", destination, "status", "--porcelain"], {
       encoding: "utf8",
     }).trim();
-    if (revision !== lock[name].revision || dirty)
-      throw new Error(`Existing ${directory} must be clean and match source-lock.json exactly.`);
+    if (dirty) throw new Error(`Existing ${directory} must be clean and match source-lock.json exactly.`);
+    // A restored CI cache may hold an earlier reviewed pin; move a clean checkout to the locked SHA.
+    if (revision !== lock[name].revision) {
+      run("-C", destination, "fetch", "--depth", "1", "origin", lock[name].revision);
+      run("-C", destination, "checkout", "--detach", "FETCH_HEAD");
+    }
   } else {
     run("init", destination);
     run("-C", destination, "remote", "add", "origin", `https://github.com/${lock[name].repository}.git`);
