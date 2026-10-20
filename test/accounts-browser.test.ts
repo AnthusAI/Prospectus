@@ -74,3 +74,27 @@ test("malformed successful account responses become errors", async () => {
   await assert.rejects(client.list(), /Invalid account response/);
   await assert.rejects(client.detail("11111111-1111-4111-8111-111111111111"), /Invalid account response/);
 });
+test("account creation posts only the name and request key and surfaces the server's plain message", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const client = accountsBrowser(
+    "https://bff.example.invalid/api/saas",
+    async (input, init) => {
+      calls.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return calls.length === 1
+        ? new Response(JSON.stringify({ message: "Enter an organization name of 2 to 80 characters." }), {
+            status: 400,
+          })
+        : new Response(
+            JSON.stringify({ account: { id: "a", name: "Data Parade", role: "owner", products: [] } }),
+          );
+    },
+    () => "synthetic-token",
+  );
+  await assert.rejects(client.create("x", "key-1"), /2 to 80 characters/);
+  assert.equal((await client.create("Data Parade", "key-2")).role, "owner");
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    Array(2).fill("https://bff.example.invalid/api/saas/accounts"),
+  );
+  assert.deepEqual(calls[1].body, { name: "Data Parade", requestKey: "key-2" });
+});

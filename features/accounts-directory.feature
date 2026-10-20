@@ -103,3 +103,20 @@ Feature: A real SaaS Accounts directory separate from CRM prospects
     When the browser resolves with the token and the original login state
     Then the BFF forwards exactly the token and the login state
     And a request carrying both a challenge ID and a token is rejected
+
+  Scenario: A signed-in person creates an organization they own
+    Given a signed-in person with a confirmed Accounts session
+    When they submit a trimmed organization name of 2 to 80 characters
+    Then the BFF creates the organization with that person as its only owner
+    And no product beyond the directory is turned on for it
+    And the Accounts page lists the new organization after the submit
+    When the same submit is repeated with the same request key
+    Then the same organization is returned and no second one is created
+    When the same request key is used with a different name
+    Then the request is rejected as a conflict
+
+  Scenario: Organization creation accepts nothing but a name and a request key
+    Given a signed-in person
+    When a create request is unauthenticated, from another origin, too short, too long or carries a role or product
+    Then it is rejected before the account service is called
+    And account listings and details remain read-only through GET

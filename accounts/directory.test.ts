@@ -183,12 +183,13 @@ test("JWT BFF returns actual persisted accounts and rejects browser authority or
       (
         await bff({
           ...event,
+          rawPath: "/api/saas/accounts/" + environment.account.id,
           requestContext: { http: { method: "POST" } },
           headers: { ...event.headers, origin: "https://prospectus.anth.us" },
         })
       ).statusCode,
       404,
-    );
+    ); // only the collection path accepts a POST
     assert.equal(
       (
         await bff({
@@ -205,6 +206,113 @@ test("JWT BFF returns actual persisted accounts and rejects browser authority or
       ).statusCode,
       400,
     );
+  } finally {
+    await rm(environment.root, { recursive: true, force: true });
+  }
+});
+test("BFF creates organizations for the signed-in caller, once per request key", async () => {
+  const environment = await directoryFixture();
+  let forwarded = 0;
+  try {
+    const bff = accountsBffHandler({
+      origins: ["https://prospectus.anth.us"],
+      registration: environment.products[0],
+      keys: environment.identityFixture.keys,
+      nowSeconds: () => environment.identityFixture.now,
+      client: (access) =>
+        new AccountsClient(async (path, method, body, requestKey) => {
+          forwarded++;
+          const event = environment.identityFixture.event(
+            0,
+            path,
+            body ?? {},
+            environment.ownerDirectory.proof,
+            method,
+          );
+          event.headers!["x-prospectus-human-token"] = access;
+          if (requestKey) event.headers!["idempotency-key"] = requestKey;
+          const response = await environment.handler()(event);
+          return decode(new Response(response.body, { status: response.statusCode }));
+        }),
+    });
+    const post = (body: unknown, headers: Record<string, string> = {}) =>
+      bff({
+        rawPath: "/api/saas/accounts",
+        requestContext: { http: { method: "POST" } },
+        headers: {
+          authorization: `Bearer ${environment.ownerDirectory.proof.access}`,
+          origin: "https://prospectus.anth.us",
+          "content-type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      });
+    const list = async () =>
+      JSON.parse(
+        (
+          await bff({
+            rawPath: "/api/saas/accounts",
+            requestContext: { http: { method: "GET" } },
+            headers: { authorization: `Bearer ${environment.ownerDirectory.proof.access}` },
+          })
+        ).body,
+      );
+    const before = (await list()).accounts.length;
+    const key = "7d3f6a52-0c11-4c2e-9a7e-2f6f1c0b9d11";
+
+    const created = await post({ name: "  Data Parade  ", requestKey: key });
+    assert.equal(created.statusCode, 200);
+    const account = JSON.parse(created.body).account;
+    assert.equal(account.name, "Data Parade");
+    assert.equal(account.role, "owner");
+    const listed = await list();
+    assert.equal(listed.accounts.length, before + 1);
+    assert.equal(listed.accounts.find((item: any) => item.id === account.id).role, "owner");
+    assert.equal(
+      listed.accounts.find((item: any) => item.id === environment.account.id).id,
+      environment.account.id,
+    ); // GET still works
+
+    // Submitting the same key again returns the same organization and creates nothing new.
+    const repeated = JSON.parse((await post({ name: "Data Parade", requestKey: key })).body);
+    assert.equal(repeated.account.id, account.id);
+    assert.equal((await list()).accounts.length, before + 1);
+    // The same key with a different name is a conflict, not a second organization.
+    assert.equal((await post({ name: "Distinctive Mark", requestKey: key })).statusCode, 409);
+    assert.equal((await list()).accounts.length, before + 1);
+    // A new key makes a new organization.
+    assert.equal(
+      (await post({ name: "Distinctive Mark", requestKey: "0b1a5e9c-4d62-4a44-8c0e-6b7d2e9f3a10" }))
+        .statusCode,
+      200,
+    );
+    assert.equal((await list()).accounts.length, before + 2);
+
+    // Validation and authority: nothing reaches the account service.
+    const reached = forwarded;
+    for (const body of [
+      { name: "x", requestKey: key },
+      { name: "y".repeat(81), requestKey: key },
+      { name: "   ", requestKey: key },
+      { name: "Valid name" },
+      { name: "Valid name", requestKey: "not-a-uuid" },
+      { name: "Valid name", requestKey: key, role: "owner" },
+      { name: "Valid name", requestKey: key, product: "papyrus" },
+    ])
+      assert.equal((await post(body)).statusCode, 400, JSON.stringify(body));
+    assert.equal(
+      (await post({ name: "Valid name", requestKey: key }, { origin: "https://wrong.invalid" })).statusCode,
+      403,
+    );
+    assert.equal(
+      (await post({ name: "Valid name", requestKey: key }, { authorization: "" })).statusCode,
+      401,
+    );
+    assert.equal(
+      (await post({ name: "Valid name", requestKey: key }, { authorization: "Bearer forged" })).statusCode,
+      401,
+    );
+    assert.equal(forwarded, reached);
   } finally {
     await rm(environment.root, { recursive: true, force: true });
   }
