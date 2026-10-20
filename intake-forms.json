@@ -1,11 +1,12 @@
 {
   "forms": [
     {
-      "enabled": false,
+      "enabled": true,
+      "approval": "Ryan approved 2026-10-20: owner intake-queue; notice babulus-waitlist-v1 = Babulus /privacy text with opt-in unticked by default and deletion contact = the Anthus info role mailbox named in the Babulus /privacy notice; retention until deletion requested; abuse controls rate 1 burst 2, origin babulus.anth.us only, honeypot, strict attributes; acceptance by labelled test signup after deploy.",
       "siteId": "babulus",
       "formId": "babulus-waitlist-v1",
       "kind": "waitlist",
-      "origins": ["https://babul.us", "https://www.babul.us", "https://babulus.anth.us"],
+      "origins": ["https://babulus.anth.us"],
       "noticeVersion": "babulus-waitlist-v1",
       "owner": "intake-queue",
       "defaultPagePath": "/waitlist",
