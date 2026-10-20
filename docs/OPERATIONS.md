@@ -32,6 +32,8 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `http://localhost:5417` is in `APP_ORIGINS` (`infra/lib/scope.ts`), so the Cognito client's callback and logout URLs, the API's CORS origins and the accounts service's POST origin check accept it beside the production address. Cognito permits plain http only for localhost, so open `localhost`, not `127.0.0.1`. Google itself is unchanged: its OAuth client only ever redirects to the Cognito domain.
 
+`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421.
+
 `npm run preview:local` remains the fully offline option with synthetic data and a local token.
 
 The Kanbus API, the shared UI package and Virtuus are pinned independently in `source-lock.json`, so a UI-only release cannot replace the deployed API. `.github/workflows/package-backend.yml` builds a reviewed backend package on demand.

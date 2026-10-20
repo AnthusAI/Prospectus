@@ -10,7 +10,7 @@ import {
   type FollowUpBucket,
 } from "../prospect";
 import type { Write } from "./PipelineView";
-import { AppChip, Eyebrow, Stat, Unavailable } from "./ui";
+import { AppChip, Eyebrow, Stat, Unavailable } from "../shared/ui";
 
 const GROUPS: Array<{ key: Exclude<FollowUpBucket, "later">; label: string; tone: string }> = [
   { key: "overdue", label: "Overdue", tone: "hot" },

@@ -17,6 +17,8 @@ import {
   SOURCE_REPOSITORY,
   SITE_DOMAIN,
   LOCAL_DEV_ORIGIN,
+  PORTAL_DEV_ORIGIN,
+  PORTAL_ORIGIN,
   TARGET_ACCOUNT,
   TARGET_REGION,
 } from "../lib/scope";
@@ -100,8 +102,18 @@ test("Google-first identity creation has no pre-enrollment gate and CRM roles ar
     AllowedOAuthFlows: ["code"],
     SupportedIdentityProviders: ["Google"],
     ExplicitAuthFlows: ["ALLOW_REFRESH_TOKEN_AUTH"],
-    CallbackURLs: [`https://${SITE_DOMAIN}/auth/callback`, `${LOCAL_DEV_ORIGIN}/auth/callback`],
-    LogoutURLs: [`https://${SITE_DOMAIN}/`, `${LOCAL_DEV_ORIGIN}/`],
+    CallbackURLs: [
+      `https://${SITE_DOMAIN}/auth/callback`,
+      `${LOCAL_DEV_ORIGIN}/auth/callback`,
+      `${PORTAL_ORIGIN}/auth/callback`,
+      `${PORTAL_DEV_ORIGIN}/auth/callback`,
+    ],
+    LogoutURLs: [
+      `https://${SITE_DOMAIN}/`,
+      `${LOCAL_DEV_ORIGIN}/`,
+      `${PORTAL_ORIGIN}/`,
+      `${PORTAL_DEV_ORIGIN}/`,
+    ],
   });
   template.resourceCountIs("AWS::Cognito::UserPoolUser", 0);
   template.hasResourceProperties("AWS::Cognito::UserPoolIdentityProvider", {
@@ -121,7 +133,9 @@ test("every application API route requires verified JWT and access-token scope",
     assert.ok(route.Properties.AuthorizerId);
   }
   template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
-    CorsConfiguration: { AllowOrigins: [`https://${SITE_DOMAIN}`, LOCAL_DEV_ORIGIN] },
+    CorsConfiguration: {
+      AllowOrigins: [`https://${SITE_DOMAIN}`, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN],
+    },
   });
   template.hasResourceProperties("AWS::Lambda::Function", {
     Runtime: "provided.al2023",
@@ -145,7 +159,7 @@ test("member write preflight allows the client's revision and operation headers"
   const template = appTemplate();
   template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
     CorsConfiguration: {
-      AllowOrigins: [`https://${SITE_DOMAIN}`, LOCAL_DEV_ORIGIN],
+      AllowOrigins: [`https://${SITE_DOMAIN}`, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN],
       AllowHeaders: ["authorization", "content-type", "if-match", "x-operation-id"],
     },
   });
@@ -272,6 +286,8 @@ test("hosting SPA rewrite handles dotted application paths while preserving stat
 
 test("local development signs in through the deployed client at localhost only", () => {
   assert.equal(LOCAL_DEV_ORIGIN, "http://localhost:5417");
+  assert.equal(PORTAL_ORIGIN, "https://one.anth.us");
+  assert.equal(PORTAL_DEV_ORIGIN, "http://localhost:5421");
   const root = resolve(fileURLToPath(import.meta.url), "../../..");
   const script = readFileSync(resolve(root, "scripts/dev-cloud.ts"), "utf8");
   assert.ok(script.includes("LOCAL_DEV_ORIGIN"), "dev:cloud must serve the allowed origin");

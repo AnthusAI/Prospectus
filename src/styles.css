@@ -220,6 +220,30 @@ p {
     color-scheme: dark;
   }
 }
+.one[data-theme="dark"] {
+  --bg: #0f0b17;
+  --surface: #171221;
+  --panel: #1d1729;
+  --panel-2: #241d33;
+  --line: #2e2540;
+  --line-strong: #847a97;
+  --ink: #f3eef8;
+  --ink-2: #b9aec8;
+  --blue: #2fa3ea;
+  --blue-ink: #6cc0f2;
+  --blue-soft: #0d3047;
+  --accent: #ec6eaa;
+  --accent-ink: #ff8cc3;
+  --success: #3ddc84;
+  --grid: #191424;
+  --s1: #2fa3ea;
+  --s2: #8db4ec;
+  --s3: #ec6eaa;
+  --s4: #1b5f8f;
+  --s5: #8d9db0;
+  --s6: #3d4f63;
+  color-scheme: dark;
+}
 /* The shared Kanbus organizer theme reads these; mapping them keeps the shared board and detail surface in the Anthus One palette. */
 .one.kb-theme-organizer {
   --organizer-paper: var(--surface);

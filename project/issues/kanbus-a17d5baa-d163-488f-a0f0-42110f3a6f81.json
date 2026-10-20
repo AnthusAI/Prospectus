@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-a17d5baa-d163-488f-a0f0-42110f3a6f81",
+  "title": "Anthus One customer portal as a separate app in Prospectus",
+  "description": "Separate application (portal/index.html, src/portal, vite.portal.config.ts, dist-portal) for one.anth.us: sign-in, identity confirmation, workspace switcher, Home, Apps, People and bots, Settings on the existing customer account routes; Usage, Plan and billing, API keys and workspace creation shown as not yet available. npm run dev:portal serves it at localhost:5421 against the deployed backend. Interim sign-in through the Prospectus Cognito client (APP_ORIGINS). Remaining: hosting one.anth.us (Amplify + DNS), own pool decision, invitations and workspace creation. Spec: features/anthus-one-portal.feature.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-78d27014-aae4-4a59-abae-797df797f008",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-20T01:51:48.879542Z",
+  "updated_at": "2026-10-20T01:51:48.879592Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

@@ -15,7 +15,7 @@ import {
 import { AdminShell, PAGES, pageHref, readLocation, type Page } from "./admin/Shell";
 import { PipelineView } from "./admin/PipelineView";
 import { TodayView, type TodaySummary } from "./admin/TodayView";
-import { BrandMark, Eyebrow, Unavailable, Wordmark } from "./admin/ui";
+import { BrandMark, Eyebrow, Unavailable, Wordmark } from "./shared/ui";
 
 const syntheticReview = import.meta.env.MODE === "synthetic-review";
 const authentication: AuthenticationConfiguration | null =
