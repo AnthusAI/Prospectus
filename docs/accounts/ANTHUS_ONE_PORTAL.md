@@ -15,7 +15,7 @@ The CRM web app (`src/`) carries a first, partial customer view that should not 
 - The "View SaaS accounts" button on the CRM's "Workspace access pending" screen and the `?view=accounts` entry in `src/App.tsx`.
 - `docs/accounts/ACCOUNTS_UI_SLICE.md`, which describes that slice.
 
-The operator directory in `src/AccountsView.tsx` (all organizations, entitlements, memberships for an approved operator, shown under Account administration) is staff tooling and stays in the CRM.
+The operator directory in `src/AccountsView.tsx` (all accounts, entitlements, memberships for an approved operator, shown under Account administration) is staff tooling and stays in the CRM.
 
 The backend that Anthus One needs mostly exists: `accounts/` implements people keyed on Google subject, accounts, memberships with roles owner, admin, member and viewer, per-product entitlements, the read directory, the BFF (`accounts/bff.ts`, routes under `/api/saas`), the membership index (PR 18) and Papyrus site registration (`accounts/papyrus-sites.json`). `packages/accounts-client` already offers browser and server clients, including `create(name, requestKey)`.
 
@@ -42,7 +42,7 @@ The portal is a static single-page app that talks to a small BFF for customers, 
 
 New customer-facing capabilities, all added to Prospectus and not to the portal:
 
-1. Self-service organization creation (`create(name, requestKey)` exists; needs a customer BFF route).
+1. Self-service account creation (`create(name, requestKey)` exists; needs a customer BFF route).
 2. Member management: list, change role, remove, for owners and admins (`members:read` and `members:write` exist; needs routes and last-owner protection).
 3. Invitations by email, accepted by signing in with the invited Google identity, granting only the invited role (builds on kanbus-b2ddb42a, no implied product permissions).
 4. A product registry with launch URLs and display names, so the portal can show "open Cyclotron Lab" or "open this Papyrus site" only for products the account has.
@@ -77,4 +77,4 @@ After the portal covers the same ground: delete `AccountsView.tsx`, the customer
 2. Own Cognito pool and Google OAuth client for the portal. Recommendation: yes, matching the per-site rule.
 3. Operator-only Accounts tab stays in the CRM. Recommendation: yes.
 4. Public repository. Recommendation: public and MIT like the CRM.
-5. Who may create a new organization: anyone with a Google sign-in, or only after an operator approves. Recommendation: anyone may create an empty organization with no products; products stay operator-granted.
+5. Who may create a new account: anyone with a Google sign-in, or only after an operator approves. Recommendation: anyone may create an empty account with no products; products stay operator-granted.

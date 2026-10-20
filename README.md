@@ -5,7 +5,7 @@ MIT-licensed Anthus AI Solutions CRM and central account service. The CRM is bui
 Prospectus does two jobs:
 
 - **CRM.** Configured sales stages, board and list search, owners and dated next actions, contact correction, conversation notes, due follow-ups, customer-success handoff, and a public inquiry intake endpoint. Google sign-in plus explicit workspace membership protect private CRM requests; signing in alone grants no staff access.
-- **Account service.** One central service holds people, organization accounts, memberships with roles, and per-product entitlements for the hosted Papyrus newsroom sites and Cyclotron Lab. Products sign people in with their own Google clients and then ask Prospectus which accounts the person belongs to.
+- **Account service.** One central service holds people, accounts, memberships with roles, and per-product entitlements for the hosted Papyrus newsroom sites and Cyclotron Lab. Products sign people in with their own Google clients and then ask Prospectus which accounts the person belongs to.
 
 Canonical records are ordinary Kanbus and JSON files in a private S3 bucket. DynamoDB holds only rebuildable query metadata and is never authority.
 

@@ -75,7 +75,7 @@ export async function directoryFixture(challengeSigner?: ChallengeSigner) {
     outsider = await enroll(0, "outsider", ["admin"]),
     ownerDirectory = await enroll(0, "owner"),
     memberDirectory = await enroll(0, "member");
-  const account = await service.create(owner.context, "Persisted Papyrus organization", randomUUID());
+  const account = await service.create(owner.context, "Persisted Papyrus account", randomUUID());
   await service.setMembership(owner.context, account.id, member.person.id, "member", "active");
   return {
     root,
