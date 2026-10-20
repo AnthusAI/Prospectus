@@ -1,0 +1,28 @@
+{
+  "id": "prsp-00000000-0000-4000-8000-000000000003",
+  "title": "Synthetic prospect",
+  "description": "",
+  "type": "prospect",
+  "status": "new",
+  "priority": 2,
+  "assignee": "synthetic-owner",
+  "creator": "synthetic-owner",
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-01-02T03:04:05.678Z",
+  "updated_at": "2026-01-02T03:04:05.678Z",
+  "closed_at": null,
+  "custom": {
+    "company": "Unknown-key Co"
+  },
+  "written_by_newer_cli": {
+    "nested": [
+      1,
+      2,
+      3
+    ],
+    "flag": true
+  }
+}

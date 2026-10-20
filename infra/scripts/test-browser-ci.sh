@@ -31,7 +31,7 @@ trap 'exit 143' TERM
 mkdir -p "$proof_fixture/kanbus/project/issues" "$proof_fixture/kanbus/project/events"
 cp config/prospectus.kanbus.yml "$proof_fixture/kanbus/.kanbus.yml"
 proof_token=$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')
-export KANBUS_BACKEND=file KANBUS_ROOT="$proof_fixture/kanbus" KANBUS_NAMESPACE=cyclotron/prospectus KANBUS_PORT=5418
+export KANBUS_BACKEND=file KANBUS_ROOT="$proof_fixture/kanbus" KANBUS_TENANT=cyclotron KANBUS_PROJECT=prospectus KANBUS_PORT=5418
 export KANBUS_LOCAL_TOKEN="$proof_token" PROSPECTUS_TEST_TOKEN="$proof_token"
 export VITE_KANBUS_API_URL='' CI=1
 unset VITE_COGNITO_CLIENT_ID VITE_COGNITO_DOMAIN_URL VITE_COGNITO_REDIRECT_URI VITE_COGNITO_LOGOUT_URI
@@ -40,14 +40,14 @@ proof_api_pid=$!
 proof_ready=false
 for attempt in $(seq 1 120); do
   kill -0 "$proof_api_pid" 2>/dev/null || { echo 'The owned loopback API failed to start.' >&2; exit 1; }
-  proof_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5418/api/issues || true)
+  proof_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5418/cyclotron/prospectus/api/issues || true)
   if [ "$proof_status" = 401 ]; then proof_ready=true; break; fi
   sleep 0.25
 done
 [ "$proof_ready" = true ] || { echo 'The owned loopback API was not ready.' >&2; exit 1; }
 export KANBUS_API_BINARY="$PWD/.build/target/release/kanbus-api-local"
 npm run test:intake:integration
-export PROSPECTUS_LOCAL_API_URL=http://127.0.0.1:5418/api
+export PROSPECTUS_LOCAL_API_URL=http://127.0.0.1:5418/cyclotron/prospectus/api
 export PROSPECTUS_INTAKE_LEDGER="$proof_fixture/intake"
 export PROSPECTUS_IDENTITY_DIRECTORY="$proof_fixture/identity-claims"
 export PROSPECTUS_INTAKE_ORIGIN=http://127.0.0.1:5417 PROSPECTUS_INTAKE_TEST=1

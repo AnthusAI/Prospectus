@@ -1,4 +1,5 @@
 import { IntakeError } from "./intake";
+import { KANBUS_API_PATH, KANBUS_BOARD_GROUP } from "../src/board";
 
 /** The trusted runtime invokes only the issue operations required by intake. */
 export function canonicalRequest(invoke: (event: unknown) => Promise<unknown>) {
@@ -21,7 +22,7 @@ export function canonicalRequest(invoke: (event: unknown) => Promise<unknown>) {
       if (value) headers[key] = value;
     }
     const result = (await invoke({
-      rawPath: `/api${url.pathname}`,
+      rawPath: `${KANBUS_API_PATH}${url.pathname}`,
       queryStringParameters: Object.fromEntries(url.searchParams),
       headers,
       body: typeof init.body === "string" ? init.body : undefined,
@@ -29,7 +30,7 @@ export function canonicalRequest(invoke: (event: unknown) => Promise<unknown>) {
       requestContext: {
         http: { method },
         authorizer: {
-          jwt: { claims: { sub: "prospectus-intake-evaluation", "cognito:groups": "prospectus-members" } },
+          jwt: { claims: { sub: "prospectus-intake-evaluation", "cognito:groups": KANBUS_BOARD_GROUP } },
         },
       },
     })) as { statusCode?: number; body?: string };

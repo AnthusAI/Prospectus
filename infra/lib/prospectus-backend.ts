@@ -176,8 +176,6 @@ export class ProspectusBackend extends Construct {
         KANBUS_BACKEND: "s3",
         KANBUS_OBJECT_BUCKET: objects.bucketName,
         KANBUS_CATALOG_TABLE: catalog.tableName,
-        KANBUS_NAMESPACE: PROJECT_NAMESPACE,
-        KANBUS_REQUIRED_GROUP: MEMBER_GROUP,
       },
     });
     backend.addToRolePolicy(
@@ -247,7 +245,8 @@ export class ProspectusBackend extends Construct {
       },
     });
     api.addRoutes({
-      path: "/api/{proxy+}",
+      // The multi-board API reads the board from the path and access from kanbus:<tenant>/<project> groups.
+      path: `/${PROJECT_NAMESPACE}/api/{proxy+}`,
       methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST, apigw.HttpMethod.PATCH, apigw.HttpMethod.DELETE],
       integration: new HttpLambdaIntegration("Kanbus", backend),
     });

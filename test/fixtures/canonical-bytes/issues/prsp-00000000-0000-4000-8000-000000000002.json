@@ -1,0 +1,48 @@
+{
+  "id": "prsp-00000000-0000-4000-8000-000000000002",
+  "title": "Unicode é中文 😀 \"quoted\" \\ back\nline\ttab  ",
+  "description": "Line one\nLine two <b>&</b> / \u0007",
+  "type": "prospect",
+  "status": "new",
+  "priority": 2,
+  "assignee": "synthetic-owner",
+  "creator": "synthetic-owner",
+  "parent": null,
+  "labels": [
+    "alpha",
+    "Beta"
+  ],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "c-1",
+      "author": "synthetic-owner",
+      "text": "First note",
+      "created_at": "2026-01-03T00:00:00.000Z",
+      "comment_type": "default"
+    }
+  ],
+  "created_at": "2026-01-02T03:04:05.678Z",
+  "updated_at": "2026-01-02T03:04:05.678Z",
+  "closed_at": null,
+  "custom": {
+    "zeta": 1,
+    "alpha": {
+      "nested": [
+        3,
+        2,
+        1,
+        {
+          "b": null,
+          "a": true
+        }
+      ]
+    },
+    "empty_obj": {},
+    "empty_list": [],
+    "ratio": 2.50,
+    "big": 12345678901234567890123,
+    "neg": -0.0,
+    "exp": 1.5e-7
+  }
+}

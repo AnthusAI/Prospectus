@@ -7,7 +7,7 @@ Prospectus runs in AWS account `712236451410` (papyrus-production), region `us-e
 | Component | Where | Purpose |
 | --- | --- | --- |
 | CRM frontend | `src/`, built by Vite, served by Amplify | Shared Kanbus board UI, Accounts views, intake form |
-| Kanbus API | `prospectus-api` Lambda (`provided.al2023`), HTTP API route `/api/{proxy+}` | Generic Kanbus issue API over S3 files and a DynamoDB catalog |
+| Kanbus API | `prospectus-api` Lambda (`provided.al2023`), HTTP API route `/cyclotron/prospectus/api/{proxy+}` | Multi-board Kanbus issue API (board from the path) over S3 files and a DynamoDB catalog |
 | Cognito pool and browser client | `infra/lib/prospectus-backend.ts` | Google-only sign-in for the CRM; groups `prospectus-members` and `admin` |
 | Accounts BFF | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}` | Browser-facing account routes, JWT protected; signs central requests |
 | Central accounts service | `prospectus-central-accounts` Lambda behind the IAM-protected `prospectus-accounts` REST API, stage `api` | Identity, accounts, memberships, entitlements, operator directory |
@@ -33,7 +33,7 @@ Writes that must be conditional go through the Rust bridge using the pinned Virt
 
 ## CRM
 
-The Kanbus API requires a verified Cognito JWT from the Google-only browser client and membership in the `prospectus-members` group (`KANBUS_REQUIRED_GROUP`). The `admin` group marks application administrators; workspace access still requires membership. Domain configuration (stages, owners, fields) is `config/prospectus.kanbus.yml`; queries and reusable UI come from Kanbus and Virtuus, and Prospectus supplies configuration and interactions only.
+The Kanbus API requires a verified Cognito JWT from the Google-only browser client and membership in the `kanbus:cyclotron/prospectus` group, which grants that board (Kanbus multi-board grants; no namespace or required-group environment variables). The `prospectus-members` group remains until it is retired. The `admin` group marks application administrators; workspace access still requires membership. Domain configuration (stages, owners, fields) is `config/prospectus.kanbus.yml`; queries and reusable UI come from Kanbus and Virtuus, and Prospectus supplies configuration and interactions only.
 
 ## Account model
 
