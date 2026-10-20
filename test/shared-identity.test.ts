@@ -156,16 +156,16 @@ test("independent workers share one immutable create operation and append each r
     assert.equal(setup.api.records.size, 1);
     const record = [...setup.api.records.values()][0];
     assert.equal((record.issue.custom!.inquiries as unknown[]).length, 4);
-    assert.equal(setup.controls.objects.size, 5);
+    // one identity claim, one shared receipt and one inbox item per distinct inquiry
+    assert.equal(setup.controls.objects.size, 9);
     const claim = JSON.parse(
       [...setup.controls.objects.entries()].find(([key]) => key.startsWith("intake-identities/"))![1].bytes,
     );
     assert.equal(claim.issueId, record.issue.id);
     assert.ok(claim.create.operation);
-    await assert.rejects(
-      workers[1].submit({ ...requests[0], message: "Different payload, same receipt" }),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
+    // Never a visitor action, but never rejected either: it becomes a new inquiry.
+    await workers[1].submit({ ...requests[0], message: "Different payload, same receipt" });
+    assert.equal(([...setup.api.records.values()][0].issue.custom!.inquiries as unknown[]).length, 5);
   } finally {
     await setup.close();
   }
@@ -184,7 +184,7 @@ test("a durable claim with lost acknowledgement survives receipt loss and catalo
     };
     const first = input();
     const initial = await setup.worker();
-    await assert.rejects(initial.submit(first), /Lost claim acknowledgement/);
+    await initial.submit(first);
     assert.equal(setup.api.creates, 0);
     await initial.close();
     setup.api.catalogOnline = false;
@@ -218,7 +218,7 @@ test("lost canonical creation and claim-completion responses are recovered by an
       }
       const request = input();
       const first = await setup.worker();
-      await assert.rejects(first.submit(request));
+      await first.submit(request);
       await first.close();
       setup.api.catalogOnline = false;
       await (await setup.worker()).submit(request);
@@ -237,7 +237,7 @@ test("another worker resolves a lost append response without duplicating its rec
     await first.submit(input());
     const request = input({ message: "Lost appended response" });
     setup.api.losePatch = true;
-    await assert.rejects(first.submit(request), /Lost patch/);
+    await first.submit(request);
     await first.close();
     await (await setup.worker()).submit(request);
     assert.equal(setup.api.creates, 1);
@@ -253,14 +253,14 @@ test("a rejected claim write never publishes a canonical record and can be retri
     const put = setup.controls.putControl.bind(setup.controls);
     let fail = true;
     setup.controls.putControl = async (path, bytes, condition) => {
-      if (fail) {
+      if (fail && path.startsWith("intake-identities/")) {
         fail = false;
         throw new Error("Claim storage unavailable");
       }
       return put(path, bytes, condition);
     };
     const request = input();
-    await assert.rejects((await setup.worker()).submit(request), /Claim storage unavailable/);
+    await (await setup.worker()).submit(request);
     assert.equal(setup.api.creates, 0);
     await (await setup.worker()).submit(request);
     assert.equal(setup.api.creates, 1);
@@ -279,7 +279,7 @@ test("the same contact in different workspaces has separate claims and canonical
     await Promise.all([first.submit(request), second.submit(request)]);
     assert.equal(setup.api.creates, 1);
     assert.equal(otherApi.creates, 1);
-    assert.equal(setup.controls.objects.size, 4);
+    assert.equal(setup.controls.objects.size, 6);
   } finally {
     await setup.close();
   }
@@ -290,16 +290,11 @@ test("a new worker cannot reuse a global receipt ID for another contact or paylo
   try {
     const request = input();
     await (await setup.worker()).submit(request);
-    await assert.rejects(
-      (await setup.worker()).submit({ ...request, email: "another@example.invalid" }),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
-    await assert.rejects(
-      (await setup.worker()).submit({ ...request, message: "Changed request" }),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
-    assert.equal(setup.api.creates, 1);
-    assert.equal(setup.api.records.size, 1);
+    // Neither a reused id for another contact nor changed content is rejected; both are new inquiries.
+    await (await setup.worker()).submit({ ...request, email: "another@example.invalid" });
+    await (await setup.worker()).submit({ ...request, message: "Changed request" });
+    assert.equal(setup.api.creates, 2);
+    assert.equal(setup.api.records.size, 2);
   } finally {
     await setup.close();
   }
@@ -317,7 +312,7 @@ test("a shared receipt with a lost acknowledgement is recovered from a fresh loc
     };
     const request = input();
     const worker = await setup.worker();
-    await assert.rejects(worker.submit(request), /Lost receipt acknowledgement/);
+    await worker.submit(request);
     await worker.close();
     await (await setup.worker()).submit(request);
     assert.equal(setup.api.creates, 1);
@@ -336,11 +331,14 @@ test("a contact correction preserves known receipt replay while new old-email in
     record.issue.custom!.contact_email = "corrected@example.invalid";
     record.revision = "2";
     await (await setup.worker()).submit(request);
-    await assert.rejects(
-      (await setup.worker()).submit(input()),
-      (error: unknown) => error instanceof IntakeError && error.code === "identity_changed",
-    );
-    assert.equal(setup.api.creates, 1);
+    // The new inquiry is accepted and filed as a separate prospect labelled for review.
+    await (await setup.worker()).submit(input());
+    assert.equal(setup.api.creates, 2);
+    const review = [...setup.api.records.values()].find((item) => item.issue.id !== record.issue.id)!;
+    assert.deepEqual(review.issue.labels, ["needs-review"]);
+    assert.equal(review.issue.custom!.review_reason, "identity_changed");
+    assert.equal(review.issue.custom!.contact_email, undefined);
+    assert.equal(review.issue.custom!.next_follow_up_at, undefined);
     assert.equal((record.issue.custom!.inquiries as unknown[]).length, 1);
   } finally {
     await setup.close();
@@ -363,11 +361,8 @@ test("first, retried, changed and concurrent submissions succeed when reading an
     assert.equal(setup.api.records.size, 1);
     const record = [...setup.api.records.values()][0];
     assert.equal((record.issue.custom!.inquiries as unknown[]).length, 3);
-    await assert.rejects(
-      workers[2].submit({ ...first, message: "Different payload, same receipt" }),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
-    assert.equal(setup.controls.objects.size, 4);
+    await workers[2].submit({ ...first, message: "Different payload, same receipt" });
+    assert.equal(([...setup.api.records.values()][0].issue.custom!.inquiries as unknown[]).length, 4);
   } finally {
     await setup.close();
   }

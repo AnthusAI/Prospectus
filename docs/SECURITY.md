@@ -70,7 +70,7 @@ Error contract: `400` malformed input or raw authority fields, `401` invalid tok
 - The Kanbus runtime role is limited to the CRM namespace prefixes and to catalog rows whose leading key is that namespace.
 - No persistent access keys exist. Runtime credentials come from Lambda roles.
 - Server-only SigV4 code lives in `server/` and `@anthus/prospectus-accounts-client/server`; never import it into a browser bundle, and never forward an arbitrary browser token in place of a verified session.
-- Real inquiry contacts are kept until the person asks for deletion (approved 2026-10-17 with privacy notice `contact-v1`). Tests and previews use only made-up data and `.invalid` addresses.
+- Real inquiry contacts are kept until the person asks for deletion (approved 2026-10-17 with privacy notice `contact-v1`). This covers the prospect, any `needs-review` prospect and every intake inbox item (`intake-receipts/` objects with `kind: "intake-inbox"`), which hold the full inquiry including name, email and message; a deletion request removes all of them. Inbox items add no access: they live in the prefix the intake role already reads and writes, and the operator refile script (`scripts/refile-intake-inbox.ts`) runs with the operator's own credentials, not the Lambda role. Logs for deferred filing carry reason codes only. Tests and previews use only made-up data and `.invalid` addresses.
 
 ## Known limits
 

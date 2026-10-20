@@ -418,10 +418,9 @@ test("the same email on the same app stores one inquiry whether the receipt is r
     assert.equal((issue.custom!.inquiries as any[]).length, 1);
     assert.equal((issue.custom!.inquiries as any[])[0].attributes.persona, "creator");
     assert.equal(crm.records.size, 1);
-    await assert.rejects(
-      service.submit({ ...first, attributes: { persona: "developer" } }),
-      (error: unknown) => error instanceof IntakeError && error.status === 409,
-    );
+    // A reused receipt with other content is accepted as a new signup (same consent: still one inquiry).
+    await service.submit({ ...first, attributes: { persona: "developer" } });
+    assert.equal((issue.custom!.inquiries as any[]).length, 1);
   } finally {
     await close();
     await rm(shared, { recursive: true, force: true });
