@@ -14,6 +14,7 @@ import { AccountsPlane, type AccountsPlaneOptions } from "./accounts-plane";
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
+import type { IntakeFormConfig } from "../../server/intake-forms";
 import { throttleRoutes } from "./throttle-routes";
 import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
@@ -27,6 +28,7 @@ export class ProspectusBackend extends Construct {
     evaluationCode?: lambda.Code,
     accounts?: AccountsPlaneOptions,
     intakeContactMode: IntakeContactMode = "synthetic-only",
+    intakeForms: readonly IntakeFormConfig[] = [],
   ) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
@@ -293,13 +295,17 @@ export class ProspectusBackend extends Construct {
       ObjectBucketName: objects.bucketName,
       CatalogTableName: catalog.tableName,
     };
-    if (evaluationCode)
-      outputs.EvaluationIntakeUrl = new EvaluationIntake(
+    if (evaluationCode) {
+      const intake = new EvaluationIntake(
         this,
         "EvaluationIntake",
         evaluationCode,
         intakeContactMode,
-      ).url;
+        intakeForms,
+      );
+      outputs.EvaluationIntakeUrl = intake.url;
+      if (intake.waitlistBaseUrl) outputs.IntakeWaitlistBaseUrl = intake.waitlistBaseUrl;
+    }
     if (accountsPlane) {
       outputs.AccountsBffUrl = `${api.apiEndpoint}/api/saas`;
       outputs.AccountsApiUrl = accountsPlane.endpoint;

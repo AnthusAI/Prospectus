@@ -4,12 +4,13 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 
 ## Principals and authentication
 
-| Surface                              | Who can call                     | How it is checked                                                                                                           |
-| ------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| CRM Kanbus API (`/api/{proxy+}`)     | Invited staff                    | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group                          |
-| Accounts BFF (`/api/saas/*`)         | Any signed-in person             | Same JWT authorizer; the BFF verifies the token again and signs central requests itself                                     |
-| Central accounts service             | Registered product roles only    | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal |
-| Inquiry intake (`POST /intake/demo`) | The public, from allowed origins | Origin and notice checks, throttling and a fixed intake actor; no read access                                               |
+| Surface                                                | Who can call                                        | How it is checked                                                                                                                                                          |
+| ------------------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CRM Kanbus API (`/api/{proxy+}`)                       | Invited staff                                       | Cognito JWT from the Google-only browser client, then membership in the `prospectus-members` group                                                                         |
+| Accounts BFF (`/api/saas/*`)                           | Any signed-in person                                | Same JWT authorizer; the BFF verifies the token again and signs central requests itself                                                                                    |
+| Central accounts service                               | Registered product roles only                       | IAM SigV4, an API Gateway resource policy that allows each named role only its routes, and a deny for every other principal                                                |
+| Inquiry intake (`POST /intake/demo`)                   | The public, from allowed origins                    | Origin and notice checks, throttling and a fixed intake actor; no read access                                                                                              |
+| App waitlist intake (`POST /intake/waitlist/<formId>`) | The public, from the origins declared for that form | Per-form origin binding, per-form notice version, strict attribute allowlist, a route-level throttle and a fixed intake actor; no read access, no accounts or entitlements |
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 

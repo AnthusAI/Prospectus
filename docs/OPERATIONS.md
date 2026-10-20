@@ -41,6 +41,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
 | `evaluation-deployment.json` | Inquiry intake runtime and its mode (`synthetic-only` or `real-contacts`) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
+| `intake-forms.json` | App waitlist forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: false`; enabling it goes live for real contacts on merge and needs Ryan's approval of owner, privacy notice, retention, abuse controls and real-cloud acceptance |
 
 Whether a flag is deployed is a fact about the cloud account, not the repository. Check the Amplify build history before claiming an activation is live. The anth.us engage form is not a working Prospectus intake until the intake runtime is deployed and the public form's endpoint and privacy notice settings in AnthusAI/Anth.us-Papyrus point at the `EvaluationIntakeUrl` output.
 
