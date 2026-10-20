@@ -253,7 +253,9 @@ test(
         "explicitly assigned central Accounts administrator permission",
       );
       assert.equal(operatorReads, before);
-      await expect(page.getByRole("button", { name: /Create|Delete|Invite|Save/ })).toHaveCount(0);
+      // The directory itself stays read-only: the only write control is the organization creation form.
+      await expect(page.getByRole("button", { name: /Delete|Invite|Save/ })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Create/ })).toHaveText(["Create organization"]);
     } finally {
       await browser.close();
       await server.close();
