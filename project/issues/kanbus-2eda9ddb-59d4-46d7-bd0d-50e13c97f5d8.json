@@ -3,17 +3,25 @@
   "title": "Accounts BFF: issue an identity challenge before Google sign-in so one login serves the CRM and Accounts",
   "description": "Today POST /identity/challenge requires a Cognito access token, so the nonce can only be requested after the CRM login and the Accounts confirmation needs a second Google login with prompt=login. Add a BFF route that issues a challenge before sign-in (rate limited, bound to the browser by the stored login state) so signIn can always carry the nonce and the CRM login resolves the Accounts identity in the same redirect. The 300-second freshness requirement of the central resolve must stay. Follow-up to kanbus-d44d5a, which makes the first Accounts visit start the confirmation automatically.",
   "type": "task",
-  "status": "open",
+  "status": "closed",
   "priority": 1,
   "assignee": null,
   "creator": null,
   "parent": "kanbus-6b9cfd02-57c1-479d-833c-dcc90ba818ff",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "90251208-686a-4880-8aeb-b4b14839e23e",
+      "author": "home",
+      "text": "2026-10-19: done and verified in production. PR #41 (d0370c5) added the pre-sign-in login challenge with stateless HMAC-signed tokens (Parameter Store signer, no KMS key, at Ryan's direction), create-first login records and matchesStringPattern guards. Deploy fixes #50 (f898188: stage DependsOn its throttled routes) and #52 (b2c29c2: no inherited scopes on the NONE route). Amplify job 48 SUCCEED; POST /api/saas/identity/login-challenge returns a signed v1 token; Ryan confirmed one Google sign-in now serves both the CRM and Accounts.",
+      "created_at": "2026-10-20T00:40:47.610447Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-17T16:41:15.066034848Z",
-  "updated_at": "2026-10-17T16:41:15.066094086Z",
-  "closed_at": null,
+  "updated_at": "2026-10-20T00:40:47.625636Z",
+  "closed_at": "2026-10-20T00:40:47.625564Z",
   "right_now_summary": null,
   "right_now_updated_at": null,
   "custom": {}

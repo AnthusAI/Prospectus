@@ -3,7 +3,7 @@
   "title": "Cache Rust builds in CI, add test:all, standardize on Node 24, align intake status codes",
   "description": "CI runs take 18 to 23 minutes because every run builds the pinned Kanbus API and the accounts bridge with `cargo build --release` and no cache, and re-clones the pinned checkouts. The workflow installs Node 22 then Node 24 mid-run; the evaluation Lambda is Node 22 while the accounts Lambdas are Node 24. `npm test` runs a fraction of the suites and the docs reference a `test:canonical:durable` script that does not exist. Local intake answers 202 and hosted intake 200 for the same accepted submission.\n\nScope: Rust and checkout caching in CI; one Node 24; `test:all`; 202 everywhere; fix the duplicated cache line in `amplify.yml`.\n\nAcceptance: infra and amplify checks pass; a no-change CI run finishes well under 10 minutes after the first cached run.",
   "type": "chore",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -60,11 +60,18 @@
       "text": "PR https://github.com/AnthusAI/Prospectus/pull/45: warm no-change CI run (39331480245) finished in 3m52s versus 22 to 27 min baseline; cold first run 20m27s. Root cause: the musl accounts identity-files build (425-532 s every run, --jobs 1) was not cached. Fix caches .build/accounts-linux-target, widens the cache key to the Rust sources, sets CARGO_BUILD_JOBS=4. Job name 'application' unchanged. Awaiting review and merge.",
       "created_at": "2026-10-19T22:01:56.635468Z",
       "comment_type": "default"
+    },
+    {
+      "id": "01bb027c-ce8d-49b4-8e06-51d8d3ee7854",
+      "author": "home",
+      "text": "2026-10-19: done. PR #45 (0f5f9be) cached the accounts musl build, widened the Rust cache key and set CARGO_BUILD_JOBS=4. A warm no-change run took 3m52s (was ~15-27 min); later PRs #50 and #52 ran in 3m41s and 3m51s. Required check name unchanged (application).",
+      "created_at": "2026-10-20T00:40:47.648576Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-17T14:50:13.243740194Z",
-  "updated_at": "2026-10-19T22:01:56.635648Z",
-  "closed_at": null,
+  "updated_at": "2026-10-20T00:40:47.663486Z",
+  "closed_at": "2026-10-20T00:40:47.663453Z",
   "right_now_summary": null,
   "right_now_updated_at": null,
   "custom": {}
