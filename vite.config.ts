@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { KANBUS_API_PATH } from "./src/board";
 
 export default defineConfig({
   plugins: [react()],
@@ -7,7 +8,7 @@ export default defineConfig({
   server: {
     proxy: {
       // dev:cloud forwards API calls to the deployed API so the browser stays same-origin.
-      "/api": process.env.PROSPECTUS_CLOUD_API_ORIGIN
+      [KANBUS_API_PATH]: process.env.PROSPECTUS_CLOUD_API_ORIGIN
         ? {
             target: process.env.PROSPECTUS_CLOUD_API_ORIGIN,
             changeOrigin: true,

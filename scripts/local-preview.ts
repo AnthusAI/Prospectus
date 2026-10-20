@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { KANBUS_API_PATH, KANBUS_PROJECT, KANBUS_TENANT } from "../src/board";
 
 const root = resolve("local-data/review/kanbus");
 await mkdir(`${root}/project/issues`, { recursive: true, mode: 0o700 });
@@ -20,11 +21,12 @@ const environment: NodeJS.ProcessEnv = {
   ...process.env,
   KANBUS_BACKEND: "file",
   KANBUS_ROOT: root,
-  KANBUS_NAMESPACE: "cyclotron/prospectus",
+  KANBUS_TENANT,
+  KANBUS_PROJECT,
   KANBUS_PORT: "5492",
   KANBUS_LOCAL_TOKEN: token,
   VITE_KANBUS_API_URL: "",
-  PROSPECTUS_LOCAL_API_URL: "http://127.0.0.1:5492/api",
+  PROSPECTUS_LOCAL_API_URL: `http://127.0.0.1:5492${KANBUS_API_PATH}`,
   PROSPECTUS_LOCAL_API_ORIGIN: "http://127.0.0.1:5492",
   PROSPECTUS_INTAKE_LEDGER: resolve("local-data/review/intake"),
   PROSPECTUS_IDENTITY_DIRECTORY: resolve("local-data/review/identity-claims"),
@@ -69,7 +71,7 @@ async function ready(url: string, expected: number) {
 }
 try {
   run(resolve(process.env.KANBUS_API_BINARY ?? ".build/target/release/kanbus-api-local"), []);
-  await ready("http://127.0.0.1:5492/api/issues", 401);
+  await ready(`http://127.0.0.1:5492${KANBUS_API_PATH}/issues`, 401);
   run(process.execPath, ["--import", "tsx", "server/local.ts"]);
   await ready("http://127.0.0.1:5491/", 404);
   run(process.execPath, [

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { IntakeError, IntakeService, type IntakeOptions } from "./intake";
 import { FileControlStore } from "./control-store";
+import { KANBUS_API_PATH } from "../src/board";
 
 export function intakeHandler(service: IntakeService, allowedOrigin: string) {
   const limits = new Map<string, { count: number; expires: number }>();
@@ -86,12 +87,12 @@ export async function startLocalIntake(options: IntakeOptions, port: number, ori
 
 async function main() {
   const token = process.env.KANBUS_LOCAL_TOKEN;
-  const api = process.env.PROSPECTUS_LOCAL_API_URL ?? "http://127.0.0.1:5492/api";
+  const api = process.env.PROSPECTUS_LOCAL_API_URL ?? `http://127.0.0.1:5492${KANBUS_API_PATH}`;
   const url = new URL(api);
   if (
     url.protocol !== "http:" ||
     url.hostname !== "127.0.0.1" ||
-    url.pathname !== "/api" ||
+    url.pathname !== KANBUS_API_PATH ||
     url.username ||
     url.password ||
     url.search ||

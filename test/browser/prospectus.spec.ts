@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { KANBUS_API_PATH } from "../../src/board";
 
 const token = process.env.PROSPECTUS_TEST_TOKEN;
 
@@ -75,7 +76,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   request,
 }) => {
   test.skip(!token, "Set PROSPECTUS_TEST_TOKEN and run the real Kanbus API on port 5418.");
-  const unauthorized = await request.get(`${apiOrigin}/api/issues`);
+  const unauthorized = await request.get(`${apiOrigin}${KANBUS_API_PATH}/issues`);
   expect(unauthorized.status()).toBe(401);
   await page.goto("/");
   await page.getByLabel("Local access token").fill(token!);
@@ -151,7 +152,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await expect(page.getByLabel("Owner", { exact: true })).toHaveValue("customer-success");
   await expect(page.getByText("proof@example.invalid", { exact: true })).toBeVisible();
   await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();
-  const persisted = await request.get(`${apiOrigin}/api/issues/${identifier}`, {
+  const persisted = await request.get(`${apiOrigin}${KANBUS_API_PATH}/issues/${identifier}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(persisted.ok()).toBe(true);
