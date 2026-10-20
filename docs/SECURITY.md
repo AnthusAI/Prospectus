@@ -86,4 +86,4 @@ Error contract: `400` malformed input or raw authority fields, `401` invalid tok
 
 ## Change control
 
-New persistent IAM or security resources, OAuth client or callback changes, and new operator grants need concrete approval before they are deployed. Pin Kanbus and Virtuus revisions; never deploy from a moving dependency branch.
+New persistent IAM or security resources, OAuth client or callback changes, and new operator grants need concrete approval before they are deployed. The browser origins allowed to sign in, call the API and post to the accounts service are exactly `APP_ORIGINS` in `infra/lib/scope.ts`: production and `http://localhost:5417` for `npm run dev:cloud`. A localhost origin lets a developer's own machine complete sign-in; the authorization-code flow still requires PKCE and matching state, and no token reaches any other host. Pin Kanbus and Virtuus revisions; never deploy from a moving dependency branch.

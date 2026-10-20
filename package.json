@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5417 --strictPort",
+    "dev:cloud": "node --import tsx scripts/dev-cloud.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts accounts/google-identity.test.ts",

@@ -16,7 +16,7 @@ import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import type { IntakeFormConfig } from "../../server/intake-forms";
 import { throttleRoutes } from "./throttle-routes";
-import { MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
+import { APP_ORIGINS, MEMBER_GROUP, PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 /** Separate private CRM data plane; public static assets contain no CRM records. */
 export class ProspectusBackend extends Construct {
@@ -122,8 +122,8 @@ export class ProspectusBackend extends Construct {
       oAuth: {
         flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: [`${appUrl}/auth/callback`],
-        logoutUrls: [`${appUrl}/`],
+        callbackUrls: APP_ORIGINS.map((origin) => `${origin}/auth/callback`),
+        logoutUrls: APP_ORIGINS.map((origin) => `${origin}/`),
       },
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
@@ -221,7 +221,7 @@ export class ProspectusBackend extends Construct {
       defaultAuthorizer: jwt,
       defaultAuthorizationScopes: ["openid"],
       corsPreflight: {
-        allowOrigins: [appUrl],
+        allowOrigins: [...APP_ORIGINS],
         allowHeaders: ["authorization", "content-type", "if-match", "x-operation-id"],
         allowMethods: [
           apigw.CorsHttpMethod.GET,

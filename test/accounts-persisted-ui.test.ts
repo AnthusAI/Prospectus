@@ -16,7 +16,7 @@ test(
     const environment = await directoryFixture();
     let activeCentral = environment.handler();
     const bff = accountsBffHandler({
-      origin: "https://prospectus.anth.us",
+      origins: ["https://prospectus.anth.us"],
       registration: environment.products[0],
       keys: environment.identityFixture.keys,
       nowSeconds: () => environment.identityFixture.now,
