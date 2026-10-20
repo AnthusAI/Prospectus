@@ -4,28 +4,28 @@ Prospectus runs in AWS account `712236451410` (papyrus-production), region `us-e
 
 ## Components
 
-| Component | Where | Purpose |
-| --- | --- | --- |
-| CRM frontend | `src/`, built by Vite, served by Amplify | Shared Kanbus board UI, Accounts views, intake form |
-| Kanbus API | `prospectus-api` Lambda (`provided.al2023`), HTTP API route `/api/{proxy+}` | Generic Kanbus issue API over S3 files and a DynamoDB catalog |
-| Cognito pool and browser client | `infra/lib/prospectus-backend.ts` | Google-only sign-in for the CRM; groups `prospectus-members` and `admin` |
-| Accounts BFF | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}` | Browser-facing account routes, JWT protected; signs central requests |
-| Central accounts service | `prospectus-central-accounts` Lambda behind the IAM-protected `prospectus-accounts` REST API, stage `api` | Identity, accounts, memberships, entitlements, operator directory |
-| Inquiry intake | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` and one `POST /intake/waitlist/<formId>` route per enabled registry form | Public inquiry and app waitlist capture into the CRM |
-| Accounts client SDK | `packages/accounts-client` | Browser, React and server clients for hosts |
-| Native bridge | `local-dependencies/intake-control` (Rust, `prospectus-identity-files`) | Conditional file writes through pinned Virtuus for identities, accounts and intake controls |
+| Component                       | Where                                                                                                                                                             | Purpose                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| CRM frontend                    | `src/`, built by Vite, served by Amplify                                                                                                                          | Shared Kanbus board UI, Accounts views, intake form                                         |
+| Kanbus API                      | `prospectus-api` Lambda (`provided.al2023`), HTTP API route `/api/{proxy+}`                                                                                       | Generic Kanbus issue API over S3 files and a DynamoDB catalog                               |
+| Cognito pool and browser client | `infra/lib/prospectus-backend.ts`                                                                                                                                 | Google-only sign-in for the CRM; groups `prospectus-members` and `admin`                    |
+| Accounts BFF                    | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}`                                                                                   | Browser-facing account routes, JWT protected; signs central requests                        |
+| Central accounts service        | `prospectus-central-accounts` Lambda behind the IAM-protected `prospectus-accounts` REST API, stage `api`                                                         | Identity, accounts, memberships, entitlements, operator directory                           |
+| Inquiry intake                  | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` and one `POST /intake/waitlist/<formId>` route per enabled registry form | Public inquiry and app waitlist capture into the CRM                                        |
+| Accounts client SDK             | `packages/accounts-client`                                                                                                                                        | Browser, React and server clients for hosts                                                 |
+| Native bridge                   | `local-dependencies/intake-control` (Rust, `prospectus-identity-files`)                                                                                           | Conditional file writes through pinned Virtuus for identities, accounts and intake controls |
 
 ## Storage
 
 All canonical data lives in one private versioned S3 bucket, `prospectus-records-712236451410`, as ordinary files whose paths and bytes are never rewritten by a release.
 
-| Data | Location |
-| --- | --- |
-| CRM records | `cyclotron/prospectus/` (the namespace name is retained data identity, not a second Cyclotron application) |
-| CRM control metadata | `_virtuus/cyclotron/prospectus/` |
-| Intake claims and receipts | `_virtuus/cyclotron/prospectus/intake-identities/` and `intake-receipts/` |
-| Identities | `prospectus-central/identities/` and `_virtuus/prospectus-central/identities/` |
-| Accounts | `prospectus-central/accounts/` and `_virtuus/prospectus-central/accounts/` |
+| Data                              | Location                                                                                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CRM records                       | `cyclotron/prospectus/` (the namespace name is retained data identity, not a second Cyclotron application)                                                                   |
+| CRM control metadata              | `_virtuus/cyclotron/prospectus/`                                                                                                                                             |
+| Intake claims, receipts and inbox | `_virtuus/cyclotron/prospectus/intake-identities/` and `intake-receipts/` (inbox items are hashed objects under `intake-receipts/`, distinguished by `kind: "intake-inbox"`) |
+| Identities                        | `prospectus-central/identities/` and `_virtuus/prospectus-central/identities/`                                                                                               |
+| Accounts                          | `prospectus-central/accounts/` and `_virtuus/prospectus-central/accounts/`                                                                                                   |
 
 DynamoDB (`CatalogTableName` output) is a supplemental query catalog for the CRM only. It can be rebuilt from the files; nothing consults it for authorization.
 
@@ -70,11 +70,11 @@ Limits enforced in `accounts/durable-accounts.ts`: 256 account documents per dis
 
 Callers are products registered with an IAM role, Cognito issuer, client IDs, capabilities and an optional Google federation policy. The central service selects the registration from the verified API Gateway caller identity.
 
-| Product | Registered by | Capabilities |
-| --- | --- | --- |
-| `prospectus-directory` | `infra/lib/accounts-plane.ts` (the Accounts BFF role) | `console:read`, `members:read`; flagged `accountDirectory` for cross-product reads |
-| `cyclotron` | `infra/lib/accounts-plane.ts` when `pairEnabled` in `accounts/console-deployment.json` | `console:read`, `console:write`; enrolling BFF role plus a paired worker role (`executionDelegation`) |
-| `papyrus-<site>` | `accounts/papyrus-sites.json` | `console:read`, `console:write`, `members:read`; see [PAPYRUS_SITES.md](accounts/PAPYRUS_SITES.md) |
+| Product                | Registered by                                                                          | Capabilities                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `prospectus-directory` | `infra/lib/accounts-plane.ts` (the Accounts BFF role)                                  | `console:read`, `members:read`; flagged `accountDirectory` for cross-product reads                    |
+| `cyclotron`            | `infra/lib/accounts-plane.ts` when `pairEnabled` in `accounts/console-deployment.json` | `console:read`, `console:write`; enrolling BFF role plus a paired worker role (`executionDelegation`) |
+| `papyrus-<site>`       | `accounts/papyrus-sites.json`                                                          | `console:read`, `console:write`, `members:read`; see [PAPYRUS_SITES.md](accounts/PAPYRUS_SITES.md)    |
 
 The execution delegation pair lets a queue worker continue an already-enrolled human session without a new login. The worker may call only `GET /v1/identities/me` and `POST /v1/accounts/{UUID}/authorize`, with the original human access token in `X-Prospectus-Human-Token`. It cannot enroll, create accounts, change memberships or read the directory. The result of `authorize` is a point-in-time decision, not a lease; the consumer must check immediately before each effect.
 
@@ -82,17 +82,17 @@ The execution delegation pair lets a queue worker continue an already-enrolled h
 
 All are reached with SigV4 from a registered role and are restricted by both the caller's IAM policy and the REST API resource policy.
 
-| Method and path | Purpose |
-| --- | --- |
-| `POST /v1/identities/google/challenge` | Start enrollment; returns a challenge ID and nonce (300 second TTL) |
-| `POST /v1/identities/google/resolve` | Verify access and ID evidence for the challenge and return the Person |
-| `GET /v1/identities/me` | Continue an enrolled session family; returns `{person:null}` for an unknown alias; never enrolls |
-| `GET /v1/accounts`, `GET /v1/accounts/{id}` | The caller's accounts and one account |
-| `POST /v1/accounts` | Create an account with the creator as owner; the `Idempotency-Key` header carries the replay UUID. Only the Cyclotron registration's IAM policy permits it |
-| `POST /v1/accounts/{id}/memberships` | Set a member's role and status; requires account-scoped `members:write`. No registered caller's IAM policy currently permits this route |
-| `POST /v1/accounts/{id}/authorize` | Check `console:read`, `console:write`, `members:read` or `members:write` |
-| `GET /v1/account-directory`, `GET /v1/account-directory/{id}` | Read-only view of the caller's accounts across all products, with permitted memberships |
-| `GET /v1/account-directory/operator/accounts[/{id}]` | Read-only listing of every account for reviewed operators |
+| Method and path                                               | Purpose                                                                                                                                                    |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/identities/google/challenge`                        | Start enrollment; returns a challenge ID and nonce (300 second TTL)                                                                                        |
+| `POST /v1/identities/google/resolve`                          | Verify access and ID evidence for the challenge and return the Person                                                                                      |
+| `GET /v1/identities/me`                                       | Continue an enrolled session family; returns `{person:null}` for an unknown alias; never enrolls                                                           |
+| `GET /v1/accounts`, `GET /v1/accounts/{id}`                   | The caller's accounts and one account                                                                                                                      |
+| `POST /v1/accounts`                                           | Create an account with the creator as owner; the `Idempotency-Key` header carries the replay UUID. Only the Cyclotron registration's IAM policy permits it |
+| `POST /v1/accounts/{id}/memberships`                          | Set a member's role and status; requires account-scoped `members:write`. No registered caller's IAM policy currently permits this route                    |
+| `POST /v1/accounts/{id}/authorize`                            | Check `console:read`, `console:write`, `members:read` or `members:write`                                                                                   |
+| `GET /v1/account-directory`, `GET /v1/account-directory/{id}` | Read-only view of the caller's accounts across all products, with permitted memberships                                                                    |
+| `GET /v1/account-directory/operator/accounts[/{id}]`          | Read-only listing of every account for reviewed operators                                                                                                  |
 
 ### Browser routes
 
@@ -115,12 +115,25 @@ The CRM browser client and the Cyclotron console client (`cyclotron-console-publ
 
 Two modes, selected in `evaluation-deployment.json`:
 
-| Mode | Origins | Accepts | Source tagging |
-| --- | --- | --- | --- |
-| `synthetic-only` | `https://prospectus.anth.us` | `.invalid` addresses and the demo notice | demo records |
-| `real-contacts` | `https://prospectus.anth.us`, `https://anth.us`, `https://www.anth.us` | ordinary addresses and privacy notice `contact-v1` | site `anthus-website`, form `engage-contact-v1` |
+| Mode             | Origins                                                                | Accepts                                            | Source tagging                                  |
+| ---------------- | ---------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------- |
+| `synthetic-only` | `https://prospectus.anth.us`                                           | `.invalid` addresses and the demo notice           | demo records                                    |
+| `real-contacts`  | `https://prospectus.anth.us`, `https://anth.us`, `https://www.anth.us` | ordinary addresses and privacy notice `contact-v1` | site `anthus-website`, form `engage-contact-v1` |
 
 The route is throttled to one request per second with a burst of two. The Lambda reserves no concurrency, because the account allows 10 concurrent executions in total and AWS keeps them unreserved. Public anth.us is served by the AnthusAI/Anth.us-Papyrus repository, whose engage page is the real-contact form.
+
+### Store first, then file
+
+A visitor's valid message is never lost or rejected because of anything on the CRM side. Only genuine field validation errors (400) reach the visitor. For a valid submission the handler does this:
+
+1. **Store.** It writes the full inquiry (fields, `received_at`, `source`, fingerprint) to an inbox object, `intake-receipts/<sha256(workspace, "inbox", submission_id)>.json`, with the create-first absent-only conditional put, which is the same pattern and the same prefix the intake role already uses. A replay with identical content finds the object and is a no-op. The same `submission_id` with different content (never a visitor action: the form issues a new id whenever content changes) is stored under a second derived key with a derived inquiry id and treated as a new inquiry; it is not rejected. Once the put succeeds the handler answers 202 with the receipt.
+2. **File.** It then tries to create or append in the CRM. The identity claim (or the email search) only identifies the prospect: the update is always built from `GET /issues/<id>`, never from a catalog search hit, because a search hit is a catalog result, not the record, and must never be the base of an update. Any failure here (canonical API 409, 500 or timeout, a lost response, claim storage failure, an expired deadline) is swallowed. The inbox item stays `pending` and the log carries only a data-free reason code such as `http_500` or `unconfirmed_Error`.
+3. **Review cases.** When the problem is the data, not an outage (`duplicate_contact` catalog matches, `identity_changed`, `history_invalid`, `history_full`, `receipt_conflict`), the handler files a separate prospect labelled `needs-review` carrying the inquiry, `review_reason`, the related prospect when known (`review_related_issue`) and the submitted address in `review_contact_email`. It deliberately has no `contact_email` (so it never joins the identity search or creates a new duplicate) and no `next_action` or `next_follow_up_at` (no follow-up noise). Its create uses an operation id derived from the inquiry id, so retries file it once. The operator merges it into the right prospect and closes it. The inbox item is marked `review` with the issue id.
+4. **Reprocess.** `node --import tsx scripts/refile-intake-inbox.ts` (dry run by default; `--apply` files) lists the inbox prefix with the operator's own AWS credentials and retries the `pending` items using the same code, claims and operation ids as live submissions, so it is idempotent. It prints counts only. The intake role has no `s3:ListBucket`, which is why the listing lives in an operator script. A scheduled retry would need new infrastructure and IAM and is not part of this design.
+
+If the inbox itself cannot be written, the handler still tries to file directly and answers 202 only when that succeeds; if both fail it returns 503 so the browser keeps the form and the visitor can retry the same receipt. That is the one case where our side can surface an error, because nothing durable exists.
+
+The inbox object is the durable copy. The Lambda's local ledger remains a disposable per-invocation cache.
 
 Intake sends no email and creates no accounts, invitations, bookings, billing or permissions. Manual creation, import and email edits do not acquire intake claims, so uniqueness holds only among intake writers.
 
@@ -155,22 +168,29 @@ Only `submission_id` (a UUID the client generates once per form view and reuses 
 
 **Responses.** All are JSON with `cache-control: no-store`. Browsers receive CORS headers from the gateway for the union of enabled form origins.
 
-| Status | Body | Meaning |
-| --- | --- | --- |
-| `202` | `{"receipt":"2f6b7c52-3d1e-4a52-9b0e-6a1a1f0c9d11","message":"Waitlist signup received."}` | Stored, already on the list, or honeypot. A repeat signup for the same email on the same app returns the same response and stores nothing new, so the response never reveals whether an address was already registered |
-| `400` | `{"message":"Invalid persona."}` and similar | Validation: bad email, stale notice (`Reload the page to read the current privacy notice.`), unknown field, invalid attribute, size or JSON |
-| `403` | `{"message":"This form origin is not allowed."}` | The Origin is not in this form's `origins` |
-| `404` | `{"message":"Not found."}` | Unknown form or method |
-| `409` | `{"message":"This receipt belongs to a different submission. Reload the form."}` | The `submission_id` was used with different content |
-| `415` | `{"message":"A JSON submission is required."}` | Content type is not `application/json` |
-| `429` | `{"message":"Too Many Requests"}` | The form's own route throttle (default 1 request per second, burst 2) |
-| `503` | `{"message":"The inquiry could not be confirmed. Retry the same receipt."}` | Retry with the same `submission_id` and body |
+| Status | Body                                                                                       | Meaning                                                                                                                                                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `202`  | `{"receipt":"2f6b7c52-3d1e-4a52-9b0e-6a1a1f0c9d11","message":"Waitlist signup received."}` | Stored, already on the list, or honeypot. A repeat signup for the same email on the same app returns the same response and stores nothing new, so the response never reveals whether an address was already registered  |
+| `400`  | `{"message":"Invalid persona."}` and similar                                               | Validation: bad email, stale notice (`Reload the page to read the current privacy notice.`), unknown field, invalid attribute, size or JSON                                                                             |
+| `403`  | `{"message":"This form origin is not allowed."}`                                           | The Origin is not in this form's `origins`                                                                                                                                                                              |
+| `404`  | `{"message":"Not found."}`                                                                 | Unknown form or method                                                                                                                                                                                                  |
+| `415`  | `{"message":"A JSON submission is required."}`                                             | Content type is not `application/json`                                                                                                                                                                                  |
+| `429`  | `{"message":"Too Many Requests"}`                                                          | The form's own route throttle (default 1 request per second, burst 2)                                                                                                                                                   |
+| `503`  | `{"message":"The inquiry could not be confirmed. Retry the same receipt."}`                | Only when neither the inbox nor the CRM could take the inquiry. Retry with the same `submission_id` and body. A `409` is no longer returned: a reused `submission_id` with different content is stored as a new inquiry |
 
 ```js
 await fetch(`${WAITLIST_BASE_URL}/babulus-waitlist-v1`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ submission_id, email, name, marketing_opt_in: wantsUpdates, notice_version: "babulus-waitlist-v1", attributes: { persona, source: "waitlist-page" }, website: "" }),
+  body: JSON.stringify({
+    submission_id,
+    email,
+    name,
+    marketing_opt_in: wantsUpdates,
+    notice_version: "babulus-waitlist-v1",
+    attributes: { persona, source: "waitlist-page" },
+    website: "",
+  }),
 });
 ```
 
