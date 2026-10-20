@@ -18,6 +18,7 @@ import {
   SITE_DOMAIN,
   LOCAL_DEV_ORIGIN,
   PORTAL_DEV_ORIGIN,
+  PORTAL_LAN_DEV_ORIGIN,
   PORTAL_ORIGIN,
   TARGET_ACCOUNT,
   TARGET_REGION,
@@ -107,12 +108,14 @@ test("Google-first identity creation has no pre-enrollment gate and CRM roles ar
       `${LOCAL_DEV_ORIGIN}/auth/callback`,
       `${PORTAL_ORIGIN}/auth/callback`,
       `${PORTAL_DEV_ORIGIN}/auth/callback`,
+      `${PORTAL_LAN_DEV_ORIGIN}/auth/callback`,
     ],
     LogoutURLs: [
       `https://${SITE_DOMAIN}/`,
       `${LOCAL_DEV_ORIGIN}/`,
       `${PORTAL_ORIGIN}/`,
       `${PORTAL_DEV_ORIGIN}/`,
+      `${PORTAL_LAN_DEV_ORIGIN}/`,
     ],
   });
   template.resourceCountIs("AWS::Cognito::UserPoolUser", 0);
@@ -134,7 +137,13 @@ test("every application API route requires verified JWT and access-token scope",
   }
   template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
     CorsConfiguration: {
-      AllowOrigins: [`https://${SITE_DOMAIN}`, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN],
+      AllowOrigins: [
+        `https://${SITE_DOMAIN}`,
+        LOCAL_DEV_ORIGIN,
+        PORTAL_ORIGIN,
+        PORTAL_DEV_ORIGIN,
+        PORTAL_LAN_DEV_ORIGIN,
+      ],
     },
   });
   template.hasResourceProperties("AWS::Lambda::Function", {
@@ -159,7 +168,13 @@ test("member write preflight allows the client's revision and operation headers"
   const template = appTemplate();
   template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
     CorsConfiguration: {
-      AllowOrigins: [`https://${SITE_DOMAIN}`, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN],
+      AllowOrigins: [
+        `https://${SITE_DOMAIN}`,
+        LOCAL_DEV_ORIGIN,
+        PORTAL_ORIGIN,
+        PORTAL_DEV_ORIGIN,
+        PORTAL_LAN_DEV_ORIGIN,
+      ],
       AllowHeaders: ["authorization", "content-type", "if-match", "x-operation-id"],
     },
   });

@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // The Anthus One customer portal (one.anth.us) is its own application: its own entry page and
@@ -16,6 +17,16 @@ export default defineConfig({
   },
   build: { outDir: resolve(__dirname, "dist-portal"), emptyOutDir: true },
   server: {
+    // dev:cloud --lan serves HTTPS at a network name so phones and tablets can sign in.
+    ...(process.env.PROSPECTUS_DEV_TLS_CERT
+      ? {
+          https: {
+            cert: readFileSync(process.env.PROSPECTUS_DEV_TLS_CERT),
+            key: readFileSync(process.env.PROSPECTUS_DEV_TLS_KEY!),
+          },
+          allowedHosts: [process.env.PROSPECTUS_DEV_HOST!],
+        }
+      : {}),
     proxy: {
       // dev:portal forwards account calls to the deployed API so the browser stays same-origin.
       ...(process.env.PROSPECTUS_CLOUD_API_ORIGIN

@@ -2,6 +2,8 @@
 // deployed Cognito client, the deployed API and accounts service, and Vite's instant reload.
 // Nothing is deployed. The deployed backend accepts these origins (APP_ORIGINS in infra/lib/scope.ts).
 // `--portal` serves the Anthus One customer portal instead of the staff console.
+// `--lan <host>` serves over HTTPS at https://<host>:<port + 1> for phones and tablets on the local network:
+// <host> must resolve to this machine, with its certificate in .build/lan-certs/certificates (see OPERATIONS.md).
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -14,7 +16,12 @@ import {
 } from "../infra/lib/scope";
 
 const portal = process.argv.includes("--portal");
-const origin = portal ? PORTAL_DEV_ORIGIN : LOCAL_DEV_ORIGIN;
+const lanHost = process.argv.includes("--lan") ? process.argv[process.argv.indexOf("--lan") + 1] : undefined;
+const localOrigin = portal ? PORTAL_DEV_ORIGIN : LOCAL_DEV_ORIGIN;
+const origin = lanHost ? `https://${lanHost}:${Number(new URL(localOrigin).port) + 1}` : localOrigin;
+const certificate = lanHost && resolve(".build/lan-certs/certificates", lanHost);
+if (certificate && !existsSync(`${certificate}.crt`))
+  throw new Error(`No certificate for ${lanHost} in .build/lan-certs/certificates. See docs/OPERATIONS.md.`);
 
 const outputDirectory = resolve(".build/cloud");
 const outputs = resolve(outputDirectory, "amplify_outputs.json");
@@ -60,7 +67,7 @@ const vite = spawn(
     "node_modules/vite/bin/vite.js",
     ...(portal ? ["--config", "vite.portal.config.ts"] : []),
     "--host",
-    "localhost",
+    lanHost ? "0.0.0.0" : "localhost",
     "--port",
     port,
     "--strictPort",
@@ -79,6 +86,13 @@ const vite = spawn(
       VITE_COGNITO_LOGOUT_URI: `${origin}/`,
       VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
       VITE_INTAKE_EVALUATION_URL: "",
+      ...(lanHost
+        ? {
+            PROSPECTUS_DEV_HOST: lanHost,
+            PROSPECTUS_DEV_TLS_CERT: `${certificate}.crt`,
+            PROSPECTUS_DEV_TLS_KEY: `${certificate}.key`,
+          }
+        : {}),
     },
   },
 );
