@@ -1,0 +1,20 @@
+{
+  "id": "prsp-00000000-0000-4000-8000-000000000004",
+  "title": "Synthetic prospect",
+  "description": "",
+  "type": "prospect",
+  "status": "lost",
+  "priority": 1,
+  "assignee": null,
+  "creator": "synthetic-owner",
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-01-02T03:04:05.678Z",
+  "updated_at": "2026-01-02T03:04:05.678Z",
+  "closed_at": "2026-01-05T00:00:00.000Z",
+  "custom": {
+    "next_action": ""
+  }
+}
