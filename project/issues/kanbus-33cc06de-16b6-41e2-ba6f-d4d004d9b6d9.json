@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-33cc06de-16b6-41e2-ba6f-d4d004d9b6d9",
+  "title": "Audit cleanup (low priority): Prospectus",
+  "description": "Low-priority cleanups for the Prospectus repo (public).\n\n- [ ] Docs name the owner and use first-person approval narrative: docs/ARCHITECTURE.md:40 (\"Decisions recorded by Ryan on 2026-10-17:\") and :146 (\"until Ryan approves\"); docs/OPERATIONS.md:21 (\"Ryan's M1 Mac ... Touch ID\") and :72; docs/accounts/ANTHUS_ONE_PORTAL.md:27, :65, :74 (\"Decisions for Ryan\"); docs/accounts/PAPYRUS_SITES.md:3 and :30. Use neutral wording (\"the maintainer\", \"an approved AWS operator machine\") and move decisions to the board.\n\n(A separate finding about a real-looking address in test fixtures is on hold and not listed here.)\n\n**How to verify**\n`grep -rn Ryan docs` returns nothing.\n\nSource: Anthus repo audit, 2026-10-20.",
+  "type": "bug",
+  "status": "open",
+  "priority": 3,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-20T04:28:51.474069Z",
+  "updated_at": "2026-10-20T04:28:51.474088Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude-opus-5-5",
+    "name": "audit-filing"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
