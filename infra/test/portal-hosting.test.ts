@@ -46,7 +46,7 @@ test("disabled, the backend contains no portal resource at all", () => {
   ])
     template.resourceCountIs(type, 0);
   template.resourceCountIs("AWS::S3::Bucket", 1);
-  assert.equal(portalHostingDeployment(), null, "the committed flag is off");
+  assert.match(portalHostingDeployment()?.assetDirectory ?? "", /dist-portal$/, "the committed flag is on");
 });
 
 test("the portal bucket is private, encrypted, versioned and retained", () => {
