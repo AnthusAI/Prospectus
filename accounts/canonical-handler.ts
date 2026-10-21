@@ -2,7 +2,11 @@ import type { IdentityFiles } from "./identity-files";
 import type { KeyResolver, RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { DurableGoogleIdentities } from "./durable-google-identities";
-import { DurableAccountsService, type MembershipLookup } from "./durable-accounts";
+import {
+  DurableAccountsService,
+  type AccountCreationLimits,
+  type MembershipLookup,
+} from "./durable-accounts";
 import { googlePersonDirectory } from "./person-directory";
 import { googleIdentityHandler } from "./google-identity";
 import { accountDirectoryHandler } from "./directory-handler";
@@ -21,6 +25,7 @@ export function canonicalAccountsHandler(
   grants: readonly OperatorGrant[] = [],
   membershipLookup: MembershipLookup = "scan",
   challengeSigner?: ChallengeSigner,
+  creationLimits: AccountCreationLimits = {},
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),
@@ -31,6 +36,7 @@ export function canonicalAccountsHandler(
     directory,
     () => new Date(nowSeconds() * 1000).toISOString(),
     membershipLookup,
+    creationLimits,
   );
   const accounts = accountHandler(service, products, keys, nowSeconds);
   const directoryHandler = accountDirectoryHandler(service, products, keys, nowSeconds, reviewedGrants);

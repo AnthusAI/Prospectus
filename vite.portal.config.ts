@@ -19,7 +19,7 @@ export default defineConfig({
             "/api": {
               target: process.env.PROSPECTUS_CLOUD_API_ORIGIN,
               changeOrigin: true,
-              headers: { origin: "https://prospectus.anth.us" },
+              headers: { origin: "https://one.anth.us" },
             },
           }
         : {}),

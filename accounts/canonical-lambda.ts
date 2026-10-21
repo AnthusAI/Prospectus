@@ -8,7 +8,7 @@ import grants from "./operator-grants.json";
 import reviewedPapyrusSites from "./papyrus-sites.json";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
 import reviewedDeployment from "./deployment.json";
-import { membershipLookupMode } from "./durable-accounts";
+import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
 import { GOOGLE_ISSUER, GoogleKeys } from "./google-direct";
@@ -35,6 +35,9 @@ const products = registrations([
   membershipLookup = membershipLookupMode(
     (reviewedDeployment as { membershipLookup?: unknown }).membershipLookup,
   );
+const creationLimits = accountCreationLimits(
+  (reviewedDeployment as { accountCreationLimits?: unknown }).accountCreationLimits,
+);
 const challengeSigner = process.env.PROSPECTUS_LOGIN_CHALLENGE_SIGNER
   ? challengeSignerFromConfiguration(
       loginChallengeSignerConfiguration(JSON.parse(process.env.PROSPECTUS_LOGIN_CHALLENGE_SIGNER)),
@@ -86,6 +89,7 @@ export const handler = async (
       reviewedGrants,
       membershipLookup,
       challengeSigner,
+      creationLimits,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

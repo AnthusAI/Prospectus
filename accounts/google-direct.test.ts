@@ -11,7 +11,7 @@ import { googlePersonDirectory } from "./person-directory";
 import { accountDirectoryHandler } from "./directory-handler";
 import { accountsBffHandler } from "./bff";
 import { operatorGrants } from "./operator-policy";
-import { AccountsClient, decode } from "../packages/accounts-client/src/client";
+import { AccountsClient, AccountsClientError, decode } from "../packages/accounts-client/src/client";
 
 const CLIENT = "123456789012-syntheticportalclient.apps.googleusercontent.com";
 const PORTAL_ROLE = "arn:aws:iam::111111111111:role/Synthetic2";
@@ -668,10 +668,29 @@ test("Google's published keys are cached for their stated lifetime and refetched
   await keys.resolve(GOOGLE_ISSUER, "rotated");
   assert.equal(fetches, 3, "refetched after max-age");
   await assert.rejects(keys.resolve("https://evil.example", "google-1"), { status: 401 });
+  // Google becomes unreachable once the keys are stale: serve the last good keys, back off, then fail closed.
   now += 3_700_000;
   status = 503;
-  await assert.rejects(keys.resolve(GOOGLE_ISSUER, "google-1"), { status: 401 });
+  const before = fetches;
+  assert.equal((await keys.resolve(GOOGLE_ISSUER, "google-1")).kid, "google-1");
+  assert.equal(fetches, before + 1, "one attempt");
+  assert.equal((await keys.resolve(GOOGLE_ISSUER, "google-1")).kid, "google-1");
+  assert.equal(fetches, before + 1, "no second attempt inside the 30 second back-off");
+  now += 31_000;
+  assert.equal((await keys.resolve(GOOGLE_ISSUER, "google-1")).kid, "google-1");
+  assert.equal(fetches, before + 2, "retried after the back-off");
+  await assert.rejects(keys.resolve(GOOGLE_ISSUER, "never-seen"), { status: 401 });
+  now += 6 * 3600_000;
+  await assert.rejects(
+    keys.resolve(GOOGLE_ISSUER, "google-1"),
+    { status: 401 },
+    "fails closed after 6 hours",
+  );
+  // Recovery: once Google answers again the next attempt after the back-off restores service.
   status = 200;
+  now += 31_000;
+  assert.equal((await keys.resolve(GOOGLE_ISSUER, "google-1")).kid, "google-1");
+  // A bad key set never replaces a good one, and a never-fetched cache fails closed.
   body = JSON.stringify({ keys: [{ ...publicJwk(googleKeys, "weak"), alg: "HS256" }] });
   now += 61_000;
   await assert.rejects(keys.resolve(GOOGLE_ISSUER, "weak"), { status: 401 });
@@ -680,4 +699,33 @@ test("Google's published keys are cached for their stated lifetime and refetched
   });
   now += 3_700_000;
   await assert.rejects(keys.resolve(GOOGLE_ISSUER, "k1"), { status: 401 });
+  status = 503;
+  await assert.rejects(new GoogleKeys(fetcher, () => now).resolve(GOOGLE_ISSUER, "google-1"), {
+    status: 401,
+  });
+});
+
+test("the customer BFF turns the account limit into a clear 409 and a second-key conflict into a different message", async () => {
+  const environment = portal();
+  const bearer = environment.token("synthetic-google-limit", "limit-nonce-0123456789abcdef");
+  const bffFor = (error: AccountsClientError) =>
+    accountsBffHandler({
+      surface: "customer",
+      origins: ["https://one.anth.us"],
+      registration: environment.registration,
+      keys: environment.keys,
+      nowSeconds: () => environment.fixture.now,
+      client: () =>
+        new AccountsClient(async () => {
+          throw error;
+        }),
+    });
+  const create = (bff: ReturnType<typeof bffFor>) =>
+    bff(post("/api/saas/accounts", { name: "Workspace", requestKey: randomUUID() }, bearer));
+  const limited = await create(bffFor(new AccountsClientError(409, "account_limit", "internal")));
+  assert.equal(limited.statusCode, 409);
+  assert.equal(JSON.parse(limited.body).error, "account_limit");
+  assert.match(JSON.parse(limited.body).message, /account limit; contact us/);
+  const conflict = await create(bffFor(new AccountsClientError(409, "idempotency_conflict", "internal")));
+  assert.match(JSON.parse(conflict.body).message, /already used/);
 });

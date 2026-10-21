@@ -134,8 +134,12 @@ export function loadGoogleIdentity(): Promise<GoogleIdentity> {
 
 export interface CredentialRequest {
   clientId: string;
-  /** Issues a server challenge bound to the digest of this browser's login state. */
+  /** First sign-in: the public challenge route, bound to the digest of this browser's login state. */
   loginChallenge(loginStateDigest: string): Promise<AccountsChallenge>;
+  /** Renewal while signed in: the authenticated challenge route (needs the current token, takes no login state).
+   * When given, the public route is not used, so open tabs never spend its shared rate limit.
+   */
+  authenticatedChallenge?: () => Promise<AccountsChallenge>;
   /** Called after a credential with the challenge nonce has been accepted and stored. */
   onCredential(): void;
   /** Where to draw the "Sign in with Google" button, if anywhere. */
@@ -145,10 +149,17 @@ export interface CredentialRequest {
 }
 /** Ask Google for a credential whose nonce is a fresh server challenge. Each call replaces the previous request. */
 export async function requestCredential(request: CredentialRequest): Promise<void> {
-  const state = encode(crypto.getRandomValues(new Uint8Array(32)));
-  const challenge = await request.loginChallenge(await sha256Hex(state));
-  const login: Login = { state, challenge, issuedAt: Date.now() };
-  sessionStorage.setItem(LOGIN_KEY, JSON.stringify(login));
+  let challenge: AccountsChallenge;
+  if (request.authenticatedChallenge) {
+    // A renewal enrolls nothing, so it keeps no login state and a stale login record must not outlive it.
+    challenge = await request.authenticatedChallenge();
+    sessionStorage.removeItem(LOGIN_KEY);
+  } else {
+    const state = encode(crypto.getRandomValues(new Uint8Array(32)));
+    challenge = await request.loginChallenge(await sha256Hex(state));
+    const login: Login = { state, challenge, issuedAt: Date.now() };
+    sessionStorage.setItem(LOGIN_KEY, JSON.stringify(login));
+  }
   const google = await loadGoogleIdentity();
   google.initialize({
     client_id: request.clientId,

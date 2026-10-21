@@ -25,7 +25,7 @@ export const PORTAL_DEV_ORIGIN = "http://localhost:5421";
  */
 export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN] as const;
 /** Browser origins allowed to call the Anthus One portal's accounts API (and the Google "Authorized JavaScript origins"). */
-export const PORTAL_ORIGINS = [PORTAL_ORIGIN, PORTAL_DEV_ORIGIN] as const;
+export const PORTAL_ORIGINS = [PORTAL_ORIGIN] as const;
 /** The Anthus One Google OAuth client. A public identifier, used as the Google ID token audience; its secret is not used. */
 export const PORTAL_GOOGLE_CLIENT_ID =
   "712526614578-dp3o0ofrukf7h2qcjst345t033mi990c.apps.googleusercontent.com";

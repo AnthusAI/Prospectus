@@ -15,7 +15,7 @@ const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import type { IntakeFormConfig } from "../../server/intake-forms";
-import { throttleRoutes } from "./throttle-routes";
+import { throttleRoutes, throttleStageDefault } from "./throttle-routes";
 import { PortalHosting } from "./portal-hosting";
 import {
   APP_ORIGINS,
@@ -316,7 +316,12 @@ export class ProspectusBackend extends Construct {
       const portalIntegration = new HttpLambdaIntegration("AnthusOneAccounts", accountsPlane.portalBff);
       portalApi.addRoutes({
         path: "/api/saas/{proxy+}",
-        methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST],
+        methods: [apigw.HttpMethod.GET],
+        integration: portalIntegration,
+      });
+      const [portalPostRoute] = portalApi.addRoutes({
+        path: "/api/saas/{proxy+}",
+        methods: [apigw.HttpMethod.POST],
         integration: portalIntegration,
       });
       const [portalChallengeRoute] = portalApi.addRoutes({
@@ -325,12 +330,18 @@ export class ProspectusBackend extends Construct {
         integration: portalIntegration,
         authorizer: new apigw.HttpNoneAuthorizer(),
       });
+      // Account creation is the one write a signed-in person can repeat, so POSTs are held to 2 per second (burst 5)
+      // across the API, and every other route to 10 per second (burst 20). The public challenge route serves only a
+      // first sign-in (token refresh uses the authenticated challenge), so 2 per second (burst 5) lets about 120
+      // people start signing in each minute; it stores nothing, so exhausting it creates no data.
+      throttleStageDefault(portalApi.defaultStage!, 10, 20);
       throttleRoutes(portalApi.defaultStage!, [
+        { routeKey: "POST /api/saas/{proxy+}", route: portalPostRoute, burstLimit: 5, rateLimit: 2 },
         {
           routeKey: `POST ${LOGIN_CHALLENGE_PATH}`,
           route: portalChallengeRoute,
-          burstLimit: 2,
-          rateLimit: 1,
+          burstLimit: 5,
+          rateLimit: 2,
         },
       ]);
       portalApiUrl = `${portalApi.apiEndpoint}/api/saas`;

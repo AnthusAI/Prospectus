@@ -70,6 +70,11 @@ test("a disabled build skips the portal build and leaves environment files alone
 test("the portal's public settings are written for one.anth.us", () => {
   assert.equal(portal.domain, PORTAL_DOMAIN);
   assert.ok(PORTAL_ORIGINS.includes(PORTAL_ORIGIN), "the portal calls its own accounts API from one.anth.us");
+  assert.deepEqual(
+    [...PORTAL_ORIGINS],
+    ["https://one.anth.us"],
+    "no localhost origin in production CORS or the BFF",
+  );
   for (const origin of PORTAL_ORIGINS)
     assert.ok(!(APP_ORIGINS as readonly string[]).includes(origin), `${origin} must not be a CRM origin`);
   const directory = mkdtempSync(join(tmpdir(), "portal-env-"));

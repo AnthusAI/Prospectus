@@ -123,7 +123,7 @@ The portal has no Cognito pool. The browser uses Google Identity Services (GIS) 
 5. A Person is keyed by the Google subject (`sub`), so enrollment writes only a new alias (`https://accounts.google.com`, `sub`) pointing at the existing `google/<key>.json` Person. An account holder who already signed in through the CRM or any Papyrus pool resolves to the same Person.
 6. Later requests resolve the Person from the alias plus an enrolled binding for this product, client and policy. A fresh Google token does not need a fresh challenge.
 
-Session: there is no portal-issued session. The Google ID token (about one hour) is the session. About five minutes before it ends the page asks GIS for a new credential with a new challenge nonce; if Google needs the person, the session ends and the sign-in page returns.
+Session: there is no portal-issued session. The Google ID token (about one hour) is the session. About five minutes before it ends the page asks GIS for a new credential whose nonce comes from the authenticated `POST /identity/challenge` (it uses the current token, so open tabs never spend the shared public limit; the public `login-challenge` route serves first sign-in only); if Google needs the person, the session ends and the sign-in page returns.
 
 The CRM browser client and the Cyclotron console client (`cyclotron-console-public`, callback `https://lab.cyclotron.anth.us/auth/callback`) are separate Google-only Cognito clients on the same pool.
 

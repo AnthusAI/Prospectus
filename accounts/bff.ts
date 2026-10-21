@@ -176,6 +176,8 @@ export function accountsBffHandler(options: AccountsBffOptions) {
           if (!(error instanceof AccountsClientError)) throw error;
           if (error.code === "identity_enrollment_required")
             fail(403, error.code, "Confirm this Google sign-in on the Accounts page, then try again.");
+          if (error.code === "account_limit")
+            fail(409, error.code, "You've reached the account limit; contact us if you need more.");
           if (error.status === 409)
             fail(
               409,

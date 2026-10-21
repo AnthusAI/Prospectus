@@ -49,11 +49,14 @@ export function PortalApp() {
     setCredentialVersion((value) => value + 1);
   }, []);
   const startCredential = useCallback(
-    (button: HTMLElement | null, prompt: boolean) =>
+    (button: HTMLElement | null, prompt: boolean, renewal = false) =>
       requestCredential({
         clientId: googleClientId,
         loginChallenge: (digest) => directory.loginChallenge(digest),
-        onCredential: credentialArrived,
+        // Renewing while signed in uses the authenticated challenge, never the shared public one, and does not
+        // reload the workspaces the person is looking at.
+        ...(renewal ? { authenticatedChallenge: () => directory.challenge() } : {}),
+        onCredential: renewal ? () => setError("") : credentialArrived,
         button,
         prompt,
       }),
@@ -75,7 +78,7 @@ export function PortalApp() {
       }
       if (googleClientId && expiresAt - Date.now() < REFRESH_BEFORE_EXPIRY_MS && !refreshing.current) {
         refreshing.current = true;
-        void startCredential(null, true)
+        void startCredential(null, true, true)
           .catch(() => undefined)
           .finally(() => window.setTimeout(() => (refreshing.current = false), 60_000));
       }

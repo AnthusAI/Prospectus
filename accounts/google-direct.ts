@@ -16,6 +16,10 @@ const SKEW_SECONDS = 30;
 const MINIMUM_KEY_CACHE_MS = 5 * 60_000;
 const MAXIMUM_KEY_CACHE_MS = 24 * 3600_000;
 const UNKNOWN_KID_REFETCH_MS = 60_000;
+/** After a failed refresh, wait this long before trying Google again. */
+const REFRESH_BACKOFF_MS = 30_000;
+/** Keys from the last good fetch may serve this long past their stated lifetime when Google cannot be reached. */
+const STALE_GRACE_MS = 6 * 3600_000;
 
 export const isGoogleDirect = (registration: Pick<ProductRegistration, "googleFederation">) =>
   registration.googleFederation?.policy === GOOGLE_DIRECT_POLICY;
@@ -27,6 +31,7 @@ export class GoogleKeys {
   private keys: JsonWebKey[] = [];
   private expires = 0;
   private fetchedAt = -Infinity;
+  private nextAttempt = 0;
   constructor(
     private fetcher: typeof fetch = fetch,
     private clock: () => number = Date.now,
@@ -36,14 +41,25 @@ export class GoogleKeys {
     const now = this.clock();
     const stale = this.expires < now;
     const unknown = !this.keys.some((key) => key.kid === kid);
-    if (stale || (unknown && now - this.fetchedAt >= UNKNOWN_KID_REFETCH_MS)) await this.refresh(now);
-    const key = this.keys.find(
-      (candidate) =>
-        candidate.kid === kid &&
-        candidate.kty === "RSA" &&
-        candidate.use === "sig" &&
-        candidate.alg === "RS256",
-    );
+    if ((stale || (unknown && now - this.fetchedAt >= UNKNOWN_KID_REFETCH_MS)) && now >= this.nextAttempt) {
+      try {
+        await this.refresh(now);
+      } catch {
+        // Record the attempt and back off, so an outage costs one request per interval rather than one per call.
+        this.nextAttempt = now + REFRESH_BACKOFF_MS;
+      }
+    }
+    // Keys from the last good fetch keep serving for a bounded grace period after they go stale, then it fails closed.
+    const usable = this.keys.length > 0 && (!stale || now - this.fetchedAt <= STALE_GRACE_MS);
+    const key = usable
+      ? this.keys.find(
+          (candidate) =>
+            candidate.kid === kid &&
+            candidate.kty === "RSA" &&
+            candidate.use === "sig" &&
+            candidate.alg === "RS256",
+        )
+      : undefined;
     if (!key) fail(401, "keys", "Signing key unavailable.");
     return key;
   }
@@ -60,6 +76,7 @@ export class GoogleKeys {
     const lifetime = Number.isFinite(maxAge) ? maxAge * 1000 : MINIMUM_KEY_CACHE_MS;
     this.keys = parsed.keys;
     this.fetchedAt = now;
+    this.nextAttempt = 0;
     this.expires = now + Math.min(MAXIMUM_KEY_CACHE_MS, Math.max(MINIMUM_KEY_CACHE_MS, lifetime));
   }
 }

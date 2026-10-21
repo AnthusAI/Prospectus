@@ -5,7 +5,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Code } from "aws-cdk-lib/aws-lambda";
 import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
-import { PORTAL_GOOGLE_CLIENT_ID, PORTAL_ORIGINS } from "../lib/scope";
+import { PORTAL_GOOGLE_CLIENT_ID } from "../lib/scope";
 import { unscopableRoutesWithScopes } from "./route-auth";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
@@ -609,7 +609,7 @@ test("Anthus One adds a Google-direct customer API with no Cognito pool, secret 
     Issuer: "https://accounts.google.com",
   });
   const api = added.find((resource) => resource.Type === "AWS::ApiGatewayV2::Api")!;
-  assert.deepEqual(api.Properties.CorsConfiguration.AllowOrigins, [...PORTAL_ORIGINS]);
+  assert.deepEqual(api.Properties.CorsConfiguration.AllowOrigins, ["https://one.anth.us"]);
   assert.deepEqual(api.Properties.CorsConfiguration.AllowHeaders, ["authorization", "content-type"]);
   const routes = added.filter((resource) => resource.Type === "AWS::ApiGatewayV2::Route");
   assert.deepEqual(
@@ -621,6 +621,27 @@ test("Anthus One adds a Google-direct customer API with no Cognito pool, secret 
     ],
   );
   assert.ok(routes.every((route) => !route.Properties.AuthorizationScopes?.length));
+  // Throttling: account creation and the public challenge are limited per route, everything else by default, and
+  // the stage is only updated after every throttled route exists.
+  const stage = added.find((resource) => resource.Type === "AWS::ApiGatewayV2::Stage")!;
+  assert.deepEqual(stage.Properties.DefaultRouteSettings, {
+    ThrottlingBurstLimit: 20,
+    ThrottlingRateLimit: 10,
+  });
+  assert.deepEqual(stage.Properties.RouteSettings, {
+    "POST /api/saas/{proxy+}": { ThrottlingBurstLimit: 5, ThrottlingRateLimit: 2 },
+    "POST /api/saas/identity/login-challenge": { ThrottlingBurstLimit: 5, ThrottlingRateLimit: 2 },
+  });
+  const throttledRoutes = added
+    .filter(
+      (resource) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        (resource.Properties.RouteKey === "POST /api/saas/{proxy+}" ||
+          resource.Properties.RouteKey === "POST /api/saas/identity/login-challenge"),
+    )
+    .map((resource) => resource.id);
+  assert.equal(throttledRoutes.length, 2);
+  for (const route of throttledRoutes) assert.ok(stage.DependsOn.includes(route), `stage waits for ${route}`);
   // The role may call only the customer routes centrally; never operator, membership or authorize paths.
   const invoke = added
     .filter((resource) => resource.Type === "AWS::IAM::Policy")

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 const store = new Map<string, string>();
 Object.assign(globalThis, {
@@ -9,9 +10,8 @@ Object.assign(globalThis, {
     removeItem: (key: string) => void store.delete(key),
   },
 });
-const { acceptCredential, enrollIfFresh, getIdToken, clearPortalSession, decodeClaims } = await import(
-  "../src/portal/google-auth"
-);
+const { acceptCredential, enrollIfFresh, getIdToken, clearPortalSession, decodeClaims, requestCredential } =
+  await import("../src/portal/google-auth");
 
 const CLIENT = "123456789012-syntheticportalclient.apps.googleusercontent.com";
 const NONCE = "n".repeat(32);
@@ -81,4 +81,58 @@ test("a credential confirms itself once, only while its challenge is fresh, and 
   acceptCredential(jwt(claims(now, { nonce: "o".repeat(32) })), "o".repeat(32), CLIENT, now);
   remember(now - 1_000);
   assert.equal(await enrollIfFresh("https://api.example/api/saas", fetcher, now), false);
+});
+
+test("first sign-in uses the public challenge; renewing while signed in uses only the authenticated one", async () => {
+  const initialized: Array<Record<string, unknown>> = [];
+  Object.assign(globalThis, {
+    window: {
+      google: {
+        accounts: {
+          id: {
+            initialize: (configuration: Record<string, unknown>) => initialized.push(configuration),
+            renderButton: () => undefined,
+            prompt: () => undefined,
+            disableAutoSelect: () => undefined,
+            cancel: () => undefined,
+          },
+        },
+      },
+    },
+  });
+  const calls: string[] = [];
+  const challenge = (nonce: string) => ({
+    challengeId: "11111111-1111-4111-8111-111111111111",
+    nonce,
+    challengeToken: "v1.k.p.m",
+  });
+  const base = {
+    clientId: CLIENT,
+    loginChallenge: async (digest: string) => {
+      calls.push(`public:${digest.length}`);
+      return challenge("p".repeat(32));
+    },
+    onCredential: () => undefined,
+  };
+  clearPortalSession();
+  await requestCredential(base);
+  assert.deepEqual(calls, ["public:64"], "the public route gets only a SHA-256 digest of the login state");
+  assert.equal(initialized.at(-1)?.nonce, "p".repeat(32));
+  assert.ok(store.has("anthus-one.login"), "a first sign-in remembers its login for the one-time enrollment");
+
+  calls.length = 0;
+  await requestCredential({
+    ...base,
+    authenticatedChallenge: async () => {
+      calls.push("authenticated");
+      return challenge("a".repeat(32));
+    },
+  });
+  assert.deepEqual(calls, ["authenticated"], "a renewal never touches the public challenge route");
+  assert.equal(initialized.at(-1)?.nonce, "a".repeat(32));
+  assert.ok(!store.has("anthus-one.login"), "a renewal enrolls nothing and keeps no login state");
+
+  const app = readFileSync("src/portal/PortalApp.tsx", "utf8");
+  assert.match(app, /authenticatedChallenge: \(\) => directory\.challenge\(\)/);
+  assert.match(app, /startCredential\(null, true, true\)/, "the pre-expiry refresh is a renewal");
 });

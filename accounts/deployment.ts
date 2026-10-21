@@ -1,7 +1,7 @@
 import { REVIEW_IDENTIFIER_PATTERN, matchesStringPattern } from "./validation-rules";
 import { readFileSync } from "node:fs";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
-import { membershipLookupMode } from "./durable-accounts";
+import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { loginChallengeSignerConfiguration } from "./challenge-signer";
 import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
 import { PORTAL_GOOGLE_CLIENT_ID } from "../infra/lib/scope";
@@ -34,6 +34,7 @@ export function accountsDeployment() {
   )
     throw new Error("Canonical accounts activation requires reviewed storage and Google policy ID.");
   membershipLookupMode(config.membershipLookup);
+  accountCreationLimits(config.accountCreationLimits);
   const loginChallengeSigner = loginChallengeSignerConfiguration(config.loginChallengeSigner);
   const consoleConfig = JSON.parse(
     readFileSync(new URL("./console-deployment.json", import.meta.url), "utf8"),

@@ -1,0 +1,22 @@
+{
+  "id": "kanbus-1b54c9d7-7e72-4d95-b12c-dd2a434cd458",
+  "title": "Create a development Google OAuth client and dev backend for local Anthus One portal work",
+  "description": "The production Anthus One Google client authorizes only https://one.anth.us (kanbus-73f7b2 review). Local portal work (npm run dev:portal at http://localhost:5421) needs a separate development Google OAuth client with Authorized JavaScript origins http://localhost:5421 and http://localhost, exported as ANTHUS_ONE_DEV_GOOGLE_CLIENT_ID. The deployed portal API verifies only the production client as audience, so end-to-end local sign-in also needs a development backend (or a fixture API) that registers the dev client under its own reviewed policy ID. Needs Ryan's Google console access and approval for any new persistent IAM or API resources.",
+  "type": "task",
+  "status": "open",
+  "priority": 3,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [
+    "security"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-21T02:40:14.752814Z",
+  "updated_at": "2026-10-21T02:40:14.752869Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

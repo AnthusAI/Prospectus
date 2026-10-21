@@ -32,7 +32,7 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `http://localhost:5417` is in `APP_ORIGINS` (`infra/lib/scope.ts`), so the Cognito client's callback and logout URLs, the API's CORS origins and the accounts service's POST origin check accept it beside the production address. Cognito permits plain http only for localhost, so open `localhost`, not `127.0.0.1`. Google itself is unchanged: its OAuth client only ever redirects to the Cognito domain.
 
-`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421 (`one.anth.us` itself is hosted by the CDK stack, never by a second Amplify app or a manual upload). It signs in with Google directly (no Cognito) and calls the portal API from the `AnthusOneBffUrl` output, so it needs the backend deployed once; the Google client must list `http://localhost:5421` (and, for One Tap, `http://localhost`) as Authorized JavaScript origins.
+`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421 (`one.anth.us` itself is hosted by the CDK stack, never by a second Amplify app or a manual upload). It signs in with Google directly (no Cognito). The production Google client authorizes only `https://one.anth.us`, so local portal work needs a separate development Google client (Authorized JavaScript origins `http://localhost:5421` and `http://localhost`), passed as `ANTHUS_ONE_DEV_GOOGLE_CLIENT_ID`; Vite forwards `/api` to the portal API from the `AnthusOneBffUrl` output with the origin `https://one.anth.us`. The deployed API verifies only the production client as audience, so a development-client token is refused (`401`) until a development backend exists; creating the client and that backend is tracked in kanbus-1b54c9.
 
 `npm run preview:local` remains the fully offline option with synthetic data and a local token.
 
@@ -44,7 +44,7 @@ Do not rewrite canonical paths or delete data in a UI release.
 
 Google Cloud console, project "Anthus One", OAuth client `712526614578-dp3o0ofrukf7h2qcjst345t033mi990c`:
 
-- Authorized JavaScript origins: `https://one.anth.us`, `http://localhost:5421` and `http://localhost` (Google requires the portless localhost origin as well for One Tap). Nothing else.
+- Authorized JavaScript origins: `https://one.anth.us` only. No localhost origin on the production client; local development uses a separate development client (kanbus-1b54c9).
 - Authorized redirect URIs: none are needed. The Cognito `idpresponse` URI registered earlier can be removed.
 - OAuth consent screen: publishing status "In production" (or test users listed), scopes `openid`, `email`, `profile` only.
 - The client secret is not used anywhere and the Secrets Manager secret `anthus-one/oauth/google` can be deleted.
@@ -60,6 +60,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `infra/portal-hosting.json` | Anthus One hosting at `one.anth.us`: private bucket, CloudFront, certificate, DNS and publication of `dist-portal`; new persistent resources, so it needs concrete approval before it is set to true | `enabled: false` |
 | `accounts/deployment.json` | Central Accounts plane; needs `storageMode` `canonical-virtuus-v1` and a Google policy review ID | `enabled: true`, review `papyrus-google-only-unlinked-v1-20261015` |
 | `accounts/console-deployment.json` | Cyclotron console Cognito client (`clientEnabled`) and its BFF and worker role pair (`pairEnabled`); the pair requires the client | both `true` |
+| `accounts/deployment.json` `accountCreationLimits` | Most accounts one Person may create per product (`default`, or a product name); creating more returns `409 account_limit`, and "contact us" is the path to more. Replays of an existing request key do not count | `{"default": 3}` |
 | `accounts/anthus-one-deployment.json` | The Anthus One portal API, role, Lambda and `anthus-one` product (Google-direct); names the public Google client and reviewed policy `anthus-one-google-direct-v1-20261020` | `enabled: true` |
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
