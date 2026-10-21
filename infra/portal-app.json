@@ -1,6 +1,4 @@
 {
-  "appId": null,
-  "branch": "main",
   "domain": "one.anth.us",
   "signIn": {
     "cognitoDomainUrl": "https://prospectus-712236451410.auth.us-east-1.amazoncognito.com",

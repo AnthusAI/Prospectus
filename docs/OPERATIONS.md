@@ -24,7 +24,7 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 ## Deployment
 
-`amplify.yml` runs the backend pipeline: verify scope, check out the pinned Kanbus sources, build the shared UI, `npm ci`, typecheck, test, package the Linux Kanbus API, build the intake bundle when enabled, build the Accounts bundles, run the infrastructure checks and `ampx pipeline-deploy`. The frontend phase writes `.env.production.local` from the Amplify outputs (`infra/scripts/write-frontend-env.mjs`) and runs `npm run build`. Keep the reviewed pinned Node build image and `infra/hosting-settings.json`, including the single-page-app rewrite and disabled legacy CLI overrides.
+`amplify.yml` runs the backend pipeline: verify scope, check out the pinned Kanbus sources, build the shared UI, `npm ci`, typecheck, test, package the Linux Kanbus API, build the intake bundle when enabled, build the Accounts bundles, run the infrastructure checks and `ampx pipeline-deploy`. The frontend phase writes `.env.production.local` from the Amplify outputs (`infra/scripts/write-frontend-env.mjs`) and runs `npm run build`. When `infra/portal-hosting.json` is enabled, the backend phase also builds `dist-portal` (`infra/scripts/build-portal-if-enabled.mjs`) before `ampx pipeline-deploy`, which publishes it to the portal bucket and invalidates CloudFront (see [accounts/ANTHUS_ONE_PORTAL.md](accounts/ANTHUS_ONE_PORTAL.md#hosting)). Keep the reviewed pinned Node build image and `infra/hosting-settings.json`, including the single-page-app rewrite and disabled legacy CLI overrides.
 
 ### Local development against the deployed backend
 
@@ -32,7 +32,7 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `http://localhost:5417` is in `APP_ORIGINS` (`infra/lib/scope.ts`), so the Cognito client's callback and logout URLs, the API's CORS origins and the accounts service's POST origin check accept it beside the production address. Cognito permits plain http only for localhost, so open `localhost`, not `127.0.0.1`. Google itself is unchanged: its OAuth client only ever redirects to the Cognito domain.
 
-`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421.
+`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421. `one.anth.us` itself is hosted by the CDK stack, never by a second Amplify app or a manual upload.
 
 `npm run preview:local` remains the fully offline option with synthetic data and a local token.
 
@@ -46,6 +46,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 
 | File | Controls | Value on this branch |
 | --- | --- | --- |
+| `infra/portal-hosting.json` | Anthus One hosting at `one.anth.us`: private bucket, CloudFront, certificate, DNS and publication of `dist-portal`; new persistent resources, so it needs concrete approval before it is set to true | `enabled: false` |
 | `accounts/deployment.json` | Central Accounts plane; needs `storageMode` `canonical-virtuus-v1` and a Google policy review ID | `enabled: true`, review `papyrus-google-only-unlinked-v1-20261015` |
 | `accounts/console-deployment.json` | Cyclotron console Cognito client (`clientEnabled`) and its BFF and worker role pair (`pairEnabled`); the pair requires the client | both `true` |
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
@@ -54,6 +55,10 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `intake-forms.json` | App waitlist forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: true` for `https://babulus.anth.us` only (Ryan approved 2026-10-20, recorded in the entry); it collects real contacts once deployed, and acceptance is a labelled test signup after deploy |
 
 Whether a flag is deployed is a fact about the cloud account, not the repository. Check the Amplify build history before claiming an activation is live. The anth.us engage form is not a working Prospectus intake until the intake runtime is deployed and the public form's endpoint and privacy notice settings in AnthusAI/Anth.us-Papyrus point at the `EvaluationIntakeUrl` output.
+
+### Known manual hosting
+
+The CRM frontend is served by the Amplify app `d15sc1sptohtqb`, which was created by hand with a GitHub connection. That conflicts with the rule that nothing is manually configured; bringing it under infrastructure as code is tracked in Kanbus `kanbus-e72209` (do not recreate the app or break the `prospectus.anth.us` domain in the meantime).
 
 ### Turning on a Papyrus site
 
@@ -126,7 +131,7 @@ Run from the repository root after building the pinned Kanbus UI (see [README.md
 | `npm run test:e2e` | Playwright browser acceptance; needs a real local API and `PROSPECTUS_TEST_TOKEN` |
 | `npm ci --prefix infra && npm run check --prefix infra` | Types, tests and synthesis of the CDK app, including that existing CRM resources are identical with Accounts enabled |
 | `npm run check:amplify --prefix infra` | The Amplify Gen2 entry |
-| `npm run synth:amplify-review --prefix infra`, `npm run synth:accounts:review --prefix infra` | Offline synthesis of the actual Gen2 assembly with Accounts enabled |
+| `npm run synth:amplify-review --prefix infra`, `npm run synth:accounts:review --prefix infra`, `npm run synth:portal:review --prefix infra` | Offline synthesis of the actual Gen2 assembly with Accounts enabled, and with Anthus One hosting enabled |
 | `bash scripts/build-accounts-linux.sh` then `node accounts/package-smoke.mjs` | Linux x86_64 native bridge and Node 24 handler packaging, checked without credentials |
 
 `.github/workflows/ci.yml` runs the application and infrastructure checks on pushes to `develop` and `main` and on pull requests. When `accounts/deployment.json` is enabled it also runs the package smoke test and the persisted isolation suites. Set `PROSPECTUS_PACKAGE_NODE_MAJOR=24` to check the exact Lambda Node major. Tests use synthetic RSA identities, disposable roots and no cloud credentials; they do not prove deployed SigV4 enforcement, real Google login or real S3 behavior.

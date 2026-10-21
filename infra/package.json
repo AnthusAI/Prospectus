@@ -9,6 +9,7 @@
     "check": "npm run build && npm test && npm run synth",
     "check:amplify": "tsc --noEmit --module esnext --moduleResolution bundler --target es2022 --skipLibCheck ../amplify/backend.ts",
     "synth:amplify-review": "cd .. && node --import tsx infra/scripts/synth-amplify-review.ts",
+    "synth:portal:review": "cd .. && node --import tsx infra/scripts/synth-portal-review.ts",
     "synth:accounts:review": "cd .. && node --import tsx infra/scripts/synth-accounts-review.ts"
   },
   "dependencies": {

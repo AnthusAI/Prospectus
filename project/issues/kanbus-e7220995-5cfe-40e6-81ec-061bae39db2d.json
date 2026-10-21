@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-e7220995-5cfe-40e6-81ec-061bae39db2d",
+  "title": "Bring the CRM's hosting (Amplify app d15sc1sptohtqb) under infrastructure-as-code",
+  "description": "The Amplify app d15sc1sptohtqb that serves the CRM frontend at prospectus.anth.us was created manually, with a GitHub connection, in papyrus-production. Ryan's rule (2026-10-20): nothing is manually configured; everything is infrastructure as code. The backend is already CDK deployed by this app's ampx pipeline-deploy, but the app itself, its GitHub connection, branch settings, domain association and rewrite rules (infra/hosting-settings.json, infra/branch-settings.json) are not defined in code. Target: define the CRM hosting in IaC (for example the same private S3 and CloudFront pattern as the Anthus One portal in infra/lib/portal-hosting.ts, published by BucketDeployment) so nothing depends on a hand-made app or GitHub connection, with a reviewed cutover plan for prospectus.anth.us that avoids downtime, and then retire the manual app. Not implemented here; the portal hosting PR (claude/portal-hosting-iac) removes the second-Amplify-app idea and leaves the CRM exactly as it is. New persistent IAM or security resources need concrete approval first.",
+  "type": "task",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [
+    "infrastructure"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-21T02:10:10.784114Z",
+  "updated_at": "2026-10-21T02:10:12.958592Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "Claude Sonnet 5.5",
+    "name": "Claude Code"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
