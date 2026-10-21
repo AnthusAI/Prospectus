@@ -16,11 +16,13 @@ import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import type { IntakeFormConfig } from "../../server/intake-forms";
 import { throttleRoutes } from "./throttle-routes";
+import { PortalHosting } from "./portal-hosting";
 import {
   APP_ORIGINS,
   KANBUS_BOARD_GROUP,
   MEMBER_GROUP,
   PORTAL_ORIGINS,
+  PORTAL_DOMAIN,
   PROJECT_NAMESPACE,
   SITE_DOMAIN,
   TARGET_ACCOUNT,
@@ -37,6 +39,7 @@ export class ProspectusBackend extends Construct {
     accounts?: AccountsPlaneOptions,
     intakeContactMode: IntakeContactMode = "synthetic-only",
     intakeForms: readonly IntakeFormConfig[] = [],
+    portal?: { assetDirectory: string },
   ) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
@@ -296,6 +299,7 @@ export class ProspectusBackend extends Construct {
     // Anthus One: its own HTTP API in front of the customer BFF. API Gateway verifies the Google ID token (issuer and
     // audience) before the Lambda does again; there is no Cognito pool and no Google client secret anywhere.
     let portalApiUrl: string | undefined;
+    let portalApiOrigin: string | undefined;
     if (accountsPlane?.portalBff && accounts?.anthusOne) {
       const portalApi = new apigw.HttpApi(this, "AnthusOneApi", {
         apiName: "anthus-one",
@@ -330,6 +334,7 @@ export class ProspectusBackend extends Construct {
         },
       ]);
       portalApiUrl = `${portalApi.apiEndpoint}/api/saas`;
+      portalApiOrigin = portalApi.apiEndpoint;
     }
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
@@ -364,6 +369,16 @@ export class ProspectusBackend extends Construct {
     if (consoleClient) {
       outputs.ConsoleClientId = consoleClient.userPoolClientId;
       outputs.ConsoleCognitoDomainUrl = domain.baseUrl();
+    }
+    if (portal) {
+      const hosting = new PortalHosting(this, "AnthusOnePortal", {
+        assetDirectory: portal.assetDirectory,
+        // The page may connect only to its own accounts API (and Google); never the CRM API.
+        apiOrigin: portalApiOrigin ?? api.apiEndpoint,
+      });
+      outputs.PortalUrl = `https://${PORTAL_DOMAIN}`;
+      outputs.PortalBucketName = hosting.bucket.bucketName;
+      outputs.PortalDistributionId = hosting.distribution.distributionId;
     }
     this.outputs = outputs;
   }

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { accountsDeployment } from "../accounts/deployment";
 import { parseIntakeFormRegistry } from "../server/intake-forms";
+import { portalHostingDeployment } from "../infra/lib/portal-deployment";
 import { createProspectusBackend } from "./create-backend";
 const evaluation = JSON.parse(readFileSync(resolve("evaluation-deployment.json"), "utf8"));
 const intakeContactMode = evaluation.mode === "real-contacts" ? "real-contacts" : "synthetic-only";
@@ -25,6 +26,11 @@ if (
   ].every((path) => existsSync(resolve(path)))
 )
   throw new Error("Build and verify the reviewed Linux Accounts assets before Amplify deployment");
+const portal = portalHostingDeployment();
+if (portal && !existsSync(resolve(portal.assetDirectory, "index.html")))
+  throw new Error(
+    "Build the Anthus One portal (infra/scripts/build-portal-if-enabled.mjs) before enabling hosting",
+  );
 createProspectusBackend(
   () => Code.fromAsset(artifact),
   evaluation.enabled ? () => Code.fromAsset(intakeArtifact) : undefined,
@@ -37,4 +43,5 @@ createProspectusBackend(
     : undefined,
   intakeContactMode,
   evaluation.enabled ? intakeForms : [],
+  portal ?? undefined,
 );

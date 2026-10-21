@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -13,55 +13,61 @@ import {
 } from "../infra/lib/scope";
 
 const portal = JSON.parse(readFileSync("infra/portal-app.json", "utf8"));
+const pipeline = readFileSync("amplify.yml", "utf8");
+const lines = pipeline.split("\n").map((line) => line.trim());
 
-function verifyScope(appId: string, portalAppId: string | null) {
-  const directory = mkdtempSync(join(tmpdir(), "portal-scope-"));
+test("the portal is not a second Amplify app: one app, one scope, no portal branches", () => {
+  assert.equal("appId" in portal, false);
+  assert.equal("branch" in portal, false);
+  assert.ok(!existsSync("infra/portal-hosting-settings.json"));
+  for (const text of [pipeline, readFileSync("amplify/verify-scope.mjs", "utf8")]) {
+    assert.ok(!text.includes("PROSPECTUS_APP"));
+    assert.ok(!text.includes("portal-app.json"));
+  }
+  assert.match(readFileSync("amplify/verify-scope.mjs", "utf8"), /AWS_APP_ID !== "d15sc1sptohtqb"/);
+});
+
+test("the CRM frontend build is exactly the plain CRM build", () => {
+  const frontend = pipeline.slice(pipeline.indexOf("frontend:"));
+  assert.ok(frontend.includes("- node infra/scripts/write-frontend-env.mjs\n"));
+  assert.ok(frontend.includes("- npm run build\n"));
+  assert.ok(!frontend.includes("portal"));
+  assert.ok(!frontend.includes("write-portal-env"));
+});
+
+test("the portal bundle is built and published inside the same pipeline-deploy", () => {
+  const build = lines.indexOf("- node infra/scripts/build-portal-if-enabled.mjs");
+  const deploy = lines.findIndex((line) => line.includes("ampx pipeline-deploy"));
+  assert.ok(build > lines.indexOf("- npm test"), "built after the tests that gate the deployment");
+  assert.ok(build < deploy, "built before CDK synthesizes the BucketDeployment sources");
+  assert.equal(lines.filter((line) => line.includes("ampx pipeline-deploy")).length, 1);
+  assert.match(readFileSync("amplify/backend.ts", "utf8"), /portalHostingDeployment\(\)/);
+  assert.match(readFileSync("amplify/create-backend.ts", "utf8"), /portal,\n\s*\);/);
+});
+
+test("hosting is dark by default and the flag file holds only the flag", () => {
+  assert.deepEqual(JSON.parse(readFileSync("infra/portal-hosting.json", "utf8")), { enabled: false });
+});
+
+test("a disabled build skips the portal build and leaves environment files alone", () => {
+  const directory = mkdtempSync(join(tmpdir(), "portal-build-"));
   try {
     mkdirSync(join(directory, "infra"));
-    mkdirSync(join(directory, "amplify"));
-    cpSync("amplify/verify-scope.mjs", join(directory, "amplify/verify-scope.mjs"));
-    writeFileSync(
-      join(directory, "infra/portal-app.json"),
-      JSON.stringify({ ...portal, appId: portalAppId }),
-    );
-    const result = spawnSync(process.execPath, ["amplify/verify-scope.mjs"], {
+    cpSync("infra/portal-hosting.json", join(directory, "infra/portal-hosting.json"));
+    const result = spawnSync(process.execPath, [resolve("infra/scripts/build-portal-if-enabled.mjs")], {
       cwd: directory,
-      env: {
-        ...process.env,
-        AWS_REGION: "us-east-1",
-        AWS_APP_ID: appId,
-        AWS_BRANCH: "main",
-        NODE_PATH: resolve("amplify/node_modules"),
-      },
       encoding: "utf8",
     });
-    const environment =
-      result.status === 0 ? readFileSync(join(directory, ".build/deployment.env"), "utf8") : "";
-    return { status: result.status, environment };
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /not enabled/);
+    assert.ok(!existsSync(join(directory, "dist-portal")));
+    assert.ok(!existsSync(join(directory, ".env.portal.local")));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}
-
-test("only the recorded portal app builds as the frontend-only portal", () => {
-  assert.notEqual(verifyScope("dportal", null).status, 0, "an unrecorded app must be refused");
-  assert.notEqual(verifyScope("dother", "dportal").status, 0, "an unknown app must be refused");
-  const accepted = verifyScope("dportal", "dportal");
-  assert.equal(accepted.status, 0);
-  assert.equal(accepted.environment, "export PROSPECTUS_APP=portal\n");
 });
 
-test("the portal build deploys no backend and signs in at one.anth.us", () => {
-  const build = readFileSync("amplify.yml", "utf8");
-  for (const step of [
-    "build-backend.sh",
-    "accounts/build-deployment.ts",
-    "npm run check --prefix infra",
-    "ampx pipeline-deploy",
-  ]) {
-    const line = build.split("\n").find((entry) => entry.includes(step));
-    assert.ok(line?.includes('[ "$PROSPECTUS_APP" = "prospectus" ]'), `${step} must run only for Prospectus`);
-  }
+test("the portal's public settings are written for one.anth.us", () => {
   assert.equal(portal.domain, PORTAL_DOMAIN);
   assert.ok(PORTAL_ORIGINS.includes(PORTAL_ORIGIN), "the portal calls its own accounts API from one.anth.us");
   for (const origin of PORTAL_ORIGINS)
@@ -86,21 +92,4 @@ test("the portal build deploys no backend and signs in at one.anth.us", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
-
-test("portal hosting serves client routes such as /auth/callback as index.html with 200", () => {
-  const settings = JSON.parse(readFileSync("infra/portal-hosting-settings.json", "utf8"));
-  const [rule] = settings.customRules;
-  assert.equal(settings.customRules.length, 1);
-  assert.equal(rule.target, "/index.html");
-  assert.equal(rule.status, "200");
-  const route = new RegExp(rule.source.slice(2, -2));
-  for (const path of ["/auth/callback", "/", "/workspaces/acme", "/people/ada.lovelace"])
-    assert.ok(route.test(path), path);
-  for (const path of ["/assets/portal.js", "/assets/portal.css", "/favicon.ico", "/config.json"])
-    assert.ok(!route.test(path), path);
-  assert.equal(settings.environmentVariables._LIVE_UPDATES, "[]");
-  assert.equal(settings.enableAutoBranchCreation, false);
-  const crm = JSON.parse(readFileSync("infra/hosting-settings.json", "utf8"));
-  assert.deepEqual(settings.customRules, crm.customRules, "the portal rewrite matches the CRM's");
 });

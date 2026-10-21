@@ -15,6 +15,10 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 
+### Anthus One hosting
+
+`one.anth.us` is a public static site, so it holds no data: its bucket contains only the built portal bundle. The bucket blocks all public access, requires TLS and grants `s3:GetObject` to the CloudFront service principal alone, scoped to the one distribution through Origin Access Control. CloudFront redirects HTTP to HTTPS, requires TLS 1.2, and sets a content security policy limited to the portal's own files, Google Identity Services (`accounts.google.com/gsi`) and the accounts API origin, with `frame-ancestors 'none'`, HSTS, `nosniff`, a strict referrer policy and a restrictive permissions policy. The publisher is one Lambda role (`anthus-one-portal-publish`) that can write only the portal bucket and read the CDK asset bucket; its `cloudfront:CreateInvalidation` is account-wide because CDK cannot scope it. The portal bundle must hold only public values (client IDs, API URLs). The hosting is committed disabled until a reviewed change enables it; see [accounts/ANTHUS_ONE_PORTAL.md](accounts/ANTHUS_ONE_PORTAL.md#hosting).
+
 ### Cognito
 
 Self sign-up is disabled. The CRM and Cyclotron browser clients support only the Google identity provider; the password, SRP, custom and client-credentials flows are off, implicit grant is off, authorization code is on, and token revocation is enabled. Access and ID tokens last one hour and refresh tokens 30 days. The pool has deletion protection and a retain removal policy.

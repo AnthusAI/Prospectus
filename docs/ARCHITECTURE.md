@@ -7,6 +7,7 @@ Prospectus runs in AWS account `712236451410` (papyrus-production), region `us-e
 | Component | Where | Purpose |
 | --- | --- | --- |
 | CRM frontend | `src/`, built by Vite, served by Amplify | Shared Kanbus board UI, Accounts views, intake form |
+| Anthus One portal | `portal/`, `src/portal/`, built to `dist-portal`; hosting in `infra/lib/portal-hosting.ts` (private S3 bucket, CloudFront with Origin Access Control, ACM certificate, Route 53 aliases for `one.anth.us`), published by CDK `BucketDeployment` inside `ampx pipeline-deploy`; committed disabled in `infra/portal-hosting.json` | Customer account portal, a separate application from the CRM |
 | Kanbus API | `prospectus-api` Lambda (`provided.al2023`), HTTP API route `/cyclotron/prospectus/api/{proxy+}` | Multi-board Kanbus issue API (board from the path) over S3 files and a DynamoDB catalog |
 | Cognito pool and browser client | `infra/lib/prospectus-backend.ts` | Google-only sign-in for the CRM; groups `prospectus-members` and `admin` |
 | Accounts BFF | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}` | Browser-facing account routes, JWT protected; signs central requests |
@@ -207,7 +208,7 @@ await fetch(`${WAITLIST_BASE_URL}/babulus-waitlist-v1`, {
 
 ## Infrastructure layout
 
-- `amplify/` is the Amplify Gen2 entry; `infra/` holds the CDK constructs and checks that Amplify synthesizes. `amplify/verify-scope.mjs` enforces the deployment scope.
+- `amplify/` is the Amplify Gen2 entry; `infra/` holds the CDK constructs and checks that Amplify synthesizes. `amplify/verify-scope.mjs` enforces the deployment scope. There is one Amplify app; the portal is part of its CDK deployment, not a second app.
 - `infra/lib/prospectus-backend.ts`: bucket, catalog table, Cognito, API, optional console client and the Accounts plane.
 - `infra/lib/accounts-plane.ts`: additive Accounts resources only; no CRM role, client, namespace or authorizer is changed. Regression tests compare every pre-existing CRM resource before and after enabling Accounts.
 - `infra/lib/evaluation-intake.ts`: the intake Lambda, role, API and throttling.
