@@ -605,9 +605,18 @@ export class IntakeService {
           const result = (await this.options.request(
             `/issues?type=prospect&limit=2&fields=${encodeURIComponent(fields)}`,
           )) as { issues: IssueRecord[] };
-          if (result.issues.length > 1) throw new ReviewRequired("duplicate_contact");
-          // Search hits only identify the prospect; they are never used as the record to update.
-          const discovered = result.issues[0];
+          // Search hits only nominate candidates. A claim binds only to a prospect whose full
+          // canonical record carries exactly this contact email; any other hit is a miss.
+          const exact: IssueRecord[] = [];
+          for (const hit of result.issues ?? []) {
+            const id = hit?.issue?.id;
+            if (typeof id !== "string" || !id) continue;
+            const full = (await this.options.request(`/issues/${encodeURIComponent(id)}`)) as IssueRecord;
+            if (full.issue?.id === id && full.issue.custom?.contact_email === receipt.inquiry.email)
+              exact.push(full);
+          }
+          if (exact.length > 1) throw new ReviewRequired("duplicate_contact");
+          const discovered = exact[0];
           if (discovered)
             return {
               version: 1,
@@ -662,11 +671,7 @@ export class IntakeService {
           await this.save();
           return;
         }
-        if (
-          String(record.issue.custom?.contact_email ?? "")
-            .trim()
-            .toLowerCase() !== receipt.inquiry.email
-        )
+        if (record.issue.custom?.contact_email !== receipt.inquiry.email)
           throw new ReviewRequired("identity_changed", record.issue.id);
         const latestWaitlist =
           receipt.inquiry.kind === "waitlist"

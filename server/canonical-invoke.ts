@@ -23,6 +23,9 @@ export function canonicalRequest(invoke: (event: unknown) => Promise<unknown>) {
     }
     const result = (await invoke({
       rawPath: `${KANBUS_API_PATH}${url.pathname}`,
+      // The Kanbus Lambda adapter reads only the HTTP API v2 rawQueryString. Without it every
+      // list query (type, limit and field filters) silently became an unfiltered listing.
+      rawQueryString: url.searchParams.toString(),
       queryStringParameters: Object.fromEntries(url.searchParams),
       headers,
       body: typeof init.body === "string" ? init.body : undefined,

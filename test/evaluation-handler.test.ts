@@ -123,6 +123,25 @@ test("trusted canonical adapter fixes the actor, strips bearer headers and retai
     await assert.rejects(request(path, { method }), /Unsupported/);
 });
 
+test("trusted canonical adapter forwards list filters in the HTTP API v2 rawQueryString", async () => {
+  let captured: any;
+  const request = canonicalRequest(async (payload) => {
+    captured = payload;
+    return { statusCode: 200, body: JSON.stringify({ issues: [] }) };
+  });
+  const fields = JSON.stringify([
+    { field: "custom.contact_email", operator: "eq", value: "a+b c@example.invalid" },
+  ]);
+  await request(`/issues?type=prospect&limit=2&fields=${encodeURIComponent(fields)}`);
+  assert.equal(captured.rawPath, "/cyclotron/prospectus/api/issues");
+  // The Kanbus Lambda adapter parses only rawQueryString (form-urlencoded); it must carry every filter.
+  const parsed = Object.fromEntries(new URLSearchParams(captured.rawQueryString));
+  assert.deepEqual(parsed, { type: "prospect", limit: "2", fields });
+  assert.deepEqual(captured.queryStringParameters, parsed);
+  await request("/issues/synthetic-id");
+  assert.equal(captured.rawQueryString, "");
+});
+
 test("trusted canonical adapter retains explicit revision conflict and hides private error details", async () => {
   const request = canonicalRequest(async () => ({
     statusCode: 409,
