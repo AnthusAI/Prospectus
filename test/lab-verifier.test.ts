@@ -62,9 +62,9 @@ test("the committed lab verifier file is exact reviewed configuration and is val
     assert.throws(() => registrations([cyclotron, ...sites], { labVerifier: { ...verifier, roleArn } }));
 });
 
-test("the checked-in lab verifier is committed disabled until a reviewed change enables it", () => {
-  assert.equal(reviewedLabVerifier.enabled, false);
-  assert.equal(reviewedLabVerifierEntry(reviewedLabVerifier), undefined);
+test("the checked-in lab verifier is enabled for the reviewed Cyclotron lab role", () => {
+  assert.equal(reviewedLabVerifier.enabled, true);
+  assert.equal(reviewedLabVerifierEntry(reviewedLabVerifier)?.roleArn, "arn:aws:iam::682849160744:role/cyclotron-lab-verifier");
   const text = readFileSync(new URL("../accounts/lab-verifier.json", import.meta.url), "utf8");
   assert.ok(!/arn:aws:iam::\d{12}:user/.test(text));
 });
