@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { issueIdFromPath } from "../deep-links";
 import { initials } from "../shared/initials";
 import { BrandMark, Icon, Wordmark, type IconName } from "../shared/ui";
 
@@ -16,18 +17,23 @@ export const PAGES: Record<Page, { label: string; icon: IconName; group: "Sell" 
 
 const LEGACY_VIEWS: Record<string, Page> = { followups: "today", customers: "pipeline" };
 
-/** Reads the page and open account from the address; `?view=` keeps the links the CRM already issued working. */
-export function readLocation(search = window.location.search): { page: Page; account: string | null } {
+/** Reads the page, open account and open issue from the address; `?view=` keeps the links the CRM already issued working. */
+export function readLocation(
+  search = window.location.search,
+  pathname = window.location.pathname,
+): { page: Page; account: string | null; issueId: string | null } {
+  const issueId = issueIdFromPath(pathname);
+  if (issueId) return { page: "pipeline", account: null, issueId };
   const parameters = new URLSearchParams(search);
   const view = parameters.get("view") ?? "";
   const page = view in PAGES ? (view as Page) : (LEGACY_VIEWS[view] ?? "today");
-  return { page, account: page === "accounts" ? parameters.get("account") : null };
+  return { page, account: page === "accounts" ? parameters.get("account") : null, issueId: null };
 }
 
 export function pageHref(page: Page, account?: string | null): string {
   const parameters = new URLSearchParams({ view: page });
   if (account) parameters.set("account", account);
-  return `?${parameters}`;
+  return `/?${parameters}`;
 }
 
 export function AdminShell({

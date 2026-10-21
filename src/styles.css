@@ -1732,3 +1732,79 @@ body:has(.one) {
   user-select: none;
   -webkit-user-select: none;
 }
+
+.one-submission {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.one-review-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-ink);
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.one-review-banner strong {
+  color: var(--accent-ink);
+}
+.one-inquiries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.one-inquiry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.one-inquiry-head {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+.one-inquiry-head strong {
+  color: var(--ink);
+}
+.one-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.one-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+.one-facts > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+  gap: 8px;
+}
+.one-facts dt {
+  color: var(--ink-2);
+}
+.one-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.one-linkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}

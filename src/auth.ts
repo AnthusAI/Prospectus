@@ -1,4 +1,5 @@
 import type { AccountsChallenge } from "./accounts-client";
+import { safeReturnPath } from "./deep-links";
 const SESSION_KEY = "prospectus.session";
 const LOGIN_KEY = "prospectus.login";
 const ACCOUNTS_CONFIRMATION_ATTEMPTED_KEY = "prospectus.accounts-confirmation-attempted";
@@ -19,6 +20,7 @@ interface Login {
   verifier: string;
   accounts?: AccountsChallenge;
   accountsChallengeBoundToLoginState?: boolean;
+  returnTo?: string;
 }
 export interface AuthenticationConfiguration {
   domain: string;
@@ -88,11 +90,13 @@ export async function signIn(
       accounts = undefined;
     }
   }
+  const returnTo = safeReturnPath(`${window.location.pathname}${window.location.search}`);
   sessionStorage.setItem(
     LOGIN_KEY,
     JSON.stringify({
       state,
       verifier,
+      ...(returnTo ? { returnTo } : {}),
       ...(accounts ? { accounts } : {}),
       ...(accountsChallengeBoundToLoginState ? { accountsChallengeBoundToLoginState } : {}),
     }),
@@ -134,7 +138,7 @@ export async function finishSignIn(
     /* Reject invalid saved login below. */
   }
   sessionStorage.removeItem(LOGIN_KEY);
-  window.history.replaceState({}, "", "/");
+  window.history.replaceState({}, "", safeReturnPath(login?.returnTo) ?? "/");
   if (
     !login ||
     typeof login.state !== "string" ||

@@ -16,6 +16,7 @@ import { AdminShell, PAGES, pageHref, readLocation, type Page } from "./admin/Sh
 import { PipelineView } from "./admin/PipelineView";
 import { TodayView, type TodaySummary } from "./admin/TodayView";
 import { KANBUS_API_PATH } from "./board";
+import { issuePath } from "./deep-links";
 import { BrandMark, Eyebrow, Unavailable, Wordmark } from "./shared/ui";
 
 const syntheticReview = import.meta.env.MODE === "synthetic-review";
@@ -55,7 +56,7 @@ export function App() {
   );
   const [accessDenied, setAccessDenied] = useState(false);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
-  const [{ page, account }, setLocation] = useState(() => readLocation());
+  const [{ page, account, issueId }, setLocation] = useState(() => readLocation());
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<IssueRecord | null>(null);
   const [creating, setCreating] = useState(false);
@@ -68,19 +69,53 @@ export function App() {
 
   const navigate = useCallback((next: Page, nextAccount: string | null = null) => {
     window.history.pushState(null, "", pageHref(next, nextAccount));
-    setLocation({ page: next, account: nextAccount });
+    setLocation({ page: next, account: nextAccount, issueId: null });
     setError("");
     setNotice("");
-    if (next !== "pipeline") {
-      setSelected(null);
-      setCreating(false);
-    }
+    setSelected(null);
+    setCreating(false);
   }, []);
   useEffect(() => {
     const restore = () => setLocation(readLocation());
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, []);
+  const showProspect = useCallback((record: IssueRecord | null, replace = false) => {
+    const address = record ? issuePath(record.issue.id) : pageHref("pipeline");
+    if (replace) window.history.replaceState(null, "", address);
+    else window.history.pushState(null, "", address);
+    setLocation({ page: "pipeline", account: null, issueId: record?.issue.id ?? null });
+    setSelected(record);
+  }, []);
+  useEffect(() => {
+    if (!configuration || page !== "pipeline") return;
+    if (!issueId) {
+      setSelected(null);
+      return;
+    }
+    if (selected?.issue.id === issueId) return;
+    let current = true;
+    void api
+      .issue(issueId)
+      .then((record) => {
+        if (!current) return;
+        setSelected(record);
+        setCreating(false);
+      })
+      .catch((cause: Error) => {
+        if (!current) return;
+        setError(
+          cause instanceof ApiError && cause.status === 404
+            ? `The item ${issueId} could not be found. It may have been removed, or the link may be wrong.`
+            : cause.message,
+        );
+        window.history.replaceState(null, "", pageHref("pipeline"));
+        setLocation({ page: "pipeline", account: null, issueId: null });
+      });
+    return () => {
+      current = false;
+    };
+  }, [configuration, page, issueId, selected]);
   useEffect(() => {
     document.title = `${PAGES[page].label} · Prospectus · Anthus`;
   }, [page]);
@@ -123,7 +158,8 @@ export function App() {
     setNotice("");
     try {
       const result = await action();
-      setSelected(result);
+      if (page === "pipeline") showProspect(result, true);
+      else setSelected(result);
       setCreating(false);
       setFocusNextAction(false);
       setNotice(
@@ -146,9 +182,10 @@ export function App() {
   }
 
   function openProspect(record: IssueRecord, nextStep = false) {
-    navigate("pipeline");
-    setSelected(record);
+    showProspect(record);
     setCreating(false);
+    setError("");
+    setNotice("");
     setFocusNextAction(nextStep);
     if (nextStep) setNotice("Set the next action and follow-up date, then save changes.");
   }
@@ -357,7 +394,7 @@ export function App() {
             search={search}
             selected={selected}
             onSelect={(record) => {
-              setSelected(record);
+              showProspect(record);
               setFocusNextAction(false);
             }}
             creating={creating}
@@ -365,6 +402,9 @@ export function App() {
             busy={busy}
             write={write}
             onError={reportError}
+            onOpenIssue={(id) =>
+              void api.issue(id).then(showProspect, (cause: Error) => reportError(cause.message))
+            }
             focusNextAction={focusNextAction}
           />
         )}
