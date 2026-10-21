@@ -1,6 +1,7 @@
 import { REVIEW_IDENTIFIER_PATTERN, matchesStringPattern } from "./validation-rules";
 import { readFileSync } from "node:fs";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
+import { reviewedLabVerifierEntry } from "./lab-verifier";
 import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { loginChallengeSignerConfiguration } from "./challenge-signer";
 import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
@@ -55,6 +56,9 @@ export function accountsDeployment() {
     anthusOne: anthusOneDeployment(),
     googlePolicyReviewId: config.googlePolicyReviewId as string,
     loginChallengeSigner,
+    labVerifier: reviewedLabVerifierEntry(
+      JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
+    ),
     papyrusSites: papyrusSiteRegistrations(
       JSON.parse(readFileSync(new URL("./papyrus-sites.json", import.meta.url), "utf8")),
     ),

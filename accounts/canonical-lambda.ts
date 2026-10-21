@@ -7,6 +7,8 @@ import { registrations } from "./registration";
 import grants from "./operator-grants.json";
 import reviewedPapyrusSites from "./papyrus-sites.json";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
+import reviewedLabVerifier from "./lab-verifier.json";
+import { labVerifier, reviewedLabVerifierEntry } from "./lab-verifier";
 import reviewedDeployment from "./deployment.json";
 import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
@@ -27,10 +29,13 @@ const config = {
 const executable = resolve(process.env.LAMBDA_TASK_ROOT ?? process.cwd(), "identity-files");
 const keys = new CognitoKeys();
 const googleKeys = new GoogleKeys();
-const products = registrations([
-    ...JSON.parse(process.env.PROSPECTUS_PRODUCTS ?? "[]"),
-    ...papyrusSiteRegistrations(reviewedPapyrusSites),
-  ]),
+const papyrusSites = papyrusSiteRegistrations(reviewedPapyrusSites),
+  labVerifierEntry = reviewedLabVerifierEntry(reviewedLabVerifier);
+// The lab verifier trusts exactly the reviewed Papyrus sites registered here; it has no issuer or client list.
+const products = registrations(
+    [...JSON.parse(process.env.PROSPECTUS_PRODUCTS ?? "[]"), ...papyrusSites],
+    labVerifierEntry ? { labVerifier: labVerifier(labVerifierEntry, papyrusSites) } : {},
+  ),
   reviewedGrants = operatorGrants(grants),
   membershipLookup = membershipLookupMode(
     (reviewedDeployment as { membershipLookup?: unknown }).membershipLookup,

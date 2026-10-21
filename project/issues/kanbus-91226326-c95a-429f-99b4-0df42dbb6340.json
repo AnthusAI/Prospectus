@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-91226326-c95a-429f-99b4-0df42dbb6340",
+  "title": "Cyclotron lab verifier registration for Papyrus site tokens",
+  "description": "Dedicated verifier role cyclotron-lab-verifier (Cyclotron account 682849160744) registered here to call only identities/me and accounts/*/authorize for tokens of the Papyrus sites in accounts/papyrus-sites.json. Authorization is evaluated as product cyclotron (active entitlement plus active membership; console:read and console:write capped by role). Cyclotron ticket: I2 Prospectus lab verifier role for Papyrus site tokens. Approved in principle by Ryan 2026-10-21 as option A. Committed disabled until Cyclotron deploys the role.",
+  "type": "task",
+  "status": "in_progress",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-21T03:24:49.159738Z",
+  "updated_at": "2026-10-21T03:24:52.684957Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {},
+  "agent": {
+    "platform": "claude_code",
+    "model": "Claude Sonnet 5.5",
+    "name": "Claude"
+  }
+}

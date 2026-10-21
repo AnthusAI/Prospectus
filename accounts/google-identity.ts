@@ -3,6 +3,7 @@ import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
+import { siteForToken } from "./lab-verifier";
 import { issueChallengeToken, verifyChallengeToken } from "./challenge-token";
 import type { ChallengeSigner } from "./challenge-signer";
 import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
@@ -247,6 +248,46 @@ const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
     "The login state is malformed.",
   ),
 ];
+/** The person whose enrolled Cognito session this access token continues, or null when nobody enrolled under `scope`. */
+async function enrolledSessionPerson(
+  repository: GoogleIdentityRepository,
+  registration: ProductRegistration,
+  scope: IdentityBinding,
+  token: string | undefined,
+  keys: KeyResolver,
+  now: number,
+): Promise<Person | null> {
+  const access = await cognitoClaims(
+    token,
+    { ...registration, clientIds: [scope.clientId] },
+    keys,
+    "access",
+    now,
+  );
+  requireRules(
+    { access, now },
+    sessionEvidenceRules,
+    failWith(401, "session_binding", "Human session evidence required"),
+  );
+  const existing = await repository.find(scope.issuer, access.sub, {
+    binding: scope,
+    authTime: access.auth_time,
+    lineageHash: digest(access.origin_jti),
+  });
+  if (existing && !existing.alias.provenance.some((prior) => sameBinding(prior, scope)))
+    fail(403, "reenrollment_required", "Current federation policy requires fresh enrollment.");
+  if (
+    existing &&
+    !existing.alias.sessions.some(
+      (session) =>
+        sameBinding(session.binding, scope) &&
+        session.authTime === access.auth_time &&
+        session.lineageHash === digest(access.origin_jti),
+    )
+  )
+    fail(401, "reenrollment_required", "This login requires a fresh identity challenge.");
+  return existing?.person ?? null;
+}
 /** Fixed central transport: caller is IAM verified, JWTs stay in signed headers.
  * The BFF puts the returned nonce in its code+PKCE authorize request and retains
  * independent state. A new login needs a new challenge; refresh never enrolls.
@@ -261,6 +302,25 @@ export function googleIdentityHandler(
   return async (event: RestEvent) => {
     try {
       const authenticated = caller(event, products);
+      if (authenticated.authority === "verification") {
+        const now = nowSeconds();
+        const { headers, body } = parseJsonRequest(event, IDENTITY_REQUEST_MAXIMUM_BODY_BYTES);
+        // The lab verifier reaches only this route (caller() refuses the rest). It resolves the token holder's own
+        // Person through the enrollment their registered Papyrus site made; it can look up nobody else.
+        if (Object.keys(body).length) fail(400, "fields", "No authority fields are accepted.");
+        const token = headers["x-prospectus-human-token"];
+        const site = siteForToken(authenticated.verifier, token);
+        return jsonResponse(200, {
+          person: await enrolledSessionPerson(
+            repository,
+            site,
+            enrollmentBinding(site, site.roleArn),
+            token,
+            keys,
+            now,
+          ),
+        });
+      }
       const scope = enrollmentBinding(authenticated.registration, authenticated.principal);
       const now = nowSeconds();
       const { headers, body } = parseJsonRequest(event, IDENTITY_REQUEST_MAXIMUM_BODY_BYTES);
@@ -374,36 +434,16 @@ export function googleIdentityHandler(
             person: known?.alias.provenance.some((prior) => sameBinding(prior, scope)) ? known.person : null,
           });
         }
-        const access = await cognitoClaims(
-          headers["x-prospectus-human-token"],
-          { ...authenticated.registration, clientIds: [scope.clientId] },
-          keys,
-          "access",
-          now,
-        );
-        requireRules(
-          { access, now },
-          sessionEvidenceRules,
-          failWith(401, "session_binding", "Human session evidence required"),
-        );
-        const existing = await repository.find(scope.issuer, access.sub, {
-          binding: scope,
-          authTime: access.auth_time,
-          lineageHash: digest(access.origin_jti),
+        return jsonResponse(200, {
+          person: await enrolledSessionPerson(
+            repository,
+            authenticated.registration,
+            scope,
+            headers["x-prospectus-human-token"],
+            keys,
+            now,
+          ),
         });
-        if (existing && !existing.alias.provenance.some((prior) => sameBinding(prior, scope)))
-          fail(403, "reenrollment_required", "Current federation policy requires fresh enrollment.");
-        if (
-          existing &&
-          !existing.alias.sessions.some(
-            (session) =>
-              sameBinding(session.binding, scope) &&
-              session.authTime === access.auth_time &&
-              session.lineageHash === digest(access.origin_jti),
-          )
-        )
-          fail(401, "reenrollment_required", "This login requires a fresh identity challenge.");
-        return jsonResponse(200, { person: existing?.person ?? null });
       }
       fail(404, "route", "Identity route not found.");
     } catch (error) {

@@ -3,6 +3,7 @@ import { createHash, createPublicKey, verify, type JsonWebKey } from "node:crypt
 import { fail, UUID_PATTERN, type Context, type Human, type Operation } from "./model";
 import type { ValidatedRegistrations } from "./registration";
 import { lowerCaseHeaders } from "./request";
+import { labVerifierOf, siteForToken, type LabVerifier } from "./lab-verifier";
 import { GOOGLE_ISSUER, googleDirectSession, googleIdTokenClaims, isGoogleDirect } from "./google-direct";
 export interface ExecutionDelegation {
   roleArn: string;
@@ -35,10 +36,26 @@ export interface RestEvent {
   isBase64Encoded?: boolean;
   requestContext?: { identity?: { userArn?: string; accountId?: string }; stage?: string };
 }
-export interface VerifiedCaller {
-  registration: ProductRegistration;
-  principal: string;
-  authority: "enrollment" | "execution";
+export type VerifiedCaller =
+  | {
+      registration: ProductRegistration;
+      principal: string;
+      authority: "enrollment" | "execution";
+      verifier?: undefined;
+    }
+  | { registration?: undefined; principal: string; authority: "verification"; verifier: LabVerifier };
+const roleOf = (arn: string | undefined) =>
+  /^arn:aws:iam::(\d{12}):role\/(?:[^/]+\/)*([^/]+)$/.exec(arn ?? "");
+/** Session continuation and verification may check one enrolled session and one account decision, nothing else. */
+function sessionChecksOnly(event: RestEvent, code: string, message: string) {
+  const account = /^\/v1\/accounts\/([a-f0-9-]{36})\/authorize$/.exec(event.path);
+  if (
+    !(
+      (event.httpMethod === "GET" && event.path === "/v1/identities/me") ||
+      (event.httpMethod === "POST" && account && UUID_PATTERN.test(account[1]))
+    )
+  )
+    fail(403, code, message);
 }
 export function caller(event: RestEvent, products: ValidatedRegistrations): VerifiedCaller {
   const callerArn = event.requestContext?.identity?.userArn;
@@ -52,23 +69,26 @@ export function caller(event: RestEvent, products: ValidatedRegistrations): Veri
       ["enrollment", registration.roleArn],
       ["execution", registration.executionDelegation?.roleArn],
     ] as const) {
-      const role = /^arn:aws:iam::(\d{12}):role\/(?:[^/]+\/)*([^/]+)$/.exec(principal ?? "");
+      const role = roleOf(principal);
       if (role?.[1] !== session[1] || role[2] !== session[2]) continue;
-      const account = /^\/v1\/accounts\/([a-f0-9-]{36})\/authorize$/.exec(event.path);
-      if (
-        authority === "execution" &&
-        !(
-          (event.httpMethod === "GET" && event.path === "/v1/identities/me") ||
-          (event.httpMethod === "POST" && account && UUID_PATTERN.test(account[1]))
-        )
-      )
-        fail(
-          403,
+      if (authority === "execution")
+        sessionChecksOnly(
+          event,
           "execution_route_forbidden",
           "Execution principal may only check its enrolled session and current account authorization.",
         );
       return { registration, principal: principal!, authority };
     }
+  }
+  const verifier = labVerifierOf(products);
+  const verifierRole = roleOf(verifier?.roleArn);
+  if (verifier && verifierRole?.[1] === session[1] && verifierRole[2] === session[2]) {
+    sessionChecksOnly(
+      event,
+      "verifier_route_forbidden",
+      "The lab verifier may only check a Papyrus editor's session and current account authorization.",
+    );
+    return { principal: verifier.roleArn, authority: "verification", verifier };
   }
   fail(403, "caller_forbidden", "Calling product is not registered.");
 }
@@ -194,6 +214,21 @@ export async function context(
 ): Promise<Context> {
   const authenticated = caller(event, products);
   const headers = lowerCaseHeaders(event.headers);
+  if (authenticated.authority === "verification") {
+    // The token only proves who the person is. It is verified against the one registered Papyrus site that issued it;
+    // authority is then evaluated for the verifier's product (cyclotron), with the site's capabilities as a ceiling.
+    const token = headers["x-prospectus-human-token"];
+    const site = siteForToken(authenticated.verifier, token);
+    return {
+      product: authenticated.verifier.entitlementProduct,
+      principal: authenticated.principal,
+      human: await human(token, site, keys, now),
+      capabilities: authenticated.verifier.capabilities.filter((operation) =>
+        site.capabilities.includes(operation),
+      ),
+      enrollmentProduct: site.product,
+    };
+  }
   const identity = await human(headers["x-prospectus-human-token"], authenticated.registration, keys, now);
   const capabilities =
     authenticated.authority === "execution"

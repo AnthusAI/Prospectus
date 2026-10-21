@@ -57,6 +57,23 @@ assert.ok(
   ),
   "the Anthus One API verifies Google ID tokens",
 );
+// The Cyclotron lab verifier is an external role: when enabled it is exactly one Allow on two routes, never a created role.
+const labVerifier = accountsDeployment()!.labVerifier;
+const apiPolicy = resources.find((resource) => resource.Type === "AWS::ApiGateway::RestApi").Properties
+  .Policy;
+const verifierAllows = apiPolicy.Statement.filter(
+  (statement: any) =>
+    statement.Effect === "Allow" && JSON.stringify(statement.Principal).includes("lab-verifier"),
+);
+if (labVerifier) {
+  assert.equal(verifierAllows.length, 1);
+  assert.deepEqual(verifierAllows[0].Principal, { AWS: labVerifier.roleArn });
+  assert.deepEqual(verifierAllows[0].Resource, [
+    "execute-api:/api/GET/v1/identities/me",
+    "execute-api:/api/POST/v1/accounts/*/authorize",
+  ]);
+} else
+  assert.equal(verifierAllows.length, 0, "A disabled lab verifier must leave no trace in the access policy");
 assert.ok(
   !resources.some(
     (resource) =>
