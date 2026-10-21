@@ -65,7 +65,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
 | `accounts/lab-verifier.json` | The Cyclotron lab verifier: the external role `cyclotron-lab-verifier` (created by Cyclotron in its own account) and one Allow in the API access policy for two routes; it trusts the sites in `accounts/papyrus-sites.json` and needs at least one. Enable only after Cyclotron has deployed the role and Ryan has approved the synthesized policy change | `enabled: false` |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
-| `evaluation-deployment.json` | Inquiry intake runtime and its mode (`synthetic-only` or `real-contacts`) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
+| `evaluation-deployment.json` | Inquiry intake runtime, its mode (`synthetic-only` or `real-contacts`) and `spamLabelling` (`shadow` or `label`, see [INTAKE_SPAM.md](INTAKE_SPAM.md)) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
 | `intake-forms.json` | App waitlist forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: true` for `https://babulus.anth.us` only (Ryan approved 2026-10-20, recorded in the entry); it collects real contacts once deployed, and acceptance is a labelled test signup after deploy |
 
 Whether a flag is deployed is a fact about the cloud account, not the repository. Check the Amplify build history before claiming an activation is live. The anth.us engage form is not a working Prospectus intake until the intake runtime is deployed and the public form's endpoint and privacy notice settings in AnthusAI/Anth.us-Papyrus point at the `EvaluationIntakeUrl` output.
@@ -155,6 +155,7 @@ Local previews and proofs use only synthetic data: `npm run preview:local` for l
 ## Rollback
 
 - Frontend: redeploy a prior commit through the Amplify `main` pipeline. Commit `13155d7` is the recorded earlier central checkpoint. Keep accepted data and intake control objects when rolling back application code.
+- Intake spam labelling: set `spamLabelling` back to `shadow` in `evaluation-deployment.json`. Stored spam results and existing labels stay; new likely spam is scored but not labelled.
 - Intake: set `enabled` to `false` in `evaluation-deployment.json`. This removes the additive route and output and restores the prior frontend. Accepted records and shared controls are preserved and not purged. Intake claims must survive rollback and catalog rebuild.
 - Accounts: set `enabled` to `false` in `accounts/deployment.json`; canonical account and identity files remain in S3. Removing an operator grant or a site entry denies that principal on the next deployment without touching memberships.
 - Never use old proof branches or DNS setup artifacts to recreate a second CRM.
