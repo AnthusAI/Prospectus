@@ -1,5 +1,6 @@
 import { context, type KeyResolver, type RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
+import { isGoogleDirect } from "./google-direct";
 import { jsonResponse } from "./request";
 import { AccountsError, fail, roleOperations } from "./model";
 import { DurableAccountsService, type AccountDocument } from "./durable-accounts";
@@ -46,6 +47,10 @@ export function accountDirectoryHandler(
         !authenticated.capabilities.includes("console:read")
       )
         fail(403, "directory_forbidden", "Account directory access is not registered.");
+      // A google-direct product (the customer portal) reads only the caller's own accounts: never operator routes.
+      const product = products.find((item) => item.enabled && item.product === authenticated.product);
+      if (product && isGoogleDirect(product) && event.path.startsWith("/v1/account-directory/operator/"))
+        fail(403, "operator_forbidden", "This product cannot use operator routes.");
       const entitlementRoute =
         /^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})\/entitlements\/([a-z][a-z0-9-]{0,39})$/.exec(
           event.path,

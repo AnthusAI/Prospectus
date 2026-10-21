@@ -319,3 +319,42 @@ test("the portal reaches the CRM data plane through nothing: no new API route, n
   );
   assert.ok(!publishPolicies.includes("CanonicalObjects"));
 });
+
+test("with the Anthus One API deployed, the page may connect to it and not to the CRM API", () => {
+  const stack = new cdk.Stack(new cdk.App(), "Review", { env });
+  new ProspectusBackend(
+    stack,
+    "Prospectus",
+    lambda.Code.fromBucket(s3.Bucket.fromBucketName(stack, "Artifact", "review-only"), "review-only.zip"),
+    undefined,
+    {
+      code: lambda.Code.fromInline("accounts placeholder"),
+      bffCode: lambda.Code.fromInline("bff placeholder"),
+      googlePolicyReviewId: "synthetic-review-v1",
+      loginChallengeSigner: {
+        kind: "parameter-store",
+        parameterPrefix: "/prospectus/central-accounts/login-challenge-mac/",
+        currentKeyId: "v1",
+      },
+      anthusOne: {
+        googleClientId: "712526614578-dp3o0ofrukf7h2qcjst345t033mi990c.apps.googleusercontent.com",
+        federationReviewId: "anthus-one-google-direct-v1-20261020",
+      },
+    },
+    "synthetic-only",
+    [],
+    { assetDirectory: assets },
+  );
+  const [policy] = Object.values(
+    Template.fromStack(stack).findResources("AWS::CloudFront::ResponseHeadersPolicy"),
+  );
+  const joined = policy.Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig.ContentSecurityPolicy
+    .ContentSecurityPolicy["Fn::Join"][1] as any[];
+  const references = joined.filter((part) => typeof part !== "string").map((part) => part["Fn::GetAtt"][0]);
+  assert.equal(references.length, 1);
+  assert.ok(references[0].includes("AnthusOneApi"), references[0]);
+  // Google Identity Services is the only other connect target; the JWKS is fetched by the Lambdas, not the page.
+  const csp = joined.map((part) => (typeof part === "string" ? part : "<api>")).join("");
+  assert.ok(csp.includes("connect-src 'self' <api> https://accounts.google.com/gsi/;"));
+  assert.ok(!csp.includes("googleapis.com"));
+});

@@ -15,12 +15,13 @@ const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import type { IntakeFormConfig } from "../../server/intake-forms";
-import { throttleRoutes } from "./throttle-routes";
+import { throttleRoutes, throttleStageDefault } from "./throttle-routes";
 import { PortalHosting } from "./portal-hosting";
 import {
   APP_ORIGINS,
   KANBUS_BOARD_GROUP,
   MEMBER_GROUP,
+  PORTAL_ORIGINS,
   PORTAL_DOMAIN,
   PROJECT_NAMESPACE,
   SITE_DOMAIN,
@@ -295,6 +296,57 @@ export class ProspectusBackend extends Construct {
         { routeKey: `POST ${LOGIN_CHALLENGE_PATH}`, route: loginChallengeRoute, burstLimit: 2, rateLimit: 1 },
       ]);
     }
+    // Anthus One: its own HTTP API in front of the customer BFF. API Gateway verifies the Google ID token (issuer and
+    // audience) before the Lambda does again; there is no Cognito pool and no Google client secret anywhere.
+    let portalApiUrl: string | undefined;
+    let portalApiOrigin: string | undefined;
+    if (accountsPlane?.portalBff && accounts?.anthusOne) {
+      const portalApi = new apigw.HttpApi(this, "AnthusOneApi", {
+        apiName: "anthus-one",
+        defaultAuthorizer: new HttpJwtAuthorizer("AnthusOneGoogleJwt", "https://accounts.google.com", {
+          jwtAudience: [accounts.anthusOne.googleClientId],
+        }),
+        corsPreflight: {
+          allowOrigins: [...PORTAL_ORIGINS],
+          allowHeaders: ["authorization", "content-type"],
+          allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.OPTIONS],
+          maxAge: cdk.Duration.hours(1),
+        },
+      });
+      const portalIntegration = new HttpLambdaIntegration("AnthusOneAccounts", accountsPlane.portalBff);
+      portalApi.addRoutes({
+        path: "/api/saas/{proxy+}",
+        methods: [apigw.HttpMethod.GET],
+        integration: portalIntegration,
+      });
+      const [portalPostRoute] = portalApi.addRoutes({
+        path: "/api/saas/{proxy+}",
+        methods: [apigw.HttpMethod.POST],
+        integration: portalIntegration,
+      });
+      const [portalChallengeRoute] = portalApi.addRoutes({
+        path: LOGIN_CHALLENGE_PATH,
+        methods: [apigw.HttpMethod.POST],
+        integration: portalIntegration,
+        authorizer: new apigw.HttpNoneAuthorizer(),
+      });
+      // Account creation is the one write a signed-in person can repeat, so POSTs are held to 2 per second (burst 5)
+      // across the API, and every other route to 10 per second (burst 20). The public challenge route serves only a
+      // first sign-in (token refresh uses the authenticated challenge), so 2 per second (burst 5) lets about 120
+      // people start signing in each minute; it stores nothing, so exhausting it creates no data.
+      throttleStageDefault(portalApi.defaultStage!, 10, 20);
+      throttleRoutes(portalApi.defaultStage!, [
+        { routeKey: "POST /api/saas/{proxy+}", route: portalPostRoute, burstLimit: 5, rateLimit: 2 },
+        {
+          routeKey: `POST ${LOGIN_CHALLENGE_PATH}`,
+          route: portalChallengeRoute,
+          burstLimit: 5,
+          rateLimit: 2,
+        },
+      ]);
+      portalApiUrl = `${portalApi.apiEndpoint}/api/saas`;
+      portalApiOrigin = portalApi.apiEndpoint;
+    }
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
       ApiUrl: api.apiEndpoint,
@@ -324,6 +376,7 @@ export class ProspectusBackend extends Construct {
       outputs.AccountsBffUrl = `${api.apiEndpoint}/api/saas`;
       outputs.AccountsApiUrl = accountsPlane.endpoint;
     }
+    if (portalApiUrl) outputs.AnthusOneBffUrl = portalApiUrl;
     if (consoleClient) {
       outputs.ConsoleClientId = consoleClient.userPoolClientId;
       outputs.ConsoleCognitoDomainUrl = domain.baseUrl();
@@ -331,7 +384,8 @@ export class ProspectusBackend extends Construct {
     if (portal) {
       const hosting = new PortalHosting(this, "AnthusOnePortal", {
         assetDirectory: portal.assetDirectory,
-        apiOrigin: api.apiEndpoint,
+        // The page may connect only to its own accounts API (and Google); never the CRM API.
+        apiOrigin: portalApiOrigin ?? api.apiEndpoint,
       });
       outputs.PortalUrl = `https://${PORTAL_DOMAIN}`;
       outputs.PortalBucketName = hosting.bucket.bucketName;

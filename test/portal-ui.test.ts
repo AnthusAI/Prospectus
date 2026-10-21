@@ -12,6 +12,7 @@ test(
   { skip: !process.env.PROSPECTUS_ACCOUNTS_UI },
   async () => {
     process.env.VITE_ACCOUNTS_BFF_URL = "/directory-fixture";
+    process.env.VITE_GOOGLE_CLIENT_ID = "123456789012-syntheticportalclient.apps.googleusercontent.com";
     const server = await createServer({
       configFile: resolve("vite.portal.config.ts"),
       server: { host: "127.0.0.1", port: 0 },
@@ -43,6 +44,8 @@ test(
           products: [{ product: "kanbus", status: "disabled" }],
         },
       ];
+      // Google's script is not reachable in tests: the sign-in page must still render and explain itself.
+      await page.route("https://accounts.google.com/**", (route) => route.abort());
       await page.route("**/directory-fixture/**", async (route) => {
         const path = new URL(route.request().url()).pathname;
         if (path.includes("/operator/"))
@@ -84,6 +87,11 @@ test(
           },
         });
       });
+      await page.route("**/directory-fixture/identity/login-challenge", (route) =>
+        route.fulfill({
+          json: { challengeId: "11111111-1111-4111-8111-111111111111", nonce: "n".repeat(32) },
+        }),
+      );
       const root = server.resolvedUrls!.local[0];
 
       await page.goto(root);
@@ -92,8 +100,8 @@ test(
 
       await page.evaluate(() =>
         sessionStorage.setItem(
-          "prospectus.session",
-          JSON.stringify({ accessToken: "synthetic", expiresAt: Date.now() + 3_600_000 }),
+          "anthus-one.session",
+          JSON.stringify({ idToken: "synthetic.token.value", expiresAt: Date.now() + 3_600_000 }),
         ),
       );
       mode = "unconfirmed";

@@ -9,6 +9,12 @@ export interface RouteThrottle {
   readonly rateLimit: number;
 }
 
+/** Default throttling for every route of a stage that has no setting of its own. */
+export function throttleStageDefault(stage: apigw.IHttpStage, rateLimit: number, burstLimit: number): void {
+  const cfnStage = stage.node.defaultChild as apigw.CfnStage;
+  cfnStage.defaultRouteSettings = { throttlingBurstLimit: burstLimit, throttlingRateLimit: rateLimit };
+}
+
 /**
  * Sets per-route throttling on a stage and makes the stage depend on every route it names.
  * CloudFormation otherwise may update the stage before creating the route and fails with

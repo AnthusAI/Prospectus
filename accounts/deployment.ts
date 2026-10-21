@@ -1,8 +1,29 @@
 import { REVIEW_IDENTIFIER_PATTERN, matchesStringPattern } from "./validation-rules";
 import { readFileSync } from "node:fs";
 import { papyrusSiteRegistrations } from "./papyrus-sites";
-import { membershipLookupMode } from "./durable-accounts";
+import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { loginChallengeSignerConfiguration } from "./challenge-signer";
+import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
+import { PORTAL_GOOGLE_CLIENT_ID } from "../infra/lib/scope";
+
+export const ANTHUS_ONE_FEDERATION_REVIEW_ID = "anthus-one-google-direct-v1-20261020";
+
+/** The Anthus One portal signs in with Google directly. Activation names the exact public client and reviewed policy. */
+function anthusOneDeployment() {
+  const config = JSON.parse(readFileSync(new URL("./anthus-one-deployment.json", import.meta.url), "utf8"));
+  if (config.enabled === false) return undefined;
+  if (
+    config.enabled !== true ||
+    config.googleClientId !== PORTAL_GOOGLE_CLIENT_ID ||
+    !matchesStringPattern(config.googleClientId, GOOGLE_CLIENT_ID_PATTERN) ||
+    config.federationReviewId !== ANTHUS_ONE_FEDERATION_REVIEW_ID
+  )
+    throw new Error("Anthus One activation requires the exact reviewed Google client and policy ID.");
+  return {
+    googleClientId: config.googleClientId as string,
+    federationReviewId: config.federationReviewId as string,
+  };
+}
 export function accountsDeployment() {
   const config = JSON.parse(readFileSync(new URL("./deployment.json", import.meta.url), "utf8"));
   if (config.enabled === false) return null;
@@ -13,6 +34,7 @@ export function accountsDeployment() {
   )
     throw new Error("Canonical accounts activation requires reviewed storage and Google policy ID.");
   membershipLookupMode(config.membershipLookup);
+  accountCreationLimits(config.accountCreationLimits);
   const loginChallengeSigner = loginChallengeSignerConfiguration(config.loginChallengeSigner);
   const consoleConfig = JSON.parse(
     readFileSync(new URL("./console-deployment.json", import.meta.url), "utf8"),
@@ -30,6 +52,7 @@ export function accountsDeployment() {
     consolePairEnabled: consoleConfig.pairEnabled,
     consoleFederationReviewId: consoleConfig.federationReviewId as string,
     consolePairReviewId: consoleConfig.pairReviewId as string,
+    anthusOne: anthusOneDeployment(),
     googlePolicyReviewId: config.googlePolicyReviewId as string,
     loginChallengeSigner,
     papyrusSites: papyrusSiteRegistrations(

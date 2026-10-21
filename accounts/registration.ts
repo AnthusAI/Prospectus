@@ -1,4 +1,5 @@
 import type { ProductRegistration } from "./auth";
+import { GOOGLE_CLIENT_ID_PATTERN, GOOGLE_DIRECT_POLICY, GOOGLE_ISSUER } from "./google-direct";
 import {
   CLIENT_ID_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
@@ -52,6 +53,8 @@ interface DelegationUnderValidation {
 const isRoleArn = (value: unknown) => matchesStringPattern(value, rolePattern);
 const isReviewIdentifier = (value: unknown) => matchesStringPattern(value, REVIEW_IDENTIFIER_PATTERN);
 const isClientId = (value: unknown) => matchesStringPattern(value, CLIENT_ID_PATTERN);
+const isGoogleClientId = (value: unknown) => matchesStringPattern(value, GOOGLE_CLIENT_ID_PATTERN);
+const isGoogleDirectItem = (item: any) => item?.googleFederation?.policy === GOOGLE_DIRECT_POLICY;
 
 const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
   rule(({ item }) => !!item, "A product registration must be an object."),
@@ -71,14 +74,22 @@ const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
   ),
   rule(({ item }) => typeof item.issuer === "string", "A product issuer must be a string."),
   rule(
-    ({ item }) => isCognitoIssuer(item.issuer),
+    ({ item }) => isGoogleDirectItem(item) || isCognitoIssuer(item.issuer),
     "A product issuer must be a regional Cognito user pool URL.",
+  ),
+  rule(
+    ({ item }) => !isGoogleDirectItem(item) || item.issuer === GOOGLE_ISSUER,
+    "A google-direct product issuer must be Google.",
   ),
   rule(({ item }) => Array.isArray(item.clientIds), "Product client IDs must be an array."),
   rule(({ item }) => item.clientIds.length > 0, "A product needs at least one client ID."),
   rule(
-    ({ item }) => item.clientIds.every(isClientId),
+    ({ item }) => isGoogleDirectItem(item) || item.clientIds.every(isClientId),
     "Product client IDs must be lowercase alphanumeric identifiers.",
+  ),
+  rule(
+    ({ item }) => !isGoogleDirectItem(item) || item.clientIds.every(isGoogleClientId),
+    "Google-direct product client IDs must be Google OAuth client IDs.",
   ),
   rule(({ item }) => Array.isArray(item.capabilities), "Product capabilities must be an array."),
   rule(({ item }) => item.capabilities.length > 0, "A product needs at least one capability."),
@@ -100,8 +111,8 @@ const federationRules: ValidationRule<any>[] = [
     "A Google federation policy has a field that is not allowed.",
   ),
   rule(
-    (policy) => policy.policy === "google-only-unlinked-v1",
-    "A Google federation policy must be google-only-unlinked-v1.",
+    (policy) => policy.policy === "google-only-unlinked-v1" || policy.policy === GOOGLE_DIRECT_POLICY,
+    "A Google federation policy must be google-only-unlinked-v1 or google-direct-v1.",
   ),
   rule(
     (policy) => isReviewIdentifier(policy.reviewedPolicyId),
@@ -172,6 +183,18 @@ export function registrations(value: unknown): ValidatedRegistrations {
         throw new Error(
           "An exact reviewed Google-only federation policy/client is required: its client must be one of the product's client IDs.",
         );
+    }
+    if (isGoogleDirectItem(item)) {
+      if (item.executionDelegation !== undefined || item.accountDirectory !== true)
+        throw new Error(
+          "A google-direct product must be a directory principal with no execution delegation.",
+        );
+      if (item.googleFederation.clientId !== item.clientIds[0] || item.clientIds.length !== 1)
+        throw new Error("A google-direct product has exactly one client: its Google OAuth client.");
+      if (
+        item.capabilities.some((operation: string) => !["console:read", "members:read"].includes(operation))
+      )
+        throw new Error("A google-direct product may hold only the read capabilities.");
     }
     const pair = item.executionDelegation;
     if (pair !== undefined)

@@ -1,5 +1,6 @@
 import { cognitoClaims, type ProductRegistration, type KeyResolver } from "./auth";
 import { AccountsError, fail, UUID_PATTERN } from "./model";
+import { googleIdTokenClaims, isGoogleDirect } from "./google-direct";
 import { jsonResponse, lowerCaseHeaders, parseJsonRequest } from "./request";
 import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 import { AccountsClientError, type AccountsClient } from "../packages/accounts-client/src/client";
@@ -49,6 +50,33 @@ const resolveRequestRules: ValidationRule<Record<string, any>>[] = [
   rule((body) => body.idToken.length <= 16384, "The ID token is too long."),
 ];
 
+/** The customer portal's resolve body: one Google ID token travels as the bearer, so the body carries only the
+ * challenge and the browser's raw login state.
+ */
+const customerResolveRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule(
+    (body) => Object.keys(body).every((key) => ["challengeId", "challengeToken", "loginState"].includes(key)),
+    "Only a challenge and login state are accepted.",
+  ),
+  rule(
+    (body) => (body.challengeId === undefined) !== (body.challengeToken === undefined),
+    "Exactly one of a challenge ID or a challenge token is required.",
+  ),
+  rule(
+    (body) => body.challengeId === undefined || matchesStringPattern(body.challengeId, UUID_PATTERN),
+    "The challenge ID must be a UUID.",
+  ),
+  rule(
+    (body) =>
+      body.challengeToken === undefined || matchesStringPattern(body.challengeToken, CHALLENGE_TOKEN_PATTERN),
+    "The challenge token must be a versioned base64url token.",
+  ),
+  rule(
+    (body) => body.loginState === undefined || matchesStringPattern(body.loginState, LOGIN_STATE_PATTERN),
+    "The login state is malformed.",
+  ),
+];
+
 const createAccountRequestRules: ValidationRule<Record<string, any>>[] = [
   rule(
     (body) => Object.keys(body).every((key) => ["name", "requestKey"].includes(key)),
@@ -72,6 +100,10 @@ export interface BffEvent {
   isBase64Encoded?: boolean;
 }
 export interface AccountsBffOptions {
+  /** `customer` is the Anthus One portal: Google ID tokens only, and no operator route exists. Defaults to `staff`,
+   * the CRM's Cognito surface. The surface must agree with the registration.
+   */
+  surface?: "staff" | "customer";
   /** Browser origins allowed to make account POST requests. */
   origins: readonly string[];
   registration: ProductRegistration;
@@ -83,6 +115,9 @@ export interface AccountsBffOptions {
  * subject, product, directory flag or account grant from browser input.
  */
 export function accountsBffHandler(options: AccountsBffOptions) {
+  const customer = options.surface === "customer";
+  if (customer !== isGoogleDirect(options.registration))
+    throw new Error("The customer surface and a google-direct registration go together.");
   return async (event: BffEvent) => {
     try {
       if (event.requestContext.http.method === "POST" && event.rawPath === LOGIN_CHALLENGE_PATH) {
@@ -99,13 +134,9 @@ export function accountsBffHandler(options: AccountsBffOptions) {
       }
       const headers = lowerCaseHeaders(event.headers);
       const access = /^Bearer ([^ ]+)$/.exec(headers.authorization ?? "")?.[1];
-      const claims = await cognitoClaims(
-        access,
-        options.registration,
-        options.keys,
-        "access",
-        options.nowSeconds?.(),
-      );
+      const claims = customer
+        ? await googleIdTokenClaims(access, options.registration, options.keys, options.nowSeconds?.())
+        : await cognitoClaims(access, options.registration, options.keys, "access", options.nowSeconds?.());
       const method = event.requestContext.http.method;
       if (!["GET", "POST"].includes(method)) fail(405, "method", "Read-only accounts endpoint.");
       const { body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
@@ -114,9 +145,11 @@ export function accountsBffHandler(options: AccountsBffOptions) {
       if (method === "GET") {
         if (Object.keys(body).length) fail(400, "body", "Read payload must be empty.");
         const client = options.client(access!);
-        if (event.rawPath === "/api/saas/operator/accounts")
+        if (!customer && event.rawPath === "/api/saas/operator/accounts")
           return jsonResponse(200, await client.operatorList());
-        const operatorMatch = /^\/api\/saas\/operator\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);
+        const operatorMatch = customer
+          ? null
+          : /^\/api\/saas\/operator\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);
         if (operatorMatch) return jsonResponse(200, await client.operatorDetail(operatorMatch[1]));
         if (event.rawPath === "/api/saas/accounts") return jsonResponse(200, await client.directoryList());
         const match = /^\/api\/saas\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);
@@ -143,6 +176,8 @@ export function accountsBffHandler(options: AccountsBffOptions) {
           if (!(error instanceof AccountsClientError)) throw error;
           if (error.code === "identity_enrollment_required")
             fail(403, error.code, "Confirm this Google sign-in on the Accounts page, then try again.");
+          if (error.code === "account_limit")
+            fail(409, error.code, "You've reached the account limit; contact us if you need more.");
           if (error.status === 409)
             fail(
               409,
@@ -157,7 +192,23 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         if (Object.keys(body).length) fail(400, "body", "Challenge payload must be empty.");
         return jsonResponse(200, await options.client(access!).challenge());
       }
-      if (method === "POST" && event.rawPath === "/api/saas/identity/resolve") {
+      if (method === "POST" && customer && event.rawPath === "/api/saas/identity/resolve") {
+        requireRules(
+          body,
+          customerResolveRequestRules,
+          failWith(400, "body", "A fresh challenge is required"),
+        );
+        return jsonResponse(
+          200,
+          await options
+            .client(access!)
+            .resolveGoogle(
+              body.challengeToken === undefined ? body.challengeId : { challengeToken: body.challengeToken },
+              body.loginState,
+            ),
+        );
+      }
+      if (method === "POST" && !customer && event.rawPath === "/api/saas/identity/resolve") {
         requireRules(
           body,
           resolveRequestRules,

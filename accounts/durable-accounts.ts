@@ -300,6 +300,24 @@ export function membershipLookupMode(value: unknown): MembershipLookup {
   if (value !== "scan" && value !== "indexed") throw new Error("Membership lookup must be scan or indexed.");
   return value;
 }
+/** Most accounts one Person may create through one product. `default` applies to products without their own limit;
+ * no entry at all means unlimited (tests). Production sets this in accounts/deployment.json.
+ */
+export type AccountCreationLimits = Readonly<Record<string, number>>;
+export function accountCreationLimits(value: unknown): AccountCreationLimits {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Account creation limits must be an object of product limits.");
+  for (const [product, limit] of Object.entries(value))
+    if (
+      (product !== "default" && !isProductName(product)) ||
+      !Number.isSafeInteger(limit) ||
+      (limit as number) < 1 ||
+      (limit as number) > 50
+    )
+      throw new Error("Account creation limits must be whole numbers from 1 to 50 for named products.");
+  return { ...(value as Record<string, number>) };
+}
 export interface AccountDocument {
   version: 1;
   kind: "account";
@@ -331,6 +349,7 @@ export class DurableAccountsService implements AccountsApi {
     private directory: PersonDirectory,
     private now: () => string = () => new Date().toISOString(),
     private membershipLookup: MembershipLookup = "scan",
+    private creationLimits: AccountCreationLimits = {},
   ) {}
   private async publish<T>(
     location: string,
@@ -517,6 +536,21 @@ export class DurableAccountsService implements AccountsApi {
       )
         fail(409, "idempotency_conflict", "Request key belongs to different account input.");
       return this.summary(context, person.id, existing.value, "console:read");
+    }
+    // Bound what one Person can create through one product, so no single sign-in can grow the account set that
+    // every listing must scan. Idempotent replays of an existing account returned above and never count.
+    const limit = this.creationLimits[context.product] ?? this.creationLimits.default;
+    if (limit !== undefined) {
+      const created = (await this.candidateAccounts(person.id)).filter(
+        (candidate) =>
+          candidate.creation.personId === person.id && candidate.creation.product === context.product,
+      ).length;
+      if (created >= limit)
+        fail(
+          409,
+          "account_limit",
+          `You've reached the limit of ${limit} accounts you can create here. Contact us if you need more.`,
+        );
     }
     const createdAt = this.now();
     const document: AccountDocument = {

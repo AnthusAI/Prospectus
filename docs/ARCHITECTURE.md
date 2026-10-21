@@ -11,6 +11,7 @@ Prospectus runs in AWS account `712236451410` (papyrus-production), region `us-e
 | Kanbus API | `prospectus-api` Lambda (`provided.al2023`), HTTP API route `/cyclotron/prospectus/api/{proxy+}` | Multi-board Kanbus issue API (board from the path) over S3 files and a DynamoDB catalog |
 | Cognito pool and browser client | `infra/lib/prospectus-backend.ts` | Google-only sign-in for the CRM; groups `prospectus-members` and `admin` |
 | Accounts BFF | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}` | Browser-facing account routes, JWT protected; signs central requests |
+| Anthus One accounts BFF | `prospectus-anthus-one-bff` Lambda behind its own HTTP API `anthus-one` (`infra/lib/accounts-plane.ts`, `infra/lib/prospectus-backend.ts`) | The portal's customer routes only, protected by a Google ID token (JWT authorizer with issuer `https://accounts.google.com` and the Anthus One client as audience); no Cognito pool |
 | Central accounts service | `prospectus-central-accounts` Lambda behind the IAM-protected `prospectus-accounts` REST API, stage `api` | Identity, accounts, memberships, entitlements, operator directory |
 | Inquiry intake | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` and one `POST /intake/waitlist/<formId>` route per enabled registry form | Public inquiry and app waitlist capture into the CRM |
 | Accounts client SDK | `packages/accounts-client` | Browser, React and server clients for hosts |
@@ -75,7 +76,10 @@ Callers are products registered with an IAM role, Cognito issuer, client IDs, ca
 | --- | --- | --- |
 | `prospectus-directory` | `infra/lib/accounts-plane.ts` (the Accounts BFF role) | `console:read`, `members:read`; flagged `accountDirectory` for cross-product reads |
 | `cyclotron` | `infra/lib/accounts-plane.ts` when `pairEnabled` in `accounts/console-deployment.json` | `console:read`, `console:write`; enrolling BFF role plus a paired worker role (`executionDelegation`) |
+| `anthus-one` | `infra/lib/accounts-plane.ts` when `accounts/anthus-one-deployment.json` is enabled | `console:read`, `members:read`; flagged `accountDirectory`; `google-direct-v1` policy (Google ID tokens, no Cognito), issuer `https://accounts.google.com`, one client: the Anthus One Google OAuth client |
 | `papyrus-<site>` | `accounts/papyrus-sites.json` | `console:read`, `console:write`, `members:read`; see [PAPYRUS_SITES.md](accounts/PAPYRUS_SITES.md) |
+
+A `google-direct-v1` registration is a read-only directory principal: it has no execution delegation, holds only `console:read` and `members:read`, names Google as its issuer and exactly one Google OAuth client, and can never be an operator (operator grants name Cognito issuers only; the directory handler also refuses `/v1/account-directory/operator/` for it).
 
 The execution delegation pair lets a queue worker continue an already-enrolled human session without a new login. The worker may call only `GET /v1/identities/me` and `POST /v1/accounts/{UUID}/authorize`, with the original human access token in `X-Prospectus-Human-Token`. It cannot enroll, create accounts, change memberships or read the directory. The result of `authorize` is a point-in-time decision, not a lease; the consumer must check immediately before each effect.
 
@@ -97,7 +101,7 @@ All are reached with SigV4 from a registered role and are restricted by both the
 
 ### Browser routes
 
-The CRM host exposes JWT-protected routes under `/api/saas`: `GET /accounts`, `GET /accounts/{id}`, `GET /operator/accounts`, `GET /operator/accounts/{id}`, `POST /identity/challenge` and `POST /identity/resolve`. The one exception is `POST /identity/login-challenge`, which has no JWT authorizer because it runs before sign-in (see Sign-in flow). Only the server signs central requests; the browser bundle contains no AWS signing code. POST routes require the configured browser origin. The deployment output `AccountsBffUrl` supplies `VITE_ACCOUNTS_BFF_URL`; without it the Accounts view says the service is not configured instead of showing an empty directory.
+The CRM host exposes JWT-protected routes under `/api/saas`: `GET /accounts`, `GET /accounts/{id}`, `GET /operator/accounts`, `GET /operator/accounts/{id}`, `POST /identity/challenge` and `POST /identity/resolve`. The Anthus One portal has a separate API (`AnthusOneBffUrl` output) that serves only `GET /accounts`, `GET /accounts/{id}`, `POST /accounts`, `POST /identity/challenge`, `POST /identity/resolve` and the unauthenticated `POST /identity/login-challenge`; operator routes do not exist there. The one exception is `POST /identity/login-challenge`, which has no JWT authorizer because it runs before sign-in (see Sign-in flow). Only the server signs central requests; the browser bundle contains no AWS signing code. POST routes require the configured browser origin. The deployment output `AccountsBffUrl` supplies `VITE_ACCOUNTS_BFF_URL`; without it the Accounts view says the service is not configured instead of showing an empty directory.
 
 The Accounts view exists separately from prospects. Any signed-in person can open it, it never grants CRM access, and it shows distinct states for unknown identity, empty list, loading, unconfigured and failure. There are no demo accounts.
 
@@ -107,6 +111,19 @@ The Accounts view exists separately from prospects. Any signed-in person can ope
 2. On callback the BFF verifies the Cognito tokens itself, then posts the challenge token and the raw login `state` with the access and ID tokens as signed headers. The central service hashes the state and rejects a missing or different value with `401 login_state` before the challenge is consumed, so a challenge cannot be used by a browser that did not start it. The authenticated challenge is the same signed token without a digest and rejects any supplied state. Central verifies the token MAC with the signer selected in `accounts/deployment.json` (an HMAC secret in SSM Parameter Store for the Anthus deployment, or a KMS HMAC key), then applies the usual expiry, nonce and binding checks. The first successful resolve creates `logins/<challengeId>.json` with a conditional create, so unresolved challenges never touch S3; stored challenges from before the change still resolve by ID.
 3. The central service independently verifies both RS256 tokens against the registered issuer (signature, `iss`, expiry, `aud`, `client_id`, `sub`, `auth_time` at most 300 seconds old, nonce) and requires exactly one Google identity in the ID token. A signed-in session is then continued with `GET /v1/identities/me`.
 4. Replaying identical evidence inside the challenge lifetime returns the original Person; changed evidence returns `409`.
+
+### Anthus One sign-in (Google directly)
+
+The portal has no Cognito pool. The browser uses Google Identity Services (GIS) with the Anthus One OAuth client; no secret and no redirect is involved.
+
+1. The browser generates a login `state`, calls `POST /login-challenge` on the portal API with `sha256hex(state)` and receives the challenge ID, nonce and signed challenge token (the same stateless challenge as above).
+2. It initializes GIS with `nonce` set to the challenge nonce and draws Google's button (One Tap and FedCM are also requested). Google returns an ID token to the page. The page keeps it in `sessionStorage` and sends it as `Authorization: Bearer` on every portal API call.
+3. API Gateway's JWT authorizer checks issuer, audience and expiry. The BFF verifies the token again (RS256 against Google's published keys, issuer `https://accounts.google.com` or `accounts.google.com`, `aud` exactly the Anthus One client, `azp`, `exp`, `iat`, `nbf`, `email_verified` is `true`, a well-formed nonce) and forwards it to central Accounts in the signed `X-Prospectus-Human-Token` header. Central verifies it a third time with the same code, then:
+4. For a first-time person, if `GET /accounts` returns `person: null`, the portal immediately posts `POST /identity/resolve` with the challenge token and raw `state`. Central requires the token nonce to equal the challenge nonce, the token to be issued at most 300 seconds ago, the challenge unexpired and bound to this `state`, then creates (or links) the Person. Replays follow the existing rules.
+5. A Person is keyed by the Google subject (`sub`), so enrollment writes only a new alias (`https://accounts.google.com`, `sub`) pointing at the existing `google/<key>.json` Person. An account holder who already signed in through the CRM or any Papyrus pool resolves to the same Person.
+6. Later requests resolve the Person from the alias plus an enrolled binding for this product, client and policy. A fresh Google token does not need a fresh challenge.
+
+Session: there is no portal-issued session. The Google ID token (about one hour) is the session. About five minutes before it ends the page asks GIS for a new credential whose nonce comes from the authenticated `POST /identity/challenge` (it uses the current token, so open tabs never spend the shared public limit; the public `login-challenge` route serves first sign-in only); if Google needs the person, the session ends and the sign-in page returns.
 
 The CRM browser client and the Cyclotron console client (`cyclotron-console-public`, callback `https://lab.cyclotron.anth.us/auth/callback`) are separate Google-only Cognito clients on the same pool.
 

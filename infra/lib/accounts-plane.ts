@@ -20,11 +20,15 @@ export interface AccountsPlaneOptions {
   consoleFederationReviewId?: string;
   consolePairReviewId?: string;
   papyrusSites?: readonly ProductRegistration[];
+  /** The Anthus One portal: a google-direct product with its own role, Lambda and API; no Cognito pool or secret. */
+  anthusOne?: { googleClientId: string; federationReviewId: string };
   loginChallengeSigner: LoginChallengeSignerConfiguration;
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
   readonly bff: lambda.Function;
+  /** The Anthus One customer BFF, when the portal is activated. */
+  readonly portalBff?: lambda.Function;
   readonly endpoint: string;
   constructor(
     scope: Construct,
@@ -113,6 +117,36 @@ export class AccountsPlane extends Construct {
         },
       });
     }
+    // Routes a customer BFF role may invoke centrally. Central still refuses operator reads for this product.
+    const customerRoutes: ReadonlyArray<readonly [string, string]> = [
+      ["GET", "/v1/account-directory"],
+      ["GET", "/v1/account-directory/*"],
+      ["POST", "/v1/identities/google/challenge"],
+      ["POST", "/v1/identities/google/resolve"],
+      // Self-service account creation: exactly this path, never /v1/accounts/*.
+      ["POST", "/v1/accounts"],
+    ];
+    const portalRole = options.anthusOne
+      ? new iam.Role(this, "AnthusOneBffRuntime", {
+          roleName: "prospectus-anthus-one-bff-runtime",
+          assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+        })
+      : undefined;
+    const portalRegistration = options.anthusOne && {
+      product: "anthus-one",
+      roleArn: portalRole!.roleArn,
+      issuer: "https://accounts.google.com",
+      clientIds: [options.anthusOne.googleClientId],
+      capabilities: ["console:read", "members:read"],
+      enabled: true,
+      accountDirectory: true,
+      googleFederation: {
+        policy: "google-direct-v1",
+        reviewedPolicyId: options.anthusOne.federationReviewId,
+        clientId: options.anthusOne.googleClientId,
+      },
+    };
+    if (portalRegistration) products.push(portalRegistration);
     const signer = options.loginChallengeSigner;
     let challengeSignerEnvironment: Record<string, string>;
     if (signer.kind === "kms") {
@@ -266,8 +300,19 @@ export class AccountsPlane extends Construct {
       );
       api.latestDeployment?.addToLogicalId({ papyrusSiteRoles });
     }
+    if (portalRole) {
+      api.addToResourcePolicy(
+        new iam.PolicyStatement({
+          principals: [new iam.ArnPrincipal(portalRole.roleArn)],
+          actions: ["execute-api:Invoke"],
+          resources: customerRoutes.map(([method, path]) => `execute-api:/api/${method}${path}`),
+        }),
+      );
+      api.latestDeployment?.addToLogicalId({ anthusOne: options.anthusOne!.federationReviewId });
+    }
     const permittedPrincipals = [
       bffRole.roleArn,
+      ...(portalRole ? [portalRole.roleArn] : []),
       ...(options.consolePairEnabled ? [consoleBff, consoleWorker] : []),
       ...papyrusSiteRoles,
     ];
@@ -300,5 +345,41 @@ export class AccountsPlane extends Construct {
       },
     });
     this.endpoint = api.url;
+    if (portalRole && portalRegistration) {
+      const portalLogs = new logs.LogGroup(this, "AnthusOneBffLogs", {
+        logGroupName: "/aws/lambda/prospectus-anthus-one-bff",
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+      });
+      portalRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
+          resources: [portalLogs.logGroupArn],
+        }),
+      );
+      portalRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["execute-api:Invoke"],
+          resources: customerRoutes.map(([method, path]) => api.arnForExecuteApi(method, path, "api")),
+        }),
+      );
+      this.portalBff = new lambda.Function(this, "AnthusOneBff", {
+        functionName: "prospectus-anthus-one-bff",
+        description: "Anthus One customer accounts BFF: Google ID tokens, customer routes only.",
+        runtime: lambda.Runtime.NODEJS_24_X,
+        architecture: lambda.Architecture.X86_64,
+        handler: "index.handler",
+        code: options.bffCode,
+        role: portalRole,
+        logGroup: portalLogs,
+        memorySize: 256,
+        timeout: cdk.Duration.seconds(29),
+        environment: {
+          PROSPECTUS_CENTRAL_ENDPOINT: api.url,
+          PROSPECTUS_BFF_SURFACE: "customer",
+          PROSPECTUS_DIRECTORY_REGISTRATION: stack.toJsonString(portalRegistration),
+        },
+      });
+    }
   }
 }

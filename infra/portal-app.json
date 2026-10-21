@@ -1,8 +1,7 @@
 {
   "domain": "one.anth.us",
   "signIn": {
-    "cognitoDomainUrl": "https://prospectus-712236451410.auth.us-east-1.amazoncognito.com",
-    "clientId": "3fonen2dsmr4o0uif5lan71ajo",
-    "accountsBffUrl": "https://m72iza6r73.execute-api.us-east-1.amazonaws.com/api/saas"
+    "googleClientId": "712526614578-dp3o0ofrukf7h2qcjst345t033mi990c.apps.googleusercontent.com",
+    "accountsBffUrl": ""
   }
 }
