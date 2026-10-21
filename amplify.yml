@@ -13,20 +13,21 @@ backend:
         - npm ci --prefix packages/accounts-client
         - npm run typecheck
         - npm test
-        - if [ "$PROSPECTUS_APP" = "prospectus" ]; then bash infra/scripts/build-backend.sh; fi
-        - if [ "$PROSPECTUS_APP" = "prospectus" ]; then node infra/scripts/build-evaluation-if-enabled.mjs; fi
-        - if [ "$PROSPECTUS_APP" = "prospectus" ]; then node --import tsx accounts/build-deployment.ts; fi
-        - if [ "$PROSPECTUS_APP" = "prospectus" ]; then npm ci --prefix infra && npm run check --prefix infra; fi
-        - if [ "$PROSPECTUS_APP" = "prospectus" ]; then npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"; fi
+        - bash infra/scripts/build-backend.sh
+        - node infra/scripts/build-evaluation-if-enabled.mjs
+        - node --import tsx accounts/build-deployment.ts
+        - node infra/scripts/build-portal-if-enabled.mjs
+        - npm ci --prefix infra
+        - npm run check --prefix infra
+        - npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"
 frontend:
   phases:
     preBuild:
       commands:
-        - source .build/deployment.env
-        - if [ "$PROSPECTUS_APP" = "portal" ]; then node infra/scripts/write-portal-env.mjs; else node infra/scripts/write-frontend-env.mjs; fi
+        - node infra/scripts/write-frontend-env.mjs
     build:
       commands:
-        - if [ "$PROSPECTUS_APP" = "portal" ]; then npx vite build --config vite.portal.config.ts --outDir ../dist --emptyOutDir; else npm run build; fi
+        - npm run build
   artifacts:
     baseDirectory: dist
     files:

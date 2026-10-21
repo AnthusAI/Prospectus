@@ -151,7 +151,7 @@ test("federation policy failures name the broken policy rule", () => {
     ],
     [
       (registration) => (registration.googleFederation.policy = "other"),
-      "A Google federation policy must be google-only-unlinked-v1.",
+      "A Google federation policy must be google-only-unlinked-v1 or google-direct-v1.",
     ],
     [
       (registration) => (registration.googleFederation.reviewedPolicyId = ""),

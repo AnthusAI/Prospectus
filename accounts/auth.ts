@@ -3,6 +3,7 @@ import { createHash, createPublicKey, verify, type JsonWebKey } from "node:crypt
 import { fail, UUID_PATTERN, type Context, type Human, type Operation } from "./model";
 import type { ValidatedRegistrations } from "./registration";
 import { lowerCaseHeaders } from "./request";
+import { GOOGLE_ISSUER, googleDirectSession, googleIdTokenClaims, isGoogleDirect } from "./google-direct";
 export interface ExecutionDelegation {
   roleArn: string;
   enrollmentRoleArn: string;
@@ -19,7 +20,11 @@ export interface ProductRegistration {
   capabilities: Operation[];
   enabled: boolean;
   accountDirectory?: true;
-  googleFederation?: { policy: "google-only-unlinked-v1"; reviewedPolicyId: string; clientId: string };
+  googleFederation?: {
+    policy: "google-only-unlinked-v1" | "google-direct-v1";
+    reviewedPolicyId: string;
+    clientId: string;
+  };
   executionDelegation?: ExecutionDelegation;
 }
 export interface RestEvent {
@@ -154,6 +159,10 @@ export async function human(
   now = Date.now() / 1000,
   maxAuthAge?: number,
 ): Promise<Human> {
+  if (isGoogleDirect(registration)) {
+    const claims = await googleIdTokenClaims(token, registration, keys, now);
+    return { issuer: GOOGLE_ISSUER, subject: claims.sub, session: googleDirectSession(claims) };
+  }
   const claims = await cognitoClaims(token, registration, keys, "access", now);
   if (
     maxAuthAge !== undefined &&

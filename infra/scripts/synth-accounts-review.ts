@@ -40,6 +40,23 @@ assert.equal(resources.filter((resource) => resource.Type === "AWS::S3::Bucket")
 assert.equal(resources.filter((resource) => resource.Type === "AWS::DynamoDB::Table").length, 1);
 assert.equal(resources.filter((resource) => resource.Type === "AWS::Cognito::UserPoolClient").length, 2);
 assert.equal(resources.filter((resource) => resource.Type === "AWS::ApiGateway::RestApi").length, 1);
+// Anthus One signs in with Google directly: no second Cognito pool, domain, identity provider or secret.
+assert.equal(resources.filter((resource) => resource.Type === "AWS::Cognito::UserPool").length, 1);
+assert.equal(resources.filter((resource) => resource.Type === "AWS::Cognito::UserPoolDomain").length, 1);
+assert.equal(
+  resources.filter((resource) => resource.Type === "AWS::Cognito::UserPoolIdentityProvider").length,
+  1,
+);
+assert.equal(resources.filter((resource) => resource.Type.startsWith("AWS::SecretsManager")).length, 0);
+assert.equal(resources.filter((resource) => resource.Type === "AWS::ApiGatewayV2::Api").length, 2);
+assert.ok(
+  resources.some(
+    (resource) =>
+      resource.Type === "AWS::ApiGatewayV2::Authorizer" &&
+      resource.Properties.JwtConfiguration?.Issuer === "https://accounts.google.com",
+  ),
+  "the Anthus One API verifies Google ID tokens",
+);
 assert.ok(
   !resources.some(
     (resource) =>
@@ -47,5 +64,5 @@ assert.ok(
   ),
 );
 console.log(
-  "Enabled Accounts actual Gen2 assembly PASS; existing CRM bucket/catalog/client preserved; dedicated public console client plus approved Accounts plane.",
+  "Enabled Accounts actual Gen2 assembly PASS; existing CRM bucket/catalog/client preserved; dedicated public console client, approved Accounts plane and the Google-direct Anthus One API.",
 );

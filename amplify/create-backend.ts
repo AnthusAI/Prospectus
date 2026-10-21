@@ -22,6 +22,7 @@ export function createProspectusBackend(
   accounts?: AccountsPlaneOptions,
   intakeContactMode: IntakeContactMode = "synthetic-only",
   intakeForms: readonly IntakeFormConfig[] = [],
+  portal?: { assetDirectory: string },
 ) {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
   if (
@@ -118,6 +119,7 @@ export function createProspectusBackend(
     accounts,
     intakeContactMode,
     intakeForms,
+    portal,
   );
   backend.addOutput({ custom: resources.outputs });
 

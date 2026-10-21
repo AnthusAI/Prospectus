@@ -5,6 +5,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Code } from "aws-cdk-lib/aws-lambda";
 import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
+import { PORTAL_GOOGLE_CLIENT_ID } from "../lib/scope";
 import { unscopableRoutesWithScopes } from "./route-auth";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
@@ -20,6 +21,7 @@ function template(
   consolePairEnabled = false,
   papyrusSites: ProductRegistration[] = [],
   loginChallengeSigner: LoginChallengeSignerConfiguration = parameterStoreSigner,
+  anthusOne = false,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -40,6 +42,14 @@ function template(
           consolePairReviewId: "cyclotron-execution-pair-v1-20261015",
           papyrusSites,
           loginChallengeSigner,
+          ...(anthusOne
+            ? {
+                anthusOne: {
+                  googleClientId: PORTAL_GOOGLE_CLIENT_ID,
+                  federationReviewId: "anthus-one-google-direct-v1-20261020",
+                },
+              }
+            : {}),
         }
       : undefined,
   );
@@ -515,4 +525,144 @@ test("the scope check fails for a NONE route that inherits scopes", () => {
   );
   route.Properties.AuthorizationScopes = ["openid"];
   assert.equal(unscopableRoutesWithScopes(synth).length, 1);
+});
+
+test("Anthus One adds a Google-direct customer API with no Cognito pool, secret or operator route", () => {
+  const before = template(true, true, true),
+    after = template(true, true, true, [], parameterStoreSigner, true);
+  const added = Object.entries(after.Resources)
+    .filter(([id]) => !before.Resources[id])
+    .map(([id, resource]) => ({ id, ...(resource as any) }));
+  const changed = Object.entries(before.Resources).filter(
+    ([id, resource]) => JSON.stringify(after.Resources[id]) !== JSON.stringify(resource),
+  );
+  assert.deepEqual(
+    [...new Set(added.map((resource) => resource.Type))].sort(),
+    [
+      "AWS::ApiGateway::Deployment", // the central API's resource policy changed, so it republishes
+      "AWS::ApiGatewayV2::Api",
+      "AWS::ApiGatewayV2::Authorizer",
+      "AWS::ApiGatewayV2::Integration",
+      "AWS::ApiGatewayV2::Route",
+      "AWS::ApiGatewayV2::Stage",
+      "AWS::IAM::Policy",
+      "AWS::IAM::Role",
+      "AWS::Lambda::Function",
+      "AWS::Lambda::Permission",
+      "AWS::Logs::LogGroup",
+    ],
+    "No Cognito, Secrets Manager, DynamoDB, S3 or KMS resource may be added",
+  );
+  const text = JSON.stringify(added);
+  assert.ok(!text.includes("secretsmanager"), "no secret reference");
+  assert.ok(!text.includes("client_secret") && !JSON.stringify(after).includes("anthus-one/oauth/google"));
+  // Existing resources change only where the central service must learn the new product and role.
+  assert.deepEqual(changed.map(([, resource]) => (resource as any).Type).sort(), [
+    "AWS::ApiGateway::Deployment",
+    "AWS::ApiGateway::RestApi",
+    "AWS::ApiGateway::Stage",
+    "AWS::Lambda::Function",
+  ]);
+  const role = added.find((resource) => resource.Type === "AWS::IAM::Role")!;
+  assert.equal(role.Properties.RoleName, "prospectus-anthus-one-bff-runtime");
+  const fn = added.find((resource) => resource.Type === "AWS::Lambda::Function")!;
+  assert.equal(fn.Properties.FunctionName, "prospectus-anthus-one-bff");
+  assert.equal(fn.Properties.Environment.Variables.PROSPECTUS_BFF_SURFACE, "customer");
+  const flatten = (value: any): string => {
+    if (typeof value === "string") return value;
+    if (value["Fn::Join"]) return value["Fn::Join"][1].map(flatten).join(value["Fn::Join"][0]);
+    return "arn:aws:iam::712236451410:role/prospectus-anthus-one-bff-runtime";
+  };
+  const registration = JSON.parse(
+    flatten(fn.Properties.Environment.Variables.PROSPECTUS_DIRECTORY_REGISTRATION),
+  );
+  assert.deepEqual(registration, {
+    product: "anthus-one",
+    roleArn: "arn:aws:iam::712236451410:role/prospectus-anthus-one-bff-runtime",
+    issuer: "https://accounts.google.com",
+    clientIds: [PORTAL_GOOGLE_CLIENT_ID],
+    capabilities: ["console:read", "members:read"],
+    enabled: true,
+    accountDirectory: true,
+    googleFederation: {
+      policy: "google-direct-v1",
+      reviewedPolicyId: "anthus-one-google-direct-v1-20261020",
+      clientId: PORTAL_GOOGLE_CLIENT_ID,
+    },
+  });
+  // The central service learns the same registration.
+  const central = Object.values(after.Resources).find(
+    (resource: any) => resource.Properties?.FunctionName === "prospectus-central-accounts",
+  ) as any;
+  const products = JSON.parse(
+    flatten(central.Properties.Environment.Variables.PROSPECTUS_PRODUCTS).replaceAll(
+      "arn:aws:iam::712236451410:role/prospectus-anthus-one-bff-runtime",
+      "arn:aws:iam::712236451410:role/prospectus-anthus-one-bff-runtime",
+    ),
+  );
+  assert.ok(products.some((product: any) => product.product === "anthus-one"));
+  // API Gateway rejects a token that is not Google's for this client before the Lambda runs.
+  const authorizer = added.find((resource) => resource.Type === "AWS::ApiGatewayV2::Authorizer")!;
+  assert.equal(authorizer.Properties.AuthorizerType, "JWT");
+  assert.deepEqual(authorizer.Properties.JwtConfiguration, {
+    Audience: [PORTAL_GOOGLE_CLIENT_ID],
+    Issuer: "https://accounts.google.com",
+  });
+  const api = added.find((resource) => resource.Type === "AWS::ApiGatewayV2::Api")!;
+  assert.deepEqual(api.Properties.CorsConfiguration.AllowOrigins, ["https://one.anth.us"]);
+  assert.deepEqual(api.Properties.CorsConfiguration.AllowHeaders, ["authorization", "content-type"]);
+  const routes = added.filter((resource) => resource.Type === "AWS::ApiGatewayV2::Route");
+  assert.deepEqual(
+    routes.map((route) => [route.Properties.RouteKey, route.Properties.AuthorizationType]).sort(),
+    [
+      ["GET /api/saas/{proxy+}", "JWT"],
+      ["POST /api/saas/identity/login-challenge", "NONE"],
+      ["POST /api/saas/{proxy+}", "JWT"],
+    ],
+  );
+  assert.ok(routes.every((route) => !route.Properties.AuthorizationScopes?.length));
+  // Throttling: account creation and the public challenge are limited per route, everything else by default, and
+  // the stage is only updated after every throttled route exists.
+  const stage = added.find((resource) => resource.Type === "AWS::ApiGatewayV2::Stage")!;
+  assert.deepEqual(stage.Properties.DefaultRouteSettings, {
+    ThrottlingBurstLimit: 20,
+    ThrottlingRateLimit: 10,
+  });
+  assert.deepEqual(stage.Properties.RouteSettings, {
+    "POST /api/saas/{proxy+}": { ThrottlingBurstLimit: 5, ThrottlingRateLimit: 2 },
+    "POST /api/saas/identity/login-challenge": { ThrottlingBurstLimit: 5, ThrottlingRateLimit: 2 },
+  });
+  const throttledRoutes = added
+    .filter(
+      (resource) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        (resource.Properties.RouteKey === "POST /api/saas/{proxy+}" ||
+          resource.Properties.RouteKey === "POST /api/saas/identity/login-challenge"),
+    )
+    .map((resource) => resource.id);
+  assert.equal(throttledRoutes.length, 2);
+  for (const route of throttledRoutes) assert.ok(stage.DependsOn.includes(route), `stage waits for ${route}`);
+  // The role may call only the customer routes centrally; never operator, membership or authorize paths.
+  const invoke = added
+    .filter((resource) => resource.Type === "AWS::IAM::Policy")
+    .flatMap((resource) => resource.Properties.PolicyDocument.Statement)
+    .filter((statement: any) => JSON.stringify(statement.Action).includes("execute-api:Invoke"));
+  assert.equal(invoke.length, 1);
+  const paths = invoke[0].Resource.map((resource: any) => JSON.stringify(resource));
+  assert.equal(paths.length, 5);
+  assert.ok(paths.every((path: string) => !path.includes("operator") && !path.includes("memberships")));
+  assert.ok(paths.some((path: string) => path.includes('/POST/v1/accounts"')));
+  assert.ok(!paths.some((path: string) => path.includes("/v1/accounts/")));
+  // The central policy allows exactly that role those routes, and the catch-all deny exempts it.
+  const restApi = Object.values(after.Resources).find(
+    (resource: any) => resource.Type === "AWS::ApiGateway::RestApi",
+  ) as any;
+  const policyText = JSON.stringify(restApi.Properties.Policy);
+  assert.ok(policyText.includes("AnthusOneBffRuntime"));
+  assert.ok(!policyText.includes("operator"));
+});
+
+test("Anthus One is off unless activated, leaving the Accounts plane unchanged", () => {
+  const without = template(true, true, true);
+  assert.ok(!JSON.stringify(without).includes("anthus-one"));
 });

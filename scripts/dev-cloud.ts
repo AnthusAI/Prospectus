@@ -61,9 +61,19 @@ if (process.argv.includes("--refresh") || !existsSync(outputs)) {
 }
 
 const { custom } = JSON.parse(readFileSync(outputs, "utf8")) as { custom?: Record<string, string> };
-for (const key of ["ApiUrl", "UserPoolId", "ClientId", "CognitoDomainUrl"])
+// The portal signs in with Google directly and calls its own accounts API; it needs no Cognito output.
+for (const key of portal ? ["AnthusOneBffUrl"] : ["ApiUrl", "UserPoolId", "ClientId", "CognitoDomainUrl"])
   if (!custom?.[key]) throw new Error(`The deployed outputs are missing ${key}. Refresh with --refresh.`);
 
+// The deployed portal API accepts only the production Google client and the origin https://one.anth.us, and
+// localhost is not an Authorized JavaScript origin of that client. Local portal work therefore uses a separate
+// development Google client, named here, and Vite forwards /api to the deployed API with the portal's origin.
+const developmentGoogleClient = process.env.ANTHUS_ONE_DEV_GOOGLE_CLIENT_ID ?? "";
+if (portal && !/^[0-9]{6,20}-[a-z0-9]{1,64}\.apps\.googleusercontent\.com$/.test(developmentGoogleClient))
+  throw new Error(
+    "Set ANTHUS_ONE_DEV_GOOGLE_CLIENT_ID to the Anthus One development Google client (see docs/OPERATIONS.md); " +
+      "the production client does not authorize http://localhost:5421.",
+  );
 const port = new URL(origin).port;
 const vite = spawn(
   process.execPath,
@@ -81,15 +91,23 @@ const vite = spawn(
     env: {
       ...process.env,
       // The browser calls /api on localhost; vite.config.ts forwards it to the deployed API.
-      PROSPECTUS_CLOUD_API_ORIGIN: new URL(custom!.ApiUrl).origin,
-      VITE_KANBUS_API_URL: "",
-      VITE_COGNITO_USER_POOL_ID: custom!.UserPoolId,
-      VITE_COGNITO_CLIENT_ID: custom!.ClientId,
-      VITE_COGNITO_DOMAIN_URL: custom!.CognitoDomainUrl,
-      VITE_COGNITO_REDIRECT_URI: `${origin}/auth/callback`,
-      VITE_COGNITO_LOGOUT_URI: `${origin}/`,
-      VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
-      VITE_INTAKE_EVALUATION_URL: "",
+      ...(portal
+        ? {
+            PROSPECTUS_CLOUD_API_ORIGIN: new URL(custom!.AnthusOneBffUrl).origin,
+            VITE_GOOGLE_CLIENT_ID: developmentGoogleClient,
+            VITE_ACCOUNTS_BFF_URL: new URL(custom!.AnthusOneBffUrl).pathname,
+          }
+        : {
+            PROSPECTUS_CLOUD_API_ORIGIN: new URL(custom!.ApiUrl).origin,
+            VITE_KANBUS_API_URL: "",
+            VITE_COGNITO_USER_POOL_ID: custom!.UserPoolId,
+            VITE_COGNITO_CLIENT_ID: custom!.ClientId,
+            VITE_COGNITO_DOMAIN_URL: custom!.CognitoDomainUrl,
+            VITE_COGNITO_REDIRECT_URI: `${origin}/auth/callback`,
+            VITE_COGNITO_LOGOUT_URI: `${origin}/`,
+            VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
+            VITE_INTAKE_EVALUATION_URL: "",
+          }),
       ...(lanHost
         ? {
             PROSPECTUS_DEV_HOST: lanHost,

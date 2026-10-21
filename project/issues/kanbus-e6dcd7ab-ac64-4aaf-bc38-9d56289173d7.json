@@ -3,7 +3,7 @@
   "title": "Multi-app waitlist intake for Babulus (disabled until approved)",
   "description": "As Ryan, I want Prospectus to accept waitlist signups for other Anthus apps, starting with Babulus, so apps stop running their own waitlist backends.\n\nFeature: Multi-app waitlist intake\n  Scenario: Observable acceptance\n    Given a config-driven registry of intake forms with origins bound to their own form\n    When a Babulus waitlist signup arrives from an allowed Babulus origin\n    Then it lands as a lead on the existing prospect for that email without creating accounts, memberships, entitlements or appointments\n    And the Babulus entry ships disabled until Ryan approves owner, privacy notice, retention, abuse controls and real-cloud acceptance",
   "type": "story",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -22,11 +22,30 @@
         "model": "claude-opus-5-5",
         "name": "drift-fix-20261020"
       }
+    },
+    {
+      "id": "9707569c-4ab4-48c8-8889-02584f2a9aad",
+      "author": "home",
+      "text": "Ryan approved 2026-10-20 (in chat): owner intake-queue; notice babulus-waitlist-v1 = Babulus /privacy text with marketing opt-in unticked by default and the line 'We keep your signup until you ask us to delete it. To unsubscribe or request deletion, email the Anthus info role mailbox named there.'; retention until the person asks for deletion; abuse controls as built (route throttle rate 1 / burst 2, per-form origin binding, honeypot, strict attributes, always-accept store-then-file); only origin to start is https://babulus.anth.us; real-cloud acceptance is a labelled test signup after enablement. Enabling PR: claude/enable-babulus-waitlist. Issue stays open until the live test passes.",
+      "created_at": "2026-10-20T22:57:14.755939Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "bf2f83ee-ad1e-4d80-a7fd-760a8d4b7473",
+      "author": "home",
+      "text": "2026-10-21 real-cloud acceptance passed. Prospectus #65 (023c36e, Amplify job 64) enabled the form for https://babulus.anth.us only; Babulus #21/#22 (job 9) shipped the approved notice fixes (opt-in unticked by default, deletion contact line) and the endpoint. Probes: preflight from babulus.anth.us 204; anth.us -> waitlist 403; babulus.anth.us -> /intake/demo 403. A labelled test signup at 00:07Z showed 'You're on the list' and was appended to the existing test prospect prsp-964cd0ea as kind=waitlist, site babulus, marketing_opt_in=false, labels waitlist + app-babulus, with no new prospect. The first attempt failed on a doubled client path (base URL), and Babulus also hid its honeypot properly; both are fixed. The test entry belongs to the test prospect Ryan will archive.",
+      "created_at": "2026-10-21T00:08:12.031006Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-opus-5-5",
+        "name": "prospectus-implementation"
+      }
     }
   ],
   "created_at": "2026-10-19T21:35:19.996731Z",
-  "updated_at": "2026-10-20T13:16:53.369483Z",
-  "closed_at": null,
+  "updated_at": "2026-10-21T00:08:12.048315Z",
+  "closed_at": "2026-10-21T00:08:12.048276Z",
   "agent": {
     "platform": "claude_code",
     "model": "Claude Opus 5.5",

@@ -1,6 +1,6 @@
 # Anthus One: the customer account portal
 
-Status: proposal for review. No code or infrastructure is changed by this document.
+Status: the application exists; hosting is infrastructure as code and committed disabled (see "Hosting").
 
 ## What it is
 
@@ -32,13 +32,31 @@ The backend that Anthus One needs mostly exists: `accounts/` implements people k
 
 Decided 2026-10-19: the portal lives in the Prospectus repository as a separate application, not in a separate repository. It has its own entry page (`portal/index.html`), its own code (`src/portal/`), its own Vite config (`vite.portal.config.ts`) and its own bundle (`dist-portal/`), and it is served at `one.anth.us`, never inside the staff console at prospectus.anth.us. It shares only the account service, the sign-in helpers and the Anthus One design tokens (`src/shared/`, `src/styles.css`). `test/portal-separation.test.ts` fails if portal code reaches staff console code or the reverse. The earlier `AnthusAI/Anthus-One` repository and its shell pull request are superseded.
 
-Local development: `npm run dev:portal` serves it at http://localhost:5421 against the deployed backend with real Google sign-in. Hosting `one.anth.us` (an Amplify app or branch serving `dist-portal`, plus DNS) is not set up yet; when it is, apply `infra/portal-hosting-settings.json` (single-page-app rewrite so `/auth/callback` serves `index.html`). Blocking go-live: the portal needs its own Cognito app client and Google OAuth client (kanbus-73f7b2), because the shared client's tokens are valid for the CRM API. `npm run verify:bundles` (CI, after `npm run build`) fails if either bundle contains the other application's modules.
+Local development: `npm run dev:portal` serves it at http://localhost:5421 and needs a separate development Google client (the production client authorizes only https://one.anth.us; kanbus-1b54c9). Hosting is infrastructure as code in the Prospectus CDK backend, not a second Amplify app and not a manual setup (see "Hosting" below). It is committed dark: `infra/portal-hosting.json` is `{"enabled": false}` until a reviewed change turns it on. Sign-in no longer shares the CRM's Cognito client (kanbus-73f7b2, see Sign-in). `npm run verify:bundles` (CI, after `npm run build`) fails if either bundle contains the other application's modules.
+
+### Hosting
+
+Decided 2026-10-20 (Ryan: nothing is manually configured, everything is infrastructure as code). `one.anth.us` is served by the same `ampx pipeline-deploy` that deploys the backend. `infra/lib/portal-hosting.ts` (construct `PortalHosting`, instantiated by `ProspectusBackend` when the flag is on) creates:
+
+- a private S3 bucket `anthus-one-portal-712236451410` (block public access, S3-managed encryption, TLS only, versioning, retained, 90-day noncurrent expiry);
+- a CloudFront distribution that reads it through Origin Access Control, redirects HTTP to HTTPS, requires TLS 1.2 or later and serves HTTP/2 and HTTP/3, over IPv4 and IPv6;
+- single-page-app fallback by a viewer-request CloudFront Function: paths under `/assets/` and files with a known static extension pass through, everything else (`/auth/callback`, `/workspaces/acme`, `/people/ada.lovelace`) serves `index.html` with 200. A missing asset is a real 404 (S3's 403 for a missing key is presented as 404 with a `404.html` page);
+- caching: `assets/*` (hashed names) is `public, max-age=31536000, immutable`; `index.html` and other unhashed files are `no-cache` and the distribution revalidates them on every request, and a deploy also invalidates `/index.html` and `/`;
+- the response headers policy below;
+- an ACM certificate for `one.anth.us` in us-east-1, DNS-validated in the existing `anth.us` hosted zone `Z04979341DPRV5BDQNZMG` (imported by ID and name; the zone is never created or modified apart from records);
+- Route 53 `A` and `AAAA` alias records `one.anth.us` pointing at the distribution.
+
+Publishing is part of the same deployment: the build step `infra/scripts/build-portal-if-enabled.mjs` builds `dist-portal` in the backend phase, and two CDK `BucketDeployment`s upload hashed assets first and `index.html` last, then invalidate `/index.html` and `/`. They use one Lambda with a named role `anthus-one-portal-publish` that can read the CDK asset bucket, write the portal bucket and create CloudFront invalidations (CDK cannot narrow `cloudfront:CreateInvalidation` below `*`). Nothing is uploaded by hand and no GitHub connection or second Amplify app exists. Old hashed assets are kept (`prune` off) so that open tabs keep working; they are tiny.
+
+The portal's runtime configuration is supplied at build time. `infra/scripts/write-portal-env.mjs` turns `infra/portal-app.json` into `VITE_*` variables; `build-portal-if-enabled.mjs` moves them to `.env.portal.local` and builds with `--mode portal`, so the portal bundle never reads the CRM's `.env.production.local`. Which values are in `portal-app.json` (Cognito client or Google client ID, BFF URL) is the sign-in change's business, not the hosting's. The content security policy takes the accounts API origin from the stack itself.
+
+Response headers (`anthus-one-portal-security`): a content security policy with `default-src 'none'`, `script-src 'self' https://accounts.google.com/gsi/client`, `style-src 'self' https://accounts.google.com/gsi/style`, `frame-src https://accounts.google.com/gsi/`, `connect-src 'self'`, the accounts API origin and `https://accounts.google.com/gsi/`, `img-src 'self' data:`, `font-src 'self'`, `form-action 'self'`, `base-uri 'none'`, `object-src 'none'`, `frame-ancestors 'none'`, no `unsafe-inline` or `unsafe-eval`; HSTS for one year with subdomains; `X-Content-Type-Options: nosniff`; `X-Frame-Options: DENY`; `Referrer-Policy: strict-origin-when-cross-origin`; `Permissions-Policy` denying camera, microphone, geolocation, payment and usb; `Cross-Origin-Opener-Policy: same-origin-allow-popups` (Google Identity Services opens its sign-in in a popup). The policy allows Google Identity Services, not the Cognito hosted-UI token exchange; a sign-in method that needs another origin adds it through `extraConnectSources`. The portal's own sign-in is implemented (see Sign-in), so the flag may be turned on once the portal API's `AnthusOneBffUrl` is recorded in `infra/portal-app.json`; the policy's `connect-src` takes that API's origin, not the CRM's.
+
+Turning it on is a separate reviewed change: set `infra/portal-hosting.json` to `{"enabled": true}`. The first deploy after that creates the certificate (validation takes a few minutes), the distribution (about 5 to 15 minutes) and the DNS names. Check `npm run synth:portal:review --prefix infra` first.
 
 ### Sign-in
 
-Interim, 2026-10-19: the portal signs in through the Prospectus Cognito client, with `https://one.anth.us` and `http://localhost:5421` added to `APP_ORIGINS`, and reads the customer routes the accounts BFF already serves (`/api/saas/accounts`). This works today because those routes already authorize only the signed-in person's own accounts. Still to decide: whether the portal moves to its own pool and Google client as recommended below.
-
-Recommended: Google only, through its own Cognito user pool and its own Google OAuth client, following the pattern already used for `p.apyr.us`. The portal registers with Prospectus as a product (`anthus-one`) through reviewed configuration, the same way Papyrus sites do in `accounts/papyrus-sites.json`, so the canonical person is the same across the portal, Papyrus sites, Cyclotron Lab and the CRM. Creating the pool, the Google client and the registration needs AWS work on Ryan's Mac.
+Decided 2026-10-20 (Ryan, kanbus-73f7b2): the portal signs in with Google directly, using Google Identity Services and its own Google OAuth client (`712526614578-dp3o0ofrukf7h2qcjst345t033mi990c`). It has no Cognito pool, domain or app client (the earlier interim, a shared CRM client, and the earlier recommendation, its own pool, are both superseded). The browser holds a Google ID token whose nonce is a server-issued challenge and sends it to the portal's own accounts API, which verifies it against Google's published keys and serves only customer routes. The portal registers with Prospectus as the `anthus-one` product (`google-direct-v1` policy, reviewed ID `anthus-one-google-direct-v1-20261020`), so the Person is the same one the CRM, Papyrus sites and Cyclotron Lab resolve: a Person is keyed by the Google subject, not by any pool's `sub`. There is no server-issued session; the Google ID token (about an hour, renewed through GIS) is the session. Design, invariants that changed and Google console settings: [ARCHITECTURE.md](../ARCHITECTURE.md#anthus-one-sign-in-google-directly), [SECURITY.md](../SECURITY.md#anthus-one-google-directly-no-cognito) and [OPERATIONS.md](../OPERATIONS.md#anthus-one-portal-sign-in). `https://one.anth.us` is the portal API's only origin and is no longer a CRM origin; `http://localhost:5421` is an origin of no production surface.
 
 ### Backend
 
@@ -78,7 +96,7 @@ After the portal covers the same ground: delete `AccountsView.tsx`, the customer
 ## Decisions for Ryan
 
 1. Repository. Decided 2026-10-19: the Prospectus repository, as a separate application.
-2. Own Cognito pool and Google OAuth client for the portal. Recommendation: yes, matching the per-site rule.
+2. Sign-in. Decided 2026-10-20: its own Google OAuth client, signing in with Google directly and no Cognito pool (see Sign-in).
 3. Operator-only Accounts tab stays in the CRM. Recommendation: yes.
 4. Public repository. Recommendation: public and MIT like the CRM.
 5. Who may create a new account: anyone with a Google sign-in, or only after an operator approves. Recommendation: anyone may create an empty account with no products; products stay operator-granted.
