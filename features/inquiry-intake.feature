@@ -69,6 +69,15 @@ Feature: A website inquiry becomes an actionable private prospect
     Then an owner, next action and follow-up are required
     And the same issue and history remain available after reload
 
+  Scenario: Bind a contact only to the prospect that carries exactly that email
+    Given a prospect exists for one contact email
+    And a different contact with an email of the same length submits an inquiry
+    When intake looks up the new contact through the trusted Lambda event
+    Then the list filters travel in the event's rawQueryString
+    And a lookup hit counts only if the full canonical record's contact_email equals the inquiry email exactly
+    And any other hit is treated as a miss, so a new prospect is created for the new contact
+    And an identity claim already bound to another contact's prospect files the inquiry for review instead of onto that prospect
+
   Scenario: Preserve the private member write transport
     Given the browser sends X-Operation-Id and If-Match on member writes
     When its configured origin requests a write preflight

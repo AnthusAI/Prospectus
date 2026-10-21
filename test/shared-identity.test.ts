@@ -402,3 +402,93 @@ test("an existing claim still completes a repeat contact when the catalog lookup
     await setup.close();
   }
 });
+
+const unfilteredCatalog =
+  (api: CanonicalApi): IntakeOptions["request"] =>
+  async (path, init) =>
+    // Reproduces production before the fix: the list query reached Kanbus without its filters.
+    path.startsWith("/issues?")
+      ? { issues: [...api.records.values()].map((record) => structuredClone(record)) }
+      : api.request(path, init);
+
+test("a catalog hit for a different same-length email is a miss and never binds the claim", async () => {
+  const setup = await fixture();
+  try {
+    await (await setup.worker()).submit(input({ email: "aaaa@example.invalid" }));
+    const [existing] = [...setup.api.records.values()];
+    const worker = await setup.worker({ request: unfilteredCatalog(setup.api) });
+    await worker.submit(input({ email: "bbbb@example.invalid" }));
+    await worker.submit(input({ email: "bbbb@example.invalid", message: "Second inquiry" }));
+    assert.equal(setup.api.creates, 2);
+    const created = [...setup.api.records.values()].find((record) => record.issue.id !== existing.issue.id)!;
+    assert.equal(created.issue.custom!.contact_email, "bbbb@example.invalid");
+    assert.equal((created.issue.custom!.inquiries as unknown[]).length, 2);
+    assert.equal(created.issue.labels, undefined);
+    assert.equal((setup.api.records.get(existing.issue.id)!.issue.custom!.inquiries as unknown[]).length, 1);
+    const claims = [...setup.controls.objects.entries()]
+      .filter(([key]) => key.startsWith("intake-identities/"))
+      .map(([, object]) => JSON.parse(object.bytes));
+    assert.deepEqual(
+      claims.map((claim) => [claim.email, claim.issueId]).sort(),
+      [
+        ["aaaa@example.invalid", existing.issue.id],
+        ["bbbb@example.invalid", created.issue.id],
+      ].sort(),
+    );
+  } finally {
+    await setup.close();
+  }
+});
+
+test("a catalog summary is never trusted: the full record must carry exactly the inquiry email", async () => {
+  const setup = await fixture();
+  try {
+    await (await setup.worker()).submit(input({ email: "aaaa@example.invalid" }));
+    const [existing] = [...setup.api.records.values()];
+    // An operator stored a differently cased address; the stale summary still claims a match.
+    setup.api.records.get(existing.issue.id)!.issue.custom!.contact_email = "AAAA@example.invalid";
+    const worker = await setup.worker({
+      identityStore: new MemoryControls(),
+      request: async (path, init) => {
+        if (!path.startsWith("/issues?")) return setup.api.request(path, init);
+        const summary = structuredClone(existing);
+        summary.issue.custom!.contact_email = "aaaa@example.invalid";
+        return { issues: [summary] };
+      },
+    });
+    await worker.submit(input({ email: "aaaa@example.invalid", message: "Lowercase repeat" }));
+    assert.equal(setup.api.creates, 2);
+    assert.equal((setup.api.records.get(existing.issue.id)!.issue.custom!.inquiries as unknown[]).length, 1);
+  } finally {
+    await setup.close();
+  }
+});
+
+test("an identity claim already bound to another contact's prospect files for review, never onto it", async () => {
+  const setup = await fixture();
+  try {
+    await (await setup.worker()).submit(input({ email: "aaaa@example.invalid" }));
+    const [existing] = [...setup.api.records.values()];
+    // The production repair case: a claim for bbbb that a filterless lookup bound to aaaa's prospect.
+    const key = `intake-identities/${createHash("sha256").update("test/prospectus\nbbbb@example.invalid").digest("hex")}.json`;
+    await setup.controls.putControl(
+      key,
+      JSON.stringify({
+        version: 1,
+        workspace: "test/prospectus",
+        email: "bbbb@example.invalid",
+        issueId: existing.issue.id,
+      }),
+      { absent: true },
+    );
+    const worker = await setup.worker();
+    await worker.submit(input({ email: "bbbb@example.invalid" }));
+    assert.equal((setup.api.records.get(existing.issue.id)!.issue.custom!.inquiries as unknown[]).length, 1);
+    const review = [...setup.api.records.values()].find((record) => record.issue.id !== existing.issue.id)!;
+    assert.deepEqual(review.issue.labels, ["needs-review"]);
+    assert.equal(review.issue.custom!.review_reason, "identity_changed");
+    assert.equal(review.issue.custom!.contact_email, undefined);
+  } finally {
+    await setup.close();
+  }
+});
