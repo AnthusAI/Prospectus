@@ -64,7 +64,10 @@ test("the committed lab verifier file is exact reviewed configuration and is val
 
 test("the checked-in lab verifier is enabled for the reviewed Cyclotron lab role", () => {
   assert.equal(reviewedLabVerifier.enabled, true);
-  assert.equal(reviewedLabVerifierEntry(reviewedLabVerifier)?.roleArn, "arn:aws:iam::682849160744:role/cyclotron-lab-verifier");
+  assert.equal(
+    reviewedLabVerifierEntry(reviewedLabVerifier)?.roleArn,
+    "arn:aws:iam::682849160744:role/cyclotron-lab-verifier",
+  );
   const text = readFileSync(new URL("../accounts/lab-verifier.json", import.meta.url), "utf8");
   assert.ok(!/arn:aws:iam::\d{12}:user/.test(text));
 });
