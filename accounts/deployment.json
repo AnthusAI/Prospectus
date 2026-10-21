@@ -2,7 +2,7 @@
   "enabled": true,
   "storageMode": "canonical-virtuus-v1",
   "googlePolicyReviewId": "papyrus-google-only-unlinked-v1-20261015",
-  "membershipLookup": "scan",
+  "membershipLookup": "indexed",
   "accountCreationLimits": { "default": 3 },
   "loginChallengeSigner": {
     "kind": "parameter-store",
