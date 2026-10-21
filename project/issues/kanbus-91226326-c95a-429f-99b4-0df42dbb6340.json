@@ -10,16 +10,29 @@
   "parent": null,
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "c68f1920-8fac-4aaa-bc42-70c72333f30c",
+      "author": "home",
+      "text": "2026-10-21: enabled in Prospectus. #72 (1db86a5, shipped disabled) and #73 (2675516, Amplify job 71), with Ryan approving the exact resource-policy diff: an Allow for arn:aws:iam::682849160744:role/cyclotron-lab-verifier on GET /v1/identities/me and POST /v1/accounts/*/authorize, plus a Deny exemption. Left in_progress until Cyclotron's end-to-end acceptance with LabVerifierEnabled=true.",
+      "created_at": "2026-10-21T13:08:23.242043Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-opus-5-5",
+        "name": "prospectus-implementation"
+      }
+    }
+  ],
   "created_at": "2026-10-21T03:24:49.159738Z",
-  "updated_at": "2026-10-21T03:24:52.684957Z",
+  "updated_at": "2026-10-21T13:08:23.242068Z",
   "closed_at": null,
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {},
   "agent": {
     "platform": "claude_code",
     "model": "Claude Sonnet 5.5",
     "name": "Claude"
-  }
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
 }
