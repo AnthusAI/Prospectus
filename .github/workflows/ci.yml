@@ -46,6 +46,7 @@ jobs:
       - run: npm run check:amplify --prefix infra
       - run: npm run synth:amplify-review --prefix infra
       - run: npm run synth:accounts:review --prefix infra
+      - run: npm run synth:portal:review --prefix infra
       - run: bash infra/scripts/build-backend.sh
       - run: node infra/scripts/build-evaluation-if-enabled.mjs
       - run: node --import tsx accounts/build-deployment.ts

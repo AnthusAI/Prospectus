@@ -16,10 +16,12 @@ import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
 import type { IntakeFormConfig } from "../../server/intake-forms";
 import { throttleRoutes } from "./throttle-routes";
+import { PortalHosting } from "./portal-hosting";
 import {
   APP_ORIGINS,
   KANBUS_BOARD_GROUP,
   MEMBER_GROUP,
+  PORTAL_DOMAIN,
   PROJECT_NAMESPACE,
   SITE_DOMAIN,
   TARGET_ACCOUNT,
@@ -36,6 +38,7 @@ export class ProspectusBackend extends Construct {
     accounts?: AccountsPlaneOptions,
     intakeContactMode: IntakeContactMode = "synthetic-only",
     intakeForms: readonly IntakeFormConfig[] = [],
+    portal?: { assetDirectory: string },
   ) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
@@ -324,6 +327,15 @@ export class ProspectusBackend extends Construct {
     if (consoleClient) {
       outputs.ConsoleClientId = consoleClient.userPoolClientId;
       outputs.ConsoleCognitoDomainUrl = domain.baseUrl();
+    }
+    if (portal) {
+      const hosting = new PortalHosting(this, "AnthusOnePortal", {
+        assetDirectory: portal.assetDirectory,
+        apiOrigin: api.apiEndpoint,
+      });
+      outputs.PortalUrl = `https://${PORTAL_DOMAIN}`;
+      outputs.PortalBucketName = hosting.bucket.bucketName;
+      outputs.PortalDistributionId = hosting.distribution.distributionId;
     }
     this.outputs = outputs;
   }
