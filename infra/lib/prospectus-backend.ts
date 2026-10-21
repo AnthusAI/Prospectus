@@ -20,6 +20,7 @@ import {
   APP_ORIGINS,
   KANBUS_BOARD_GROUP,
   MEMBER_GROUP,
+  PORTAL_ORIGINS,
   PROJECT_NAMESPACE,
   SITE_DOMAIN,
   TARGET_ACCOUNT,
@@ -292,6 +293,44 @@ export class ProspectusBackend extends Construct {
         { routeKey: `POST ${LOGIN_CHALLENGE_PATH}`, route: loginChallengeRoute, burstLimit: 2, rateLimit: 1 },
       ]);
     }
+    // Anthus One: its own HTTP API in front of the customer BFF. API Gateway verifies the Google ID token (issuer and
+    // audience) before the Lambda does again; there is no Cognito pool and no Google client secret anywhere.
+    let portalApiUrl: string | undefined;
+    if (accountsPlane?.portalBff && accounts?.anthusOne) {
+      const portalApi = new apigw.HttpApi(this, "AnthusOneApi", {
+        apiName: "anthus-one",
+        defaultAuthorizer: new HttpJwtAuthorizer("AnthusOneGoogleJwt", "https://accounts.google.com", {
+          jwtAudience: [accounts.anthusOne.googleClientId],
+        }),
+        corsPreflight: {
+          allowOrigins: [...PORTAL_ORIGINS],
+          allowHeaders: ["authorization", "content-type"],
+          allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.OPTIONS],
+          maxAge: cdk.Duration.hours(1),
+        },
+      });
+      const portalIntegration = new HttpLambdaIntegration("AnthusOneAccounts", accountsPlane.portalBff);
+      portalApi.addRoutes({
+        path: "/api/saas/{proxy+}",
+        methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST],
+        integration: portalIntegration,
+      });
+      const [portalChallengeRoute] = portalApi.addRoutes({
+        path: LOGIN_CHALLENGE_PATH,
+        methods: [apigw.HttpMethod.POST],
+        integration: portalIntegration,
+        authorizer: new apigw.HttpNoneAuthorizer(),
+      });
+      throttleRoutes(portalApi.defaultStage!, [
+        {
+          routeKey: `POST ${LOGIN_CHALLENGE_PATH}`,
+          route: portalChallengeRoute,
+          burstLimit: 2,
+          rateLimit: 1,
+        },
+      ]);
+      portalApiUrl = `${portalApi.apiEndpoint}/api/saas`;
+    }
     const outputs: Record<string, string> = {
       AppUrl: appUrl,
       ApiUrl: api.apiEndpoint,
@@ -321,6 +360,7 @@ export class ProspectusBackend extends Construct {
       outputs.AccountsBffUrl = `${api.apiEndpoint}/api/saas`;
       outputs.AccountsApiUrl = accountsPlane.endpoint;
     }
+    if (portalApiUrl) outputs.AnthusOneBffUrl = portalApiUrl;
     if (consoleClient) {
       outputs.ConsoleClientId = consoleClient.userPoolClientId;
       outputs.ConsoleCognitoDomainUrl = domain.baseUrl();

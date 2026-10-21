@@ -20,8 +20,15 @@ export const PORTAL_DOMAIN = "one.anth.us";
 export const PORTAL_ORIGIN = `https://${PORTAL_DOMAIN}`;
 /** `npm run dev:portal` serves the portal here against the deployed backend. */
 export const PORTAL_DEV_ORIGIN = "http://localhost:5421";
-/** Browser origins allowed to sign in and call the API. */
-export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN, PORTAL_ORIGIN, PORTAL_DEV_ORIGIN] as const;
+/** Browser origins allowed to sign in to the CRM and call its API. The portal's origins are not here: it has its own
+ * Google sign-in and its own accounts API.
+ */
+export const APP_ORIGINS = [PRODUCTION_ORIGIN, LOCAL_DEV_ORIGIN] as const;
+/** Browser origins allowed to call the Anthus One portal's accounts API (and the Google "Authorized JavaScript origins"). */
+export const PORTAL_ORIGINS = [PORTAL_ORIGIN, PORTAL_DEV_ORIGIN] as const;
+/** The Anthus One Google OAuth client. A public identifier, used as the Google ID token audience; its secret is not used. */
+export const PORTAL_GOOGLE_CLIENT_ID =
+  "712526614578-dp3o0ofrukf7h2qcjst345t033mi990c.apps.googleusercontent.com";
 
 export function assertDeploymentScope(scope: {
   account: string;

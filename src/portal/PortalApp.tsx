@@ -1,45 +1,36 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { accountsBrowser } from "../accounts-client";
 import {
-  AccountsConfirmationError,
-  finishSignIn,
-  getAccessToken,
-  signIn,
-  signOut,
-  type AuthenticationConfiguration,
-} from "../auth";
+  REFRESH_BEFORE_EXPIRY_MS,
+  clearPortalSession,
+  enrollIfFresh,
+  getIdToken,
+  requestCredential,
+  sessionExpiresAt,
+  signOutOfPortal,
+} from "./google-auth";
 import type { DirectoryDetail, DirectoryList } from "../../packages/accounts-client/src/directory";
 import { BrandMark, Eyebrow, Wordmark } from "../shared/ui";
 import { PortalShell, PORTAL_PAGES, portalHref, readPortalLocation, type PortalPage } from "./PortalShell";
 import { AppsPage, HomePage, PeoplePage, SettingsPage, UnavailablePage } from "./pages";
 import { usePortalTheme } from "./theme";
 
-const authentication: AuthenticationConfiguration | null = import.meta.env.VITE_COGNITO_CLIENT_ID
-  ? {
-      domain: import.meta.env.VITE_COGNITO_DOMAIN_URL,
-      clientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
-      redirectUri: import.meta.env.VITE_COGNITO_REDIRECT_URI,
-      logoutUri: import.meta.env.VITE_COGNITO_LOGOUT_URI,
-      accountsBffUrl: import.meta.env.VITE_ACCOUNTS_BFF_URL,
-    }
-  : null;
-const directory = accountsBrowser(import.meta.env.VITE_ACCOUNTS_BFF_URL);
+/** The Anthus One Google OAuth client (a public identifier). Without it this copy of the portal cannot sign in. */
+const googleClientId: string = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
+const accountsBffUrl: string = import.meta.env.VITE_ACCOUNTS_BFF_URL ?? "";
+const directory = accountsBrowser(accountsBffUrl, fetch, getIdToken);
 
 /** The Anthus One customer portal. It reads only the signed-in person's own workspaces. */
 export function PortalApp() {
   const [theme, setTheme] = usePortalTheme();
-  const [signedIn, setSignedIn] = useState(
-    () => !/[?&](code|error)=/.test(window.location.search) && Boolean(getAccessToken()),
-  );
-  const [completingSignIn, setCompletingSignIn] = useState(
-    () => Boolean(authentication) && /[?&](code|error)=/.test(window.location.search),
-  );
+  const [signedIn, setSignedIn] = useState(() => Boolean(getIdToken()));
+  const [credentialVersion, setCredentialVersion] = useState(0);
+  const refreshing = useRef(false);
   const [location, setLocation] = useState(() => readPortalLocation());
   const [list, setList] = useState<DirectoryList | null>(null);
   const [detail, setDetail] = useState<DirectoryDetail | null>(null);
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
-  const [connecting, setConnecting] = useState(false);
   const [reload, setReload] = useState(0);
 
   const navigate = useCallback((page: PortalPage, workspace: string | null) => {
@@ -52,22 +43,45 @@ export function PortalApp() {
     return () => window.removeEventListener("popstate", restore);
   }, []);
 
-  useEffect(() => {
-    if (!authentication) return;
-    void finishSignIn(authentication, () => setSignedIn(true))
-      .then(() => {
-        window.history.replaceState(null, "", portalHref("home", null));
-        setLocation(readPortalLocation());
-      })
-      .catch((cause: Error) => {
-        if (cause instanceof AccountsConfirmationError) {
-          window.history.replaceState(null, "", portalHref("home", null));
-          setSignedIn(Boolean(getAccessToken()));
-        }
-        setError(cause.message);
-      })
-      .finally(() => setCompletingSignIn(false));
+  const credentialArrived = useCallback(() => {
+    setError("");
+    setSignedIn(true);
+    setCredentialVersion((value) => value + 1);
   }, []);
+  const startCredential = useCallback(
+    (button: HTMLElement | null, prompt: boolean) =>
+      requestCredential({
+        clientId: googleClientId,
+        loginChallenge: (digest) => directory.loginChallenge(digest),
+        onCredential: credentialArrived,
+        button,
+        prompt,
+      }),
+    [credentialArrived],
+  );
+
+  // A Google ID token lasts about an hour. Ask Google for a new one shortly before it ends; if that needs the person,
+  // it simply expires and they are returned to the sign-in page.
+  useEffect(() => {
+    if (!signedIn) return;
+    const timer = window.setInterval(() => {
+      const expiresAt = sessionExpiresAt();
+      if (!getIdToken() || !expiresAt) {
+        clearPortalSession();
+        setSignedIn(false);
+        setList(null);
+        setDetail(null);
+        return;
+      }
+      if (googleClientId && expiresAt - Date.now() < REFRESH_BEFORE_EXPIRY_MS && !refreshing.current) {
+        refreshing.current = true;
+        void startCredential(null, true)
+          .catch(() => undefined)
+          .finally(() => window.setTimeout(() => (refreshing.current = false), 60_000));
+      }
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [signedIn, startCredential]);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -75,6 +89,17 @@ export function PortalApp() {
     setList(null);
     void directory
       .list()
+      .then(async (value) => {
+        // A sign-in that has just answered a fresh server challenge confirms itself once: this links the Google
+        // account to its Prospectus Person and grants nothing.
+        if (
+          value.person === null &&
+          accountsBffUrl &&
+          (await enrollIfFresh(accountsBffUrl).catch(() => false))
+        )
+          return directory.list();
+        return value;
+      })
       .then((value) => current && setList(value))
       .catch(
         () =>
@@ -88,7 +113,7 @@ export function PortalApp() {
     return () => {
       current = false;
     };
-  }, [signedIn, reload]);
+  }, [signedIn, reload, credentialVersion]);
 
   const workspaces = list?.accounts ?? [];
   const workspaceId =
@@ -116,36 +141,21 @@ export function PortalApp() {
     document.title = `${PORTAL_PAGES[location.page].label}${workspace ? ` · ${workspace.name}` : ""} · Anthus One`;
   }, [location.page, workspaceId, workspaces]);
 
-  async function confirm() {
-    if (!authentication) return;
-    setConnecting(true);
+  function signOut() {
+    signOutOfPortal();
+    setSignedIn(false);
+    setList(null);
+    setDetail(null);
     setError("");
-    try {
-      await signIn(authentication, await directory.challenge());
-    } catch {
-      setConnecting(false);
-      setError("Google confirmation could not be started. Please try again.");
-    }
   }
-
-  if (!signedIn && completingSignIn && !error)
-    return (
-      <Frame theme={theme}>
-        <h1>Anthus One</h1>
-        <p role="status">Signing you in…</p>
-      </Frame>
-    );
 
   if (!signedIn)
     return (
       <SignInPage
         theme={theme}
         error={error}
-        onSignIn={
-          authentication
-            ? () => void signIn(authentication).catch((cause: Error) => setError(cause.message))
-            : undefined
-        }
+        start={googleClientId && accountsBffUrl ? (button) => startCredential(button, true) : undefined}
+        onError={setError}
       />
     );
 
@@ -167,7 +177,7 @@ export function PortalApp() {
         ) : (
           <p role="status">Loading your workspaces…</p>
         )}
-        <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
+        <button type="button" className="one-button tall" onClick={signOut}>
           Sign out
         </button>
       </Frame>
@@ -187,15 +197,8 @@ export function PortalApp() {
             {error}
           </p>
         )}
-        <button
-          type="button"
-          className="one-button primary tall"
-          disabled={connecting}
-          onClick={() => void confirm()}
-        >
-          {connecting ? "Opening Google…" : "Continue with Google"}
-        </button>
-        <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
+        <GoogleButton start={(button) => startCredential(button, false)} onError={setError} />
+        <button type="button" className="one-button tall" onClick={signOut}>
           Sign out
         </button>
       </Frame>
@@ -214,7 +217,7 @@ export function PortalApp() {
           <strong>Creating a workspace here is not yet available.</strong>
           <span>Until it is, Anthus sets up new workspaces for you.</span>
         </div>
-        <button type="button" className="one-button tall" onClick={() => signOut(authentication)}>
+        <button type="button" className="one-button tall" onClick={signOut}>
           Sign out
         </button>
       </Frame>
@@ -253,7 +256,7 @@ export function PortalApp() {
       personId={list.person.id}
       onNavigate={(next) => navigate(next, workspace.id)}
       onWorkspace={(id) => navigate(page, id)}
-      onSignOut={() => signOut(authentication)}
+      onSignOut={signOut}
     >
       {content}
     </PortalShell>
@@ -277,7 +280,53 @@ function Frame({ theme, children }: { theme: string; children: ReactNode }) {
   );
 }
 
-function SignInPage({ theme, error, onSignIn }: { theme: string; error: string; onSignIn?: () => void }) {
+/** Draws Google's own sign-in button; each press of it answers a fresh server challenge. */
+function GoogleButton({
+  start,
+  onError,
+}: {
+  start: (button: HTMLElement | null) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const container = useRef<HTMLDivElement>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    void start(container.current).catch((cause: Error) => {
+      if (current)
+        onError(
+          cause.message.startsWith("Google")
+            ? cause.message
+            : "Sign-in is not available right now. Please try again.",
+        );
+    });
+    return () => {
+      current = false;
+    };
+    // `start` is stable for the page's lifetime; a retry draws the button again with a new challenge.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+  return (
+    <div className="portal-google">
+      <div ref={container} />
+      <button type="button" className="one-button small" onClick={() => setAttempt((value) => value + 1)}>
+        Reload sign-in
+      </button>
+    </div>
+  );
+}
+
+function SignInPage({
+  theme,
+  error,
+  start,
+  onError,
+}: {
+  theme: string;
+  error: string;
+  start?: (button: HTMLElement | null) => Promise<void>;
+  onError: (message: string) => void;
+}) {
   return (
     <div className="one portal-signin" data-theme={theme}>
       <div className="one-stripe portal" aria-hidden="true" />
@@ -307,10 +356,8 @@ function SignInPage({ theme, error, onSignIn }: { theme: string; error: string; 
                 {error}
               </p>
             )}
-            {onSignIn ? (
-              <button type="button" className="one-button primary tall portal-google" onClick={onSignIn}>
-                Continue with Google
-              </button>
+            {start ? (
+              <GoogleButton start={start} onError={onError} />
             ) : (
               <p role="status">Sign-in has not been configured for this copy of the portal.</p>
             )}

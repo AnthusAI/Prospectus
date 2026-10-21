@@ -10,6 +10,7 @@ import {
   DEPLOYMENT_BRANCH,
   LOCAL_DEV_ORIGIN,
   PORTAL_DEV_ORIGIN,
+  PORTAL_GOOGLE_CLIENT_ID,
   TARGET_REGION,
 } from "../infra/lib/scope";
 
@@ -50,7 +51,8 @@ if (process.argv.includes("--refresh") || !existsSync(outputs)) {
 }
 
 const { custom } = JSON.parse(readFileSync(outputs, "utf8")) as { custom?: Record<string, string> };
-for (const key of ["ApiUrl", "UserPoolId", "ClientId", "CognitoDomainUrl"])
+// The portal signs in with Google directly and calls its own accounts API; it needs no Cognito output.
+for (const key of portal ? ["AnthusOneBffUrl"] : ["ApiUrl", "UserPoolId", "ClientId", "CognitoDomainUrl"])
   if (!custom?.[key]) throw new Error(`The deployed outputs are missing ${key}. Refresh with --refresh.`);
 
 const port = new URL(origin).port;
@@ -70,15 +72,23 @@ const vite = spawn(
     env: {
       ...process.env,
       // The browser calls /api on localhost; vite.config.ts forwards it to the deployed API.
-      PROSPECTUS_CLOUD_API_ORIGIN: new URL(custom!.ApiUrl).origin,
-      VITE_KANBUS_API_URL: "",
-      VITE_COGNITO_USER_POOL_ID: custom!.UserPoolId,
-      VITE_COGNITO_CLIENT_ID: custom!.ClientId,
-      VITE_COGNITO_DOMAIN_URL: custom!.CognitoDomainUrl,
-      VITE_COGNITO_REDIRECT_URI: `${origin}/auth/callback`,
-      VITE_COGNITO_LOGOUT_URI: `${origin}/`,
-      VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
-      VITE_INTAKE_EVALUATION_URL: "",
+      ...(portal
+        ? {
+            // The portal calls its own CORS-enabled accounts API directly; Google needs the origin authorized.
+            VITE_GOOGLE_CLIENT_ID: PORTAL_GOOGLE_CLIENT_ID,
+            VITE_ACCOUNTS_BFF_URL: custom!.AnthusOneBffUrl,
+          }
+        : {
+            PROSPECTUS_CLOUD_API_ORIGIN: new URL(custom!.ApiUrl).origin,
+            VITE_KANBUS_API_URL: "",
+            VITE_COGNITO_USER_POOL_ID: custom!.UserPoolId,
+            VITE_COGNITO_CLIENT_ID: custom!.ClientId,
+            VITE_COGNITO_DOMAIN_URL: custom!.CognitoDomainUrl,
+            VITE_COGNITO_REDIRECT_URI: `${origin}/auth/callback`,
+            VITE_COGNITO_LOGOUT_URI: `${origin}/`,
+            VITE_ACCOUNTS_BFF_URL: custom!.AccountsBffUrl ? new URL(custom!.AccountsBffUrl).pathname : "",
+            VITE_INTAKE_EVALUATION_URL: "",
+          }),
     },
   },
 );

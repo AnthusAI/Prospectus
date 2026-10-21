@@ -1,5 +1,6 @@
 import type { Context, Person } from "./model";
 import type { ValidatedRegistrations } from "./registration";
+import { isGoogleDirect } from "./google-direct";
 import { enrollmentBinding, sameBinding, type GoogleIdentityRepository } from "./google-identity";
 export interface PersonDirectory {
   resolve(context: Context): Promise<Person | null>;
@@ -29,6 +30,12 @@ export function googlePersonDirectory(
         authTime: session.authTime,
         lineageHash: session.lineageHash,
       });
+      // A Google-direct caller presents a fresh Google ID token on every request, so there is no single enrolled
+      // login to match. Enrollment under this exact product binding is the evidence instead.
+      if (isGoogleDirect(product))
+        return identity?.alias.provenance.some((prior) => sameBinding(prior, binding))
+          ? identity.person
+          : null;
       if (
         !identity?.alias.sessions.some(
           (known) =>

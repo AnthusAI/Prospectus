@@ -7,7 +7,8 @@ import { issueChallengeToken, verifyChallengeToken } from "./challenge-token";
 import type { ChallengeSigner } from "./challenge-signer";
 import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
 
-export const GOOGLE_ISSUER = "https://accounts.google.com";
+import { GOOGLE_ISSUER, googleDirectSession, googleIdTokenClaims, isGoogleDirect } from "./google-direct";
+export { GOOGLE_ISSUER };
 export const GOOGLE_CHALLENGE_SECONDS = 300;
 const IDENTITY_REQUEST_MAXIMUM_BODY_BYTES = 4096;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
@@ -83,8 +84,8 @@ function principalIsBoundToProduct(registration: ProductRegistration, principal:
 export function enrollmentBinding(registration: ProductRegistration, principal: string): IdentityBinding {
   const policy = registration.googleFederation;
   if (!policy) fail(403, "federation_policy", "A reviewed Google federation policy is required.");
-  if (policy.policy !== "google-only-unlinked-v1")
-    fail(403, "federation_policy", "Google-only unlinked federation is required.");
+  if (policy.policy !== "google-only-unlinked-v1" && policy.policy !== "google-direct-v1")
+    fail(403, "federation_policy", "Google-only unlinked or Google-direct federation is required.");
   if (!policy.reviewedPolicyId)
     fail(403, "federation_policy", "A reviewed federation policy identifier is required.");
   if (!registration.clientIds.includes(policy.clientId))
@@ -293,6 +294,35 @@ export function googleIdentityHandler(
       }
       if (event.path === "/v1/identities/google/resolve" && event.httpMethod === "POST") {
         requireRules(body, resolveRequestRules, failWith(400, "fields", "The resolve request is invalid"));
+        if (isGoogleDirect(authenticated.registration)) {
+          // One Google ID token carries the evidence: no Cognito pool, so no access/ID pair or login family.
+          const token = headers["x-prospectus-human-token"];
+          const claims = await googleIdTokenClaims(token, authenticated.registration, keys, now);
+          if (now - claims.iat > GOOGLE_CHALLENGE_SECONDS)
+            fail(401, "session_binding", "Fresh matching login evidence is required.");
+          const session = googleDirectSession(claims);
+          const signedChallenge =
+            body.challengeToken === undefined
+              ? undefined
+              : challengeSigner
+                ? await verifyChallengeToken(challengeSigner, body.challengeToken)
+                : fail(401, "challenge_invalid", "Signed challenges are not accepted by this service.");
+          const person = await repository.associate({
+            challengeId: signedChallenge?.challengeId ?? body.challengeId,
+            ...(signedChallenge ? { challenge: signedChallenge } : {}),
+            nonce: claims.nonce,
+            fingerprint: digest([token]),
+            binding: scope,
+            // The alias subject is the Google subject; the Google record is keyed on the same value.
+            cognitoSubject: claims.sub,
+            googleSubject: claims.sub,
+            authTime: session.authTime,
+            lineageHash: session.lineageHash,
+            now,
+            ...(body.loginState ? { loginStateDigest: sha256Hex(body.loginState) } : {}),
+          });
+          return jsonResponse(200, { person });
+        }
         const registration = { ...authenticated.registration, clientIds: [scope.clientId] };
         const [access, id] = await Promise.all([
           cognitoClaims(headers["x-prospectus-human-token"], registration, keys, "access", now),
@@ -332,6 +362,18 @@ export function googleIdentityHandler(
       }
       if (event.path === "/v1/identities/me" && event.httpMethod === "GET") {
         if (Object.keys(body).length) fail(400, "fields", "No authority fields are accepted.");
+        if (isGoogleDirect(authenticated.registration)) {
+          const claims = await googleIdTokenClaims(
+            headers["x-prospectus-human-token"],
+            authenticated.registration,
+            keys,
+            now,
+          );
+          const known = await repository.find(scope.issuer, claims.sub);
+          return jsonResponse(200, {
+            person: known?.alias.provenance.some((prior) => sameBinding(prior, scope)) ? known.person : null,
+          });
+        }
         const access = await cognitoClaims(
           headers["x-prospectus-human-token"],
           { ...authenticated.registration, clientIds: [scope.clientId] },

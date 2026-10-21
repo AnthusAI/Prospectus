@@ -11,6 +11,7 @@ import reviewedDeployment from "./deployment.json";
 import { membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
+import { GOOGLE_ISSUER, GoogleKeys } from "./google-direct";
 import { challengeSignerFromConfiguration, loginChallengeSignerConfiguration } from "./challenge-signer";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
   throw new Error("Canonical accounts runtime not enabled.");
@@ -25,6 +26,7 @@ const config = {
 };
 const executable = resolve(process.env.LAMBDA_TASK_ROOT ?? process.cwd(), "identity-files");
 const keys = new CognitoKeys();
+const googleKeys = new GoogleKeys();
 const products = registrations([
     ...JSON.parse(process.env.PROSPECTUS_PRODUCTS ?? "[]"),
     ...papyrusSiteRegistrations(reviewedPapyrusSites),
@@ -78,7 +80,8 @@ export const handler = async (
       identities,
       accounts,
       products,
-      (issuer, kid) => keys.resolve(issuer, kid),
+      (issuer, kid) =>
+        issuer === GOOGLE_ISSUER ? googleKeys.resolve(issuer, kid) : keys.resolve(issuer, kid),
       () => Date.now() / 1000,
       reviewedGrants,
       membershipLookup,

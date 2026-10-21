@@ -32,13 +32,24 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 
 `http://localhost:5417` is in `APP_ORIGINS` (`infra/lib/scope.ts`), so the Cognito client's callback and logout URLs, the API's CORS origins and the accounts service's POST origin check accept it beside the production address. Cognito permits plain http only for localhost, so open `localhost`, not `127.0.0.1`. Google itself is unchanged: its OAuth client only ever redirects to the Cognito domain.
 
-`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421.
+`npm run dev:portal` does the same for the Anthus One customer portal at http://localhost:5421. It signs in with Google directly (no Cognito) and calls the portal API from the `AnthusOneBffUrl` output, so it needs the backend deployed once; the Google client must list `http://localhost:5421` (and, for One Tap, `http://localhost`) as Authorized JavaScript origins.
 
 `npm run preview:local` remains the fully offline option with synthetic data and a local token.
 
 The Kanbus API, the shared UI package and Virtuus are pinned independently in `source-lock.json`, so a UI-only release cannot replace the deployed API. `.github/workflows/package-backend.yml` builds a reviewed backend package on demand.
 
 Do not rewrite canonical paths or delete data in a UI release.
+
+### Anthus One portal sign-in
+
+Google Cloud console, project "Anthus One", OAuth client `712526614578-dp3o0ofrukf7h2qcjst345t033mi990c`:
+
+- Authorized JavaScript origins: `https://one.anth.us`, `http://localhost:5421` and `http://localhost` (Google requires the portless localhost origin as well for One Tap). Nothing else.
+- Authorized redirect URIs: none are needed. The Cognito `idpresponse` URI registered earlier can be removed.
+- OAuth consent screen: publishing status "In production" (or test users listed), scopes `openid`, `email`, `profile` only.
+- The client secret is not used anywhere and the Secrets Manager secret `anthus-one/oauth/google` can be deleted.
+
+Two-step rollout: (1) merge and deploy the backend; read the `AnthusOneBffUrl` deploy output (also in the Amplify outputs for `main`). (2) Record it as `signIn.accountsBffUrl` in `infra/portal-app.json` (it must look like `https://<id>.execute-api.us-east-1.amazonaws.com/api/saas`) and merge; the portal build reads it through `infra/scripts/write-portal-env.mjs`. Until then the portal builds and says the account service is not configured. No CRM resource, client or origin is involved.
 
 ### Activation flags
 
@@ -48,6 +59,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | --- | --- | --- |
 | `accounts/deployment.json` | Central Accounts plane; needs `storageMode` `canonical-virtuus-v1` and a Google policy review ID | `enabled: true`, review `papyrus-google-only-unlinked-v1-20261015` |
 | `accounts/console-deployment.json` | Cyclotron console Cognito client (`clientEnabled`) and its BFF and worker role pair (`pairEnabled`); the pair requires the client | both `true` |
+| `accounts/anthus-one-deployment.json` | The Anthus One portal API, role, Lambda and `anthus-one` product (Google-direct); names the public Google client and reviewed policy `anthus-one-google-direct-v1-20261020` | `enabled: true` |
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
 | `evaluation-deployment.json` | Inquiry intake runtime and its mode (`synthetic-only` or `real-contacts`) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
