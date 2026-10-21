@@ -1,12 +1,12 @@
 # Intake spam: classify after capture, never reject
 
-Status: design only. Nothing in this document is implemented or deployed. Tracking issue: kanbus-2e713ce2.
+Status: layer 1 implemented (kanbus-2e713ce2), deployed in **shadow** mode. Ryan approved the decisions below on 2026-10-21. Layer 2 (Jev through Cyclotron) stays off.
 
 ## The rule this design serves
 
 A potential client's valid message is always accepted. The visitor always gets "Thanks, we have your note." Spam handling must add no friction for a real visitor: no CAPTCHA, no challenge, no extra field, no slower response, and no different answer for a submission we suspect.
 
-So spam handling only **classifies and labels after the inquiry is durably stored** (see [Store first, then file](ARCHITECTURE.md#store-first-then-file)). It never rejects, never deletes, and never hides a record where it cannot be found again. A false positive must be one click to find and one click to restore.
+So spam handling only **classifies and labels after the inquiry is durably stored** (see [Store first, then file](ARCHITECTURE.md#store-first-then-file)). It never rejects, never deletes, and never hides a record where it cannot be found again. A false positive is one click to find and one click to restore.
 
 The rule covers the anth.us contact form (`engage-contact-v1`) and every app waitlist form in `intake-forms.json`.
 
@@ -27,118 +27,157 @@ It reached the CRM as a `needs-review` prospect with reason `identity_changed`. 
 
 This is the well-known 2024 to 2026 random-string form-spam campaign seen on WordPress, Webflow, HubSpot and Keap forms: random mixed-case strings in name or company, a real-looking free-mail address (often a Gmail dot variant), and no links. The bots run a real browser, so they skip hidden honeypot fields, and they carry no link, so link filters miss them.
 
+## Approved decisions (Ryan, 2026-10-21)
+
+| # | Decision | Where it lives |
+| --- | --- | --- |
+| 1 | `likely_spam` when the score is 0.70 or more **and** at least two reasons fired, at least one of them strong. 40 or more letters of the visitor's own text cap the verdict at `uncertain` unless `markup_or_links` or `honeypot` fired | `config/intake-spam-rules.json` `thresholds` |
+| 2 | `likely-spam` is applied automatically (in label mode). `spam` is applied only by a person | `server/intake.ts`, `src/spam-review.ts` |
+| 3 | Confirmed spam moves to Closed and is kept until deletion is requested. Nothing is deleted automatically | `src/spam-review.ts` |
+| 4 | A filled honeypot is **stored** in the inbox and filed, labelled `likely-spam` with reason `honeypot`, never dropped. The visitor's response is unchanged | `server/intake.ts`, `server/intake-spam.ts` |
+| 5 | Optional `elapsed_ms` timing. The server accepts it first; the forms send the time since the form was rendered | `server/intake.ts`; AnthusAI/Anth.us-web engage form |
+| 6 | A real person selling services gets a separate `vendor` label, not `spam`. It is applied by a person; the scorer only shows a `vendor_pitch` hint | `config/intake-spam-rules.json` `vendor_pitch`, `src/spam-review.ts` |
+| 7 | Jev stays off: no TypeSafe or Cyclotron calls | Layer 2 below is not implemented |
+| 8 | Add "and to protect this form from spam" in the **next** privacy notice version. `contact-v1` is unchanged | Follow-up kanbus-72d6a8 for Ryan to approve the new notice text |
+
 ## Design in one paragraph
 
-After the inbox write succeeds, intake runs a pure, local scoring function over the inquiry. It returns a score from 0 to 1, a verdict (`clean`, `uncertain` or `likely_spam`) and named reason codes. The result is stored on the inbox item and on the inquiry inside the prospect. A `likely_spam` inquiry is filed as a normal prospect with the label `likely-spam` and no follow-up date, so it stays out of Today and is hidden by default in the pipeline, behind a visible "N hidden as likely spam" control. Ryan confirms with **Spam** or restores with **Not spam**. Each click is recorded as a correction. Corrections tune the rules through reviewed changes. Optionally, and only after a privacy decision, `uncertain` inquiries can be sent to a Cyclotron (Jev underneath), which learns from the same corrections. The visitor's response never changes.
+After the inbox write succeeds, intake runs a pure, local scoring function over the inquiry (`server/intake-spam.ts`). It returns a score from 0 to 1, a verdict (`clean`, `uncertain` or `likely_spam`), named reason codes and counts-only evidence. The result and the rules version are stored on the inquiry, in the inbox item and in `custom.inquiries[]` on the prospect. In label mode a `likely_spam` inquiry is filed as a normal prospect with the label `likely-spam` and no follow-up date, so it stays out of Today and is hidden by default in the pipeline behind a visible "N hidden as likely spam or spam" control. Ryan confirms with **Spam**, restores with **Not spam**, or marks a sales pitch with **Vendor**. Each click is recorded as a correction with the machine result that it corrects. Corrections tune the rules through reviewed changes. The visitor's response never changes.
 
 ## Layer 1: deterministic heuristics
 
 All rules are local string checks. They need no network, no paid service and no new AWS resource. They run in microseconds.
 
-Each rule has a code, a weight, and an evaluation on the 2026-10-20 example. The combined score is a noisy-OR, `1 - Π(1 - weight)` over the rules that fire, so it stays between 0 and 1 and no single weak rule can reach the label threshold.
+The rule table is `config/intake-spam-rules.json`, version `intake-spam-rules-1`. Changing a weight, threshold or phrase is a reviewed change that bumps the version, and every stored result names the version that produced it. The combined score is a noisy-OR, `1 - Π(1 - weight)` over the rules that fire, rounded to three places, so it stays between 0 and 1 and no single weak rule can reach the label threshold.
 
-| Code | Fires when | Weight | Strength | False-positive risk | Example |
+| Code | Fires when | Weight | Strength | False-positive risk | 2026-10-20 example |
 | --- | --- | --- | --- | --- | --- |
-| `gibberish_name` | A Latin-script token of 12 or more characters with no space has 3 or more lower-to-upper switches inside it, and either its vowel share is below 0.25 or it has a run of 6 or more consonants | 0.55 | Strong | Low with these guards. McDonald, DeAndre, O'Neil, Krzysztof, Szczepański, Xu Zhengqi and Nguyen all have at most 1 switch and runs of 4 or less. Non-Latin scripts and tokens under 12 characters never fire | Fires (6 switches, run 11, vowels 0.23) |
-| `gibberish_company` | The same test on the company field | 0.35 | Strong | Low, as above. Brand names like "PayPal" have 1 switch | Does not fire (the stem is 6 characters) |
-| `template_only_message` | The message, after removing the four prompt labels, the "Came from" line and any solution the page filled in from the link, has fewer than 3 letters left | 0.40 | Strong | Medium on its own: a real person can press send without typing. That is why it is not enough alone | Fires (nothing left) |
-| `markup_or_links` | BBCode `[url=`, an HTML `<a href`, or 3 or more URLs in the message | 0.55 | Strong | Low for a B2B form. One URL (often the sender's own site) never fires | Does not fire |
-| `seo_solicitation` | Fixed phrases such as "backlinks", "guest post", "rank your website", "SEO services", "increase your traffic" | 0.30 | Medium | Medium: a real client may ask about SEO. Never enough alone | Does not fire |
-| `gmail_dot_scatter` | A `gmail.com` or `googlemail.com` local part with 4 or more dots, or a dot share of 0.25 or more, or 3 or more one-character segments | 0.20 | Medium | Medium. Real people write first.m.last (2 dots). Gmail ignores dots, so heavy scattering is a bot signature, but it is only medium alone. Other domains (including Google Workspace) never fire | Fires (8 dots, share 0.38, 6 one-character segments) |
-| `random_company_stem` | A company of one short stem plus a legal suffix (LLC, Ltd, Inc, GmbH) where the stem scores below a character-bigram threshold | 0.10 | Weak | High for non-English company names, so the weight is tiny | Likely fires under a bigram model; the simple case and consonant tests do not fire |
+| `gibberish_name` | A Latin-script token of 12 or more letters with no space has 3 or more lower-to-upper switches inside it, and either its vowel share (a, e, i, o, u, y, accents folded) is below 0.25 or it has a run of 6 or more consonants | 0.55 | Strong | Low with these guards. McDonald, DeAndre, O'Neil, Krzysztof, Szczepański, Xu Zhengqi and Nguyen have at most 1 switch. Non-Latin scripts, tokens with punctuation and tokens under 12 letters never fire | Fires (22 letters, 6 switches, run 11, vowels 0.23) |
+| `gibberish_company` | The same test on the company field | 0.35 | Strong | Low, as above. "PayPal" has 1 switch | Does not fire (the stem is 6 letters) |
+| `template_only_message` | The message contains at least one of the engage form's prompts and, after removing the four prompts, the "(Came from: …)" line and a single-word solution the link filled in, has fewer than 3 letters left | 0.40 | Strong | Medium on its own: a real person can press send without typing. That is why it is not enough alone | Fires (4 prompts, 0 letters) |
+| `markup_or_links` | BBCode `[url=` or `[url]`, an HTML `<a href`, or 3 or more URLs in the message | 0.55 | Strong | Low for a B2B form. One or two URLs (often the sender's own site) never fire | Does not fire |
+| `gmail_dot_scatter` | A `gmail.com` or `googlemail.com` local part with 4 or more dots, or at least 2 dots and a dot share of 0.25 or more, or 3 or more one-character segments | 0.20 | Medium | Medium. Real people write first.m.last (2 dots). Gmail ignores dots, so heavy scattering is a bot signature, but only medium alone. Other domains, including Google Workspace, never fire | Fires (21 characters, 8 dots, share 0.38, 9 segments) |
 | `honeypot` | The hidden `website` field is filled | 0.90 | Strong | Low (`autocomplete="off"`, `tabindex="-1"`, hidden). Not zero: some autofill and accessibility tools fill hidden fields | Does not fire (the bot evaded it) |
-| `fast_submit` | The page reports the form was submitted less than 1.5 seconds after the script loaded (needs `elapsed_ms`, below) | 0.20 | Weak | Medium on waitlists, where autofill can complete a one-field form in about a second | Not available (no timing today) |
-| `repeat_variant` | The normalized email (lowercase; `googlemail.com` mapped to `gmail.com`; dots and `+tag` removed for Gmail only) was seen in the last 24 hours with a different exact address or a different name | 0.40 | Strong | Low for different names; a person retyping their own address with different dots is possible, so not enough alone | Not evaluated (no stored normalized key today) |
-| `disposable_domain` | The domain is on the CC0 `disposable-email-domains` list, vendored into the repo with its version | 0.15 | Weak | Medium: privacy-minded real people use these | Does not fire |
+| `fast_submit` | The form reports `elapsed_ms` below 1,500 | 0.20 | Weak | Medium on waitlists, where autofill can complete a one-field form in about a second | Not available (no timing then) |
+
+**Vendor pitches are a hint, not a reason** (decision 6). Fixed phrases such as "SEO services", "backlinks", "guest post", "rank your website", "web design services" or "lead generation services" add the hint `vendor_pitch`, shown in the CRM next to the **Vendor** button. A hint has no weight and never changes the verdict. There is no automatic vendor label: a real client may ask about SEO, and no phrase list separates a buyer from a seller reliably. A fluent pitch with three or more links still fires `markup_or_links`.
+
+**Not in `intake-spam-rules-1`.** `random_company_stem` (needs a character-bigram model, high false-positive risk for non-English names), `repeat_variant` (needs a new per-address control object) and `disposable_domain` (needs a vendored list) were proposed in the design and are left for a later rules version once shadow data shows they are needed.
 
 Signals deliberately given **zero weight**: short names (Li, Ng, Bo), non-Latin scripts, all-lowercase or all-uppercase names, digits at the end of an address, free-mail domains, the visitor's country or language, and raw IP repeats (offices share addresses behind NAT).
 
-**Protection for real visitors.** If the message has 40 or more letters of the visitor's own text (after removing the template) and `markup_or_links` and `honeypot` do not fire, the verdict can be at most `uncertain`. A real person with an unusual name who writes a real note is never labelled.
+**Protection for real visitors.** If a demo message has 40 or more letters of the visitor's own text (after removing the template) and neither `markup_or_links` nor `honeypot` fired, the verdict is at most `uncertain` and the result records `spam_protected: true`. A real person with an unusual name who writes a real note is never labelled.
 
-**Thresholds** (to be confirmed in shadow mode):
+**Thresholds** (decision 1):
 
-| Verdict | Score | Also required |
-| --- | --- | --- |
-| `likely_spam` | 0.70 or more | At least two reasons, at least one of them strong |
-| `uncertain` | 0.30 to 0.70, or capped by the protection above | |
-| `clean` | below 0.30 | |
+| Verdict | Rule |
+| --- | --- |
+| `likely_spam` | Score 0.70 or more, at least two reasons, at least one strong. Also always when `honeypot` fired (decision 4), even as the only reason |
+| `uncertain` | Score 0.30 or more otherwise, or capped by the protection above |
+| `clean` | Below 0.30 |
+| `unscored` | The scorer threw or returned something invalid. Stored with reason `scorer_error` and filed exactly as `clean` |
 
-**The example:** `gibberish_name` (0.55), `template_only_message` (0.40) and `gmail_dot_scatter` (0.20) fire. Score `1 - 0.45 × 0.60 × 0.80 = 0.78`, three reasons, two strong: `likely_spam`. Any two of the three strong signals would have been enough; Gmail dots alone (0.20) or a template-only message alone (0.40) would not.
+**The example:** `gibberish_name` (0.55), `template_only_message` (0.40) and `gmail_dot_scatter` (0.20) fire. Score `1 - 0.45 × 0.60 × 0.80 = 0.784`, three reasons, two strong: `likely_spam`. Name and template alone give 0.73 (`likely_spam`); Gmail dots alone (0.20, `clean`), a template-only message alone (0.40, `uncertain`) or Gmail dots with a template-only message (0.52, `uncertain`) would not. `test/intake-spam.test.ts` checks this feature vector with made-up values of the same shapes.
 
-The rule table lives in `config/intake-spam-rules.json` with a `rules_version`. Changing a weight or threshold is a reviewed change that bumps the version. Every stored result names the version that produced it.
+### Submission timing
 
-### Two small input additions
+The engage form and app waitlists may send an optional integer `elapsed_ms`: the time from the form being rendered to the first send attempt of that note. The server accepts integers from 0 to 86,400,000 (one day). An absent or invalid value (negative, too large, fractional, a string) is ignored: it is never a 400 and never a reason, because a valid message is always accepted. `elapsed_ms` is not part of the submission fingerprint, so a retry of the same note with another timing is the same inquiry. The value is unsigned and a bot can fake it, so it stays a weak signal. A signed server timestamp would need a token endpoint, which is a new request on the visitor's path and is not proposed.
 
-- **Submission timing.** The engage script and app waitlists send an optional integer `elapsed_ms`: the time from script load to submit, capped at one day. Today `submission_id` is generated at the first submit attempt in the engage script, not at render, so it carries no render time. `validateSubmission` rejects unknown fields with a 400, so the server must accept the optional field **before** any form sends it, and an absent or invalid value is "unknown", never a reason. The value is unsigned and a bot can fake it, so it stays weak. A signed server timestamp would need a token endpoint, which is a new request on the visitor's path and is not proposed.
-- **Repeat key.** Intake writes one more create-first control object per inquiry, `intake-receipts/<sha256(workspace, "spam-normalized", normalized_email)>.json`, holding only a count, the last `received_at` and a hash of the last exact address and name. It uses the prefix and pattern the intake role already has, so IAM does not change. It feeds `repeat_variant`.
+**Order of deployment matters.** Intake rejects unknown fields with a 400, so this server change must be deployed before any form sends `elapsed_ms`. The Anth.us-web change merges only after this change is live.
 
-### The honeypot today drops data
+### Honeypot: stored and labelled
 
-`Intake.submit` returns success and stores nothing when `website` is filled. Under the rule above a filled honeypot is a strong signal, not a reason to discard: a real visitor whose browser filled the hidden field loses their message and we never know. This design stores the inquiry in the inbox and files it like any `likely_spam` inquiry with reason `honeypot`. This is a behaviour change for Ryan to approve (decision 4). The visitor's response is unchanged.
+Before this change `Intake.submit` returned success and stored nothing when `website` was filled, so a real visitor whose browser filled the hidden field lost their message without anyone knowing. Now the inquiry is stored in the inbox, filed, and labelled `likely-spam` with reason `honeypot` and no follow-up date (decision 4). The honeypot's text is never stored: the inquiry records only `form_signals.honeypot_filled: true`. This applies in **both** labelling modes, because a honeypot submission was never filed before and labelling it keeps it out of Today exactly as dropping it did. The visitor's response is unchanged.
 
 ## Where it runs
 
-Inside `Intake.submit`, after `inbox.capture` succeeds and before filing:
+Inside `IntakeService.submit`, after `inbox.capture` succeeds and before filing:
 
-1. Capture the inbox item exactly as today. The 202 depends only on this.
-2. Call `scoreInquiry(inquiry, rules)`. It is a pure function in `server/intake-spam.ts`, wrapped so any exception becomes `{verdict: "unscored", reasons: ["scorer_error"]}` and filing continues as if clean.
-3. Store the result on the inbox item with the existing conditional `mark` (best effort, like `status`).
-4. File the prospect. `likely_spam` changes only the create or append body: add the `likely-spam` label and leave out `next_action` and `next_follow_up_at`.
+1. Capture the inbox item exactly as before. The 202 depends only on this.
+2. Score the stored inquiry with `scoreInquiry`, wrapped by `safeScore` so any exception or invalid result becomes `unscored` with reason `scorer_error`, filed as clean. A replayed inquiry that already carries a result keeps it.
+3. File the prospect. Only the create or append body changes (see below).
+4. Store the scored inquiry on the inbox item in the existing best-effort status write after filing, so scoring adds no extra storage request on the visitor's path.
 
-There is no new Lambda, queue, schedule, table or IAM statement. The added CPU is negligible. The same function scores existing inbox items and records offline through an operator script, `scripts/score-intake-inbox.ts`, run with the operator's own credentials and printing counts and reason codes only, like `refile-intake-inbox.ts`.
+There is no new Lambda, queue, schedule, table or IAM statement. The added CPU is negligible. The operator refile (`scripts/refile-intake-inbox.ts`) scores pending items the same way and files them with the deployed mode from `evaluation-deployment.json`. Logs carry the verdict code only (`intake_spam_scored`), never input text.
 
-Waitlists use the same scorer. They have no message, so only the name, company, email, honeypot, timing and repeat rules apply. Waitlist signups already have no follow-up date. The label keeps likely spam out of any launch announcement drawn from waitlist opt-ins.
+Waitlists use the same scorer. They have no message, so only the name, company, email, honeypot and timing rules apply. Waitlist signups already have no follow-up date; the label keeps likely spam out of any launch announcement drawn from waitlist opt-ins.
+
+### Shadow and label modes
+
+`evaluation-deployment.json` carries `"spamLabelling": "shadow"`, passed to the intake Lambda as `PROSPECTUS_INTAKE_SPAM_LABELLING`. An absent value means `shadow`; any value other than `shadow` or `label` fails the deployment.
+
+| Mode | Score and store | `likely-spam` label | Follow-up on likely spam |
+| --- | --- | --- | --- |
+| `shadow` (committed) | Yes | Only for a filled honeypot | Unchanged (intake sets it as before) |
+| `label` | Yes | Yes | Left out, so it stays out of Today |
+
+Turning labelling off again (back to `shadow`) leaves stored results and existing labels in place.
+
+### Filing
+
+- **New demo prospect, labelled likely spam:** labels `["likely-spam"]`, no `next_action`, no `next_follow_up_at`.
+- **New waitlist prospect, labelled likely spam:** the waitlist labels plus `likely-spam`.
+- **Needs-review prospect, labelled likely spam:** `["needs-review", "likely-spam"]`.
+- **Existing prospect:** a likely-spam inquiry is appended but **never labels** an existing prospect. A demo inquiry that is not itself labelled spam, appended to a prospect labelled `likely-spam` with no follow-up date, sets the usual next action and next-business-day follow-up, so a real person's new message is never held back by an old label. The label stays for a person to resolve.
+- Every create and append sets `custom.spam_status` to the latest inquiry's verdict.
 
 ## What is stored
 
-On each inquiry (in the inbox item and in `custom.inquiries[]`):
+On each inquiry, in the inbox item and in `custom.inquiries[]` (example values):
 
 ```json
-"spam_check": {
-  "version": 1,
+"form_signals": {"elapsed_ms": 2500},
+"spam_score": 0.784,
+"spam_verdict": "likely_spam",
+"spam_reasons": ["gibberish_name", "template_only_message", "gmail_dot_scatter"],
+"spam_rules_version": "intake-spam-rules-1",
+"spam_hints": [],
+"spam_evidence": {
+  "gibberish_name": {"length": 22, "case_switches": 6, "longest_consonant_run": 11, "vowel_share": 0.23},
+  "template_only_message": {"prompts": 4, "own_letters": 0},
+  "gmail_dot_scatter": {"local_length": 21, "dots": 8, "dot_share": 0.38, "segments": 9, "single_character_segments": 5}
+},
+"spam_protected": false,
+"spam_mode": "label",
+"spam_checked_at": "2026-10-21T12:00:00.000Z"
+```
+
+`spam_evidence` holds counts and lengths only, never the text it measured. `form_signals` holds `honeypot_filled: true` and `elapsed_ms` when the form reported them, never the honeypot's text.
+
+On the prospect: `custom.spam_status` (the latest inquiry's verdict) and, after a person's decision, `custom.spam_review` (the latest) and `custom.spam_corrections` (all decisions, the last 50):
+
+```json
+"spam_review": {
+  "label": "not_spam",
+  "reviewer": "<actor id>",
+  "at": "2026-10-22T09:00:00.000Z",
+  "inquiry_id": "<id>",
   "rules_version": "intake-spam-rules-1",
-  "checked_at": "2026-10-21T12:00:00.000Z",
-  "mode": "shadow",
-  "score": 0.78,
-  "verdict": "likely_spam",
-  "reasons": ["gibberish_name", "template_only_message", "gmail_dot_scatter"],
-  "evidence": {"gibberish_name": {"length": 22, "case_switches": 6, "longest_consonant_run": 11}, "gmail_dot_scatter": {"dots": 8}},
-  "model": null
+  "machine": {"score": 0.784, "verdict": "likely_spam", "reasons": ["gibberish_name", "template_only_message", "gmail_dot_scatter"]}
 }
 ```
 
-`evidence` holds counts and lengths only, never the text it measured. When a decision model is used (layer 2), `model` holds `{"provider": "cyclotron", "decision_id", "model_identity", "cyclotron_version", "label", "confidence", "decided_at"}`.
-
-On the prospect, `custom.spam_status` (the latest inquiry's verdict, for list filtering) and, after a correction, `custom.spam_review`:
-
-```json
-"spam_review": {"label": "not_spam", "reviewer": "<actor id>", "at": "2026-10-22T09:00:00.000Z", "inquiry_id": "<id>", "rules_version": "intake-spam-rules-1", "note": "Real person, unusual name."}
-```
-
-The reason codes and verdict may also go to logs, because they carry no contact data. The scorer never logs input text.
-
-A later inquiry that scores `clean` on a prospect labelled `likely-spam` gets a follow-up date as usual and the prospect's `spam_status` becomes `clean`. The label stays until a person resolves it, so the earlier inquiry is still shown for review. A new message from a real person is never held back by an old label.
+All of this is ordinary Kanbus data in the canonical S3 files; nothing new is stored elsewhere.
 
 ## In the CRM
 
-- **Pipeline:** prospects labelled `likely-spam` or `spam` are hidden by default. A visible line, "3 hidden as likely spam. Show", reveals them. This is a filter on labels through the existing Kanbus list query, not a new store.
-- **Today:** unchanged. Likely spam has no follow-up date, so it never appears.
-- **Prospect detail:** a badge "Likely spam" with the reasons in plain words ("Name looks machine-generated", "Message is only the form's prompts", "Gmail address with scattered dots"), the score and the rules version.
-- **Not spam:** removes `likely-spam`, sets `next_action` to "Respond to demo request" and `next_follow_up_at` to the next business day (the values intake would have set), and records `spam_review` with `not_spam`.
-- **Spam:** replaces `likely-spam` with `spam`, moves the prospect to Closed (`lost`), and records `spam_review` with `spam`. Nothing is deleted. Deletion stays the existing manual privacy process.
-- **Mark as spam** on any clean prospect does the same, so missed spam becomes a correction too.
+- **Pipeline:** prospects labelled `likely-spam` or `spam` are hidden by default. A visible line, "3 hidden as likely spam or spam. Show", reveals them. `vendor` is not hidden; vendors sit in Closed.
+- **Today:** likely spam has no follow-up date in label mode, so it is not a follow-up, and prospects labelled `likely-spam` or `spam` are left out of the new-leads list.
+- **Prospect detail:** a "Spam check" section with the verdict, the score, the reasons in plain words ("Name looks machine-generated", "Message is only the form's prompts", "Gmail address with scattered dots"), any vendor hint, the protection note, the rules version and whether it was scored in shadow mode. A flagged prospect shows it open at the top of the detail view; a clean one shows it collapsed.
+- **Not spam:** removes `likely-spam`, `spam` and `vendor`; for a prospect with a demo inquiry sets `next_action` to "Respond to demo request" and `next_follow_up_at` to the next business day (the values intake would have set); reopens a Closed prospect to New; records a `not_spam` correction.
+- **Spam:** replaces the labels with `spam`, moves the prospect to Closed, clears `next_follow_up_at`, records a `spam` correction. Nothing is deleted (decision 3). Deletion stays the existing manual privacy process.
+- **Vendor:** replaces the labels with `vendor`, moves the prospect to Closed, clears `next_follow_up_at`, records a `vendor` correction.
+- The same three buttons are on every scored prospect, so missed spam becomes a correction too.
 
-Each button is one revisioned update through the Kanbus API, and a revision conflict is shown, not overwritten. Prospectus adds these application interactions. The badge and the label filter should be reusable Kanbus/Virtuus UI.
+Each button is one revisioned update through the Kanbus API (`If-Match`); a revision conflict is shown ("Someone changed this prospect…"), not overwritten. Prospectus adds these application interactions (`src/admin/SpamReview.tsx`, `src/spam-review.ts`). The badge and the hidden-by-label filter are candidates to move into reusable Kanbus/Virtuus UI.
 
 ## Learning from corrections
 
-Every **Spam** and **Not spam** click is a label on one inquiry with the rules version that scored it. That is the training and correction data.
+Every **Spam**, **Not spam** and **Vendor** click is a label on one inquiry with the rules version, score, verdict and reasons that it corrects. That is the training and correction data.
 
-**Without a model (recommended first, free).** `scripts/spam-corrections.ts`, an operator script, collects `(evidence, reasons, score, label)` from records with `spam_review`, with no names, addresses or message text. It reports precision and recall per rule and per threshold. When there are enough labels (about 30 of each kind), it fits a logistic regression over the rule features and proposes new weights. A person reviews the proposal and commits it as a new `rules_version`. The rules learn, but only through a reviewed change, and every past result stays explainable by its version.
+**Without a model (the plan).** A later operator script, `scripts/spam-corrections.ts`, collects `(evidence, reasons, score, label)` from records with `spam_corrections`, with no names, addresses or message text. It reports precision and recall per rule and per threshold. When there are enough labels (about 30 of each kind), it fits a logistic regression over the rule features and proposes new weights. A person reviews the proposal and commits it as a new `rules_version`. The rules learn, but only through a reviewed change, and every past result stays explainable by its version. `vendor` corrections count as "not spam" for the spam weights.
 
-**With Cyclotron (optional, see below).** The same click also sends the label to the Cyclotron as `feedback`. The Cyclotron refits its ML head on trusted labels and its optimizer can propose a rubric or a supporting question, promoted only when its evaluation accepts it.
-
-## Layer 2 (optional): a Jev decision through Cyclotron
+## Layer 2 (not implemented; off by decision 7): a Jev decision through Cyclotron
 
 ### What Jev and Cyclotron are
 
@@ -178,39 +217,27 @@ The heuristics catch random-string bots. They do not catch fluent, AI-written so
 
 The `contact-v1` notice shown next to the button says details are "used only to reply to you and to keep a record of our conversation", kept until deletion is requested.
 
-- **Layer 1 is consistent with the notice.** It runs inside the intake function on data we already store, sends nothing anywhere, and its stored output is counts and codes. Screening the record we keep is part of keeping it. Adding "and to protect this form from spam" in the next notice version would make it explicit.
-- **Layer 2 is not clearly consistent.** It would send the visitor's message, and possibly name and email, to a second AWS account (Cyclotron) and to a third party (TypeSafe), and a standing run **stores the item text in the Cyclotron catalog**. A deletion request would then have to reach the Cyclotron store too, and there is no documented deletion of standing-run items, only retraction of priming examples. The notice does not mention service providers or automated screening. Before layer 2 for `engage-contact-v1`: either publish a new notice version (for example `contact-v2`) that names automated spam screening by a service provider, with the TypeSafe data processing terms reviewed, or keep layer 2 off for the contact form. If it is used, send the message only, with email and name replaced by their measured shapes, and add a deletion path for Cyclotron items.
-- Waitlist notices (`babulus-waitlist-v1`) need the same check per form.
+- **Layer 1 is consistent with the notice.** It runs inside the intake function on data we already store, sends nothing anywhere, and its stored output is counts and codes. Screening the record we keep is part of keeping it. Ryan decided (decision 8) to add "and to protect this form from spam" in the next notice version. `contact-v1` is not changed now; kanbus-72d6a8 tracks the new notice text for Ryan to approve, deployed server first like any notice version.
+- **Layer 2 is off** (decision 7). If it is ever reconsidered: it would send the visitor's message, and possibly name and email, to a second AWS account (Cyclotron) and to a third party (TypeSafe), and a standing run **stores the item text in the Cyclotron catalog**. A deletion request would then have to reach the Cyclotron store too, and there is no documented deletion of standing-run items. It would need a notice version that names automated spam screening by a service provider, with the TypeSafe data processing terms reviewed.
+- Waitlist notices (`babulus-waitlist-v1`) need the same wording check per form.
 - External spam services were considered and are not proposed. StopForumSpam is free only for non-commercial use and needs the email or IP sent out, and an MD5 of an email is easily reversed. Akismet's free tier excludes commercial use and paid plans start at about $10 a month. OOPSpam has 40 free checks a month. Cloudflare Turnstile is free but adds a third-party script to the page and can show a visible challenge, which is friction.
 
 ## Rollout
 
-1. **Specification.** `features/intake-spam.feature`: scoring examples (made-up data, `.invalid` and `@example.com` addresses only, for example `casey@example.com`), "a likely-spam inquiry still gets the same 202 and receipt", "a scorer error files as clean", "Not spam restores the follow-up", "a revision conflict on Spam is shown". Tests verify real API persistence and revision conflicts as for intake.
-2. **Shadow mode.** Deploy the scorer with `mode: "shadow"`: compute and store `spam_check`, add no label, change no follow-up. Run `scripts/score-intake-inbox.ts` once over existing inbox items to see what would have fired. Ryan reviews the shadow verdicts in the prospect detail for two weeks or 20 `likely_spam` verdicts, whichever is later.
-3. **Label.** Move to labelling only if shadow mode had no false positives among `likely_spam`. Turn on the label, the hidden-by-default filter and the two buttons.
-4. **Honeypot capture.** If approved, store and file filled-honeypot submissions as `likely_spam` instead of dropping them.
-5. **Timing and repeat key.** Server first, then the engage script (AnthusAI/Anth.us-Papyrus) and app waitlists.
-6. **Layer 2,** only after the privacy and IAM decisions, starting with the operator script on `uncertain` items.
+1. **Specification.** `features/intake-spam.feature`, with made-up data and `@example.com` addresses only. Done.
+2. **Shadow mode.** Deploy with `"spamLabelling": "shadow"`: compute and store the result, add no label (except for a filled honeypot), change no follow-up. Ryan reviews the shadow verdicts in the prospect detail for two weeks or 20 `likely_spam` verdicts, whichever is later.
+3. **Label.** Change `spamLabelling` to `"label"` in a reviewed pull request only if shadow mode had no false positives among `likely_spam`.
+4. **Timing.** Server first (this change), then the engage form (AnthusAI/Anth.us-web) and app waitlists.
+5. **Later rules versions** from corrections, and the deferred rules above if shadow data shows they are needed.
 
-Each step is reversible with a configuration change (`mode: "off" | "shadow" | "label"`). Turning it off leaves stored results in place and labels untouched.
-
-## Decisions for Ryan
-
-1. **Thresholds.** `likely_spam` at score 0.70 with at least two reasons, one strong; protection for 40+ letters of own text. Keep, or start stricter?
-2. **Labels.** `likely-spam` set automatically and `spam` only by a person (recommended), or also an automatic `spam` for the strongest cases?
-3. **Spam disposition.** Confirmed spam moves to Closed and is kept until a deletion request (recommended), or is deleted after a retention period?
-4. **Honeypot.** Store and file filled-honeypot submissions as likely spam (recommended under the never-reject rule) or keep dropping them?
-5. **Timing field.** Add `elapsed_ms` to the engage form and waitlists?
-6. **Vendor pitches.** Is a real person selling services "spam", or a third label (`solicitation`)?
-7. **Layer 2.** Use Jev through Cyclotron for uncertain cases? It needs a new IAM role in papyrus-production, a Cyclotron stack change, a new contact notice version and a Cyclotron deletion path. Calls cost fractions of a cent.
-8. **Notice wording.** Add "and to protect this form from spam" in the next notice version even if layer 2 is never used?
+Each step is reversible with a configuration change. Going back to `shadow` leaves stored results and labels in place.
 
 ## Sources
 
 Code and documents read for this design:
 
 - Prospectus: `server/intake.ts`, `server/inbox.ts`, `server/intake-contact-policy.ts`, `intake-forms.json`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `src/admin/TodayView.tsx`, `src/admin/PipelineView.tsx`.
-- AnthusAI/Anth.us-Papyrus: `web/inquiry_form.py` (honeypot markup, notice), `web/anthus_pages.py` (`FORM_TEMPLATE`), `web/static-root/engage-inquiry.js` (submission id, request body), `web/inquiry-config.json` (`contact-v1` text).
+- AnthusAI/Anth.us-web (formerly Anth.us-Papyrus): `web/inquiry_form.py` (honeypot markup, notice), `web/anthus_pages.py` (`FORM_TEMPLATE`), `web/static-root/engage-inquiry.js` (submission id, request body), `web/inquiry-config.json` (`contact-v1` text).
 - AnthusAI/Cyclotron: `README.md`, `docs/embedding.md`, `docs/hosted-publications.md` (machine access, standing runs, provider credential), `docs/embedded-execution-authorization.md`, `infra/lab/README.md` (stack, roles, verifier), `docs/using-cyclotron.md` and `docs/experiments/decision-model-comparison-20261009.md` (Jev cost and accuracy), `docs/dev-procedures.md` (per-call cost), `src/decision_flywheel/adapters/jev.py`, `src/decision_flywheel/adapters/hosted_jev.py`.
 
 Web:

@@ -1343,6 +1343,49 @@ body:has(.one) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Intake spam check (docs/INTAKE_SPAM.md) */
+.one-spam {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 14px;
+  line-height: 20px;
+}
+.one-spam.flagged {
+  border-color: var(--accent);
+}
+.one-spam p {
+  margin: 0;
+}
+.one-spam-badge {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-weight: 600;
+}
+.one-spam-badge.likely_spam {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.one-spam-reasons {
+  margin: 0;
+  padding-left: 18px;
+}
+.one-spam-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.one-spam-hidden {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
 .one-drawer-actions {
   display: flex;
   gap: 10px;

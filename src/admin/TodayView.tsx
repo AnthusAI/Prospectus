@@ -11,6 +11,7 @@ import {
 } from "../prospect";
 import type { Write } from "./PipelineView";
 import { AppChip, Eyebrow, Stat, Unavailable } from "../shared/ui";
+import { hiddenAsSpam } from "../spam-review";
 
 const GROUPS: Array<{ key: Exclude<FollowUpBucket, "later">; label: string; tone: string }> = [
   { key: "overdue", label: "Overdue", tone: "hot" },
@@ -69,7 +70,11 @@ export function TodayView({
       .then(([mine, fresh, all]) => {
         if (!current) return;
         setFollowUps(mine.issues.filter((record) => isActiveStage(record.issue.status, configuration)));
-        setLeads(fresh.issues.filter((record) => websiteInquiries(record.issue).length > 0));
+        setLeads(
+          fresh.issues.filter(
+            (record) => websiteInquiries(record.issue).length > 0 && !hiddenAsSpam(record.issue),
+          ),
+        );
         setOpen({
           count: all.issues.filter((record) => isActiveStage(record.issue.status, configuration)).length,
           more: Boolean(all.next_cursor),

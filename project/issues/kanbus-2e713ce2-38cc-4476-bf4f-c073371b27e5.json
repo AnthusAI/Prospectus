@@ -1,9 +1,9 @@
 {
   "id": "kanbus-2e713ce2-38cc-4476-bf4f-c073371b27e5",
-  "title": "Design intake spam classification (classify after capture, never reject)",
-  "description": "Design for spam handling on Prospectus intake (anth.us engage-contact-v1 and app waitlists): docs/INTAKE_SPAM.md. Rule: a valid message is always accepted and the visitor always gets the same reply; spam is classified and labelled after durable inbox capture, never rejected or deleted. Layer 1 is local deterministic heuristics with named reason codes (gibberish name/company, template-only message, Gmail dot scatter, links/markup, honeypot, timing, repeat key) stored as spam_check on the inquiry; likely-spam prospects get the likely-spam label and no follow-up date, hidden by default with Spam/Not spam corrections. Optional layer 2 is a Jev decision through a Cyclotron standing run, pending privacy (contact-v1), IAM and Cyclotron stack decisions. Rollout: spec, shadow mode, then labelling. Design only; no implementation in this issue.",
+  "title": "Intake spam scoring: classify after capture, never reject",
+  "description": "Design: docs/INTAKE_SPAM.md (Ryan approved the eight decisions on 2026-10-21). Implementation: a deterministic layer-1 scorer (server/intake-spam.ts, rules in config/intake-spam-rules.json, rules version stored with every result) runs after the durable inbox write for the engage form and every waitlist form. Each inquiry stores spam_check (score, verdict, reasons, counts-only evidence, rules version). In label mode a likely_spam inquiry is filed with the likely-spam label and no follow-up date; spam is human-only and moves to Closed, kept until deletion is requested; vendor is a separate human label. Filled honeypots are stored and labelled, not dropped. Optional elapsed_ms timing is accepted. The deployment flag spamLabelling starts as shadow (score and store only). The CRM shows the result and offers Not spam / Spam / Vendor corrections recorded in custom.spam_review; the pipeline hides likely-spam and spam behind an N hidden toggle. Jev/Cyclotron layer 2 stays off. A valid message is always accepted with the normal response; any scorer error is clean.",
   "type": "story",
-  "status": "open",
+  "status": "in_progress",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -15,7 +15,7 @@
   "dependencies": [],
   "comments": [],
   "created_at": "2026-10-21T22:29:47.983080Z",
-  "updated_at": "2026-10-21T22:29:47.983134Z",
+  "updated_at": "2026-10-21T22:51:19.696898Z",
   "closed_at": null,
   "agent": {
     "platform": "claude-code",

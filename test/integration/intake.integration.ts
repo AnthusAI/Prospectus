@@ -141,9 +141,11 @@ test("real Kanbus persistence: concurrent capture, replay/restart, edits, confli
     assert.equal(record.issue.status, "contacted");
     assert.equal(record.issue.custom!.next_action, "Confirm fit");
     assert.equal((record.issue.custom!.inquiries as unknown[]).length, 3);
+    // Rejected fields still count toward the loopback rate limit. (A filled honeypot is now
+    // stored and labelled, so it is proven separately in intake-spam.integration.ts.)
     for (let attempt = 0; attempt < 13; attempt++)
-      assert.equal((await post(input({ website: "honeypot" }))).status, 202);
-    assert.equal((await post(input({ website: "honeypot" }))).status, 429);
+      assert.equal((await post(input({ assignee: "rate-probe" }))).status, 400);
+    assert.equal((await post(input({ assignee: "rate-probe" }))).status, 429);
     await new Promise<void>((resolve) => adapter!.server.close(() => resolve()));
     await service.close();
     service = await IntakeService.open(options);

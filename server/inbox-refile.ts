@@ -6,6 +6,7 @@ import { IntakeInbox, type StoredInboxItem } from "./inbox";
 import { IntakeService, type Inquiry, type IntakeOptions } from "./intake";
 import { waitlistContactPolicy, type IntakeFormConfig } from "./intake-forms";
 import type { IntakeContactPolicy } from "./intake-contact-policy";
+import type { SpamLabelling } from "./intake-spam-mode";
 
 export interface RefileOptions {
   workspace: string;
@@ -18,6 +19,8 @@ export interface RefileOptions {
   demoOwner?: string;
   /** Without apply nothing is written to the CRM or the inbox. */
   apply: boolean;
+  /** The deployed spam labelling mode, so a refile files exactly as live intake would. */
+  spamLabelling?: SpamLabelling;
 }
 export interface RefileSummary {
   inboxItems: number;
@@ -83,6 +86,7 @@ export async function refileInbox(options: RefileOptions): Promise<RefileSummary
         request: options.request,
         form,
         log: () => undefined,
+        ...(options.spamLabelling ? { spamLabelling: options.spamLabelling } : {}),
       });
       try {
         const totals = await service.refile(items);

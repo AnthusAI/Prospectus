@@ -1,0 +1,63 @@
+{
+  "rules_version": "intake-spam-rules-1",
+  "approval": "Ryan approved 2026-10-21: likely_spam at score >= 0.70 with at least two reasons, one strong; 40-letter protection; filled honeypot stored and labelled; vendor pitches are a human label, not spam. Changing any value here is a reviewed change that bumps rules_version.",
+  "thresholds": {
+    "likely_spam": 0.7,
+    "uncertain": 0.3,
+    "min_reasons": 2,
+    "min_strong_reasons": 1,
+    "protected_own_letters": 40,
+    "protection_exempt": ["markup_or_links", "honeypot"]
+  },
+  "rules": {
+    "gibberish_name": { "weight": 0.55, "strength": "strong" },
+    "gibberish_company": { "weight": 0.35, "strength": "strong" },
+    "template_only_message": { "weight": 0.4, "strength": "strong" },
+    "markup_or_links": { "weight": 0.55, "strength": "strong" },
+    "gmail_dot_scatter": { "weight": 0.2, "strength": "medium" },
+    "honeypot": { "weight": 0.9, "strength": "strong" },
+    "fast_submit": { "weight": 0.2, "strength": "weak" }
+  },
+  "gibberish": {
+    "min_token_length": 12,
+    "min_case_switches": 3,
+    "max_vowel_share": 0.25,
+    "min_consonant_run": 6
+  },
+  "template": {
+    "prompts": [
+      "Solution or problem:",
+      "Rough volume or scale:",
+      "Do you have an AWS account (yes/no):",
+      "Timeline:"
+    ],
+    "solution_prompt": "Solution or problem:",
+    "came_from_pattern": "^\\(Came from:.*\\)$",
+    "max_own_letters": 2
+  },
+  "links": { "min_urls": 3 },
+  "gmail": {
+    "domains": ["gmail.com", "googlemail.com"],
+    "min_dots": 4,
+    "min_dot_share": 0.25,
+    "min_dots_for_share": 2,
+    "min_single_character_segments": 3
+  },
+  "fast_submit": { "max_elapsed_ms": 1500 },
+  "vendor_pitch": {
+    "phrases": [
+      "seo services",
+      "backlinks",
+      "guest post",
+      "rank your website",
+      "increase your traffic",
+      "web design services",
+      "website redesign",
+      "lead generation services",
+      "digital marketing services",
+      "app development services",
+      "white label",
+      "outsourcing partner"
+    ]
+  }
+}

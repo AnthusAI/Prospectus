@@ -97,7 +97,7 @@ export class IntakeInbox {
   async mark<I>(
     stored: StoredInboxItem<I>,
     status: InboxStatus,
-    detail: { reason?: string; issue_id?: string } = {},
+    detail: { reason?: string; issue_id?: string; inquiry?: I } = {},
   ): Promise<void> {
     const next = { ...stored.item, status, ...detail };
     const written = await this.store.putControl(stored.key, JSON.stringify(next), {

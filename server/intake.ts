@@ -2,11 +2,23 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { IssueRecord } from "../src/client";
+import { nextBusinessDay } from "../src/prospect";
+export { nextBusinessDay };
 import type { ConditionalControlStore } from "./control-store";
 import { IdentityClaims, SharedReceiptConflict } from "./identity";
 import { IntakeInbox, derivedUuid, type StoredInboxItem } from "./inbox";
 import { SYNTHETIC_CONTACT_POLICY, type IntakeContactPolicy } from "./intake-contact-policy";
 import { matchesAttributePattern, waitlistLabels, type IntakeFormConfig } from "./intake-forms";
+import {
+  MAX_ELAPSED_MS,
+  SPAM_RULES,
+  safeScore,
+  scoreInquiry,
+  type SpamInput,
+  type SpamLabelling,
+  type SpamResult,
+  type SpamVerdict,
+} from "./intake-spam";
 
 export const NOTICE_VERSION = SYNTHETIC_CONTACT_POLICY.noticeVersion;
 export class IntakeError extends Error {
@@ -38,6 +50,8 @@ export interface Submission {
   marketing_opt_in: boolean;
   page_path: string;
   campaign: Record<string, string>;
+  /** Optional, unsigned form timing; never part of the fingerprint. */
+  elapsed_ms?: number;
 }
 export interface WaitlistSubmission {
   submission_id: string;
@@ -49,8 +63,26 @@ export interface WaitlistSubmission {
   page_path: string;
   campaign: Record<string, string>;
   attributes: Record<string, string>;
+  elapsed_ms?: number;
 }
-export interface Inquiry {
+/** Signals the form reported. Never the honeypot's text. */
+export interface FormSignals {
+  honeypot_filled?: true;
+  elapsed_ms?: number;
+}
+/** The layer-1 spam result stored on every inquiry (docs/INTAKE_SPAM.md). */
+export interface InquirySpamFields {
+  spam_score: number;
+  spam_verdict: SpamVerdict;
+  spam_reasons: string[];
+  spam_rules_version: string;
+  spam_hints: string[];
+  spam_evidence: SpamResult["evidence"];
+  spam_protected: boolean;
+  spam_mode: SpamLabelling;
+  spam_checked_at: string;
+}
+export interface Inquiry extends Partial<InquirySpamFields> {
   id: string;
   kind: "demo" | "waitlist";
   name: string;
@@ -63,6 +95,7 @@ export interface Inquiry {
   marketing_opt_in: boolean;
   attributes?: Record<string, string>;
   fingerprint?: string;
+  form_signals?: FormSignals;
 }
 interface WriteIntent {
   method: "POST" | "PATCH";
@@ -96,7 +129,12 @@ export interface IntakeOptions {
   form?: IntakeFormConfig;
   /** Data-free diagnostics only: a reason code, never contact data. */
   log?: (entry: { event: string; reason: string }) => void;
+  /** "shadow" (default) scores and stores only; "label" also labels likely spam. */
+  spamLabelling?: SpamLabelling;
+  /** Test seam: replaces the shipped scorer. Its failures are always treated as clean. */
+  spamScorer?: (input: SpamInput) => SpamResult;
 }
+export const LIKELY_SPAM_LABEL = "likely-spam";
 /** A short, data-free code for logs and the inbox; never the message text. */
 function reasonCode(cause: unknown): string {
   if (cause === undefined) return "none";
@@ -140,6 +178,14 @@ function readCampaign(rawCampaign: unknown): Record<string, string> {
   return attribution;
 }
 
+/** Optional timing: an absent or invalid value is unknown, never a 400 and never a reason. */
+function readElapsed(fields: Record<string, unknown>): { elapsed_ms?: number } {
+  const value = fields.elapsed_ms;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_ELAPSED_MS
+    ? { elapsed_ms: value }
+    : {};
+}
+
 function readPagePath(fields: Record<string, unknown>, fallback: string) {
   const page_path = readText(fields, "page_path", 200) || fallback;
   if (!/^\/[a-z0-9/_-]*$/i.test(page_path)) throw new IntakeError(400, "Invalid page path.");
@@ -163,6 +209,7 @@ export function validateSubmission(
     "marketing_opt_in",
     "page_path",
     "campaign",
+    "elapsed_ms",
   ];
   if (Object.keys(fields).some((key) => !allowed.includes(key)))
     throw new IntakeError(400, "Unknown form field.");
@@ -190,6 +237,7 @@ export function validateSubmission(
     marketing_opt_in: fields.marketing_opt_in === true,
     page_path,
     campaign: attribution,
+    ...readElapsed(fields),
   };
 }
 
@@ -210,6 +258,7 @@ export function validateWaitlistSubmission(
     "page_path",
     "campaign",
     "attributes",
+    "elapsed_ms",
   ];
   if (Object.keys(fields).some((key) => !allowed.includes(key)))
     throw new IntakeError(400, "Unknown form field.");
@@ -247,15 +296,31 @@ export function validateWaitlistSubmission(
     attributes: Object.fromEntries(
       Object.entries(attributes).sort(([left], [right]) => left.localeCompare(right)),
     ),
+    ...readElapsed(fields),
   };
 }
 
-export function nextBusinessDay(now: Date): string {
-  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  do {
-    date.setUTCDate(date.getUTCDate() + 1);
-  } while ([0, 6].includes(date.getUTCDay()));
-  return date.toISOString().slice(0, 10);
+/** The scorer's view of a stored inquiry, so a refile scores exactly like the live submission. */
+export function spamInputFor(inquiry: Inquiry): SpamInput {
+  return {
+    kind: inquiry.kind,
+    name: String(inquiry.name ?? ""),
+    email: String(inquiry.email ?? ""),
+    company: String(inquiry.company ?? ""),
+    message: String(inquiry.message ?? ""),
+    honeypot_filled: inquiry.form_signals?.honeypot_filled === true,
+    ...(inquiry.form_signals?.elapsed_ms !== undefined
+      ? { elapsed_ms: inquiry.form_signals.elapsed_ms }
+      : {}),
+  };
+}
+
+/** The response intake sets on a demo inquiry; Not spam restores the same values. */
+function demoFollowUp(inquiry: Inquiry) {
+  return {
+    next_action: "Respond to demo request",
+    next_follow_up_at: nextBusinessDay(new Date(inquiry.received_at)),
+  };
 }
 
 export class IntakeService {
@@ -373,9 +438,15 @@ export class IntakeService {
     const message = form ? "Waitlist signup received." : "Demo request received.";
     const run = this.queue.then(async () => {
       if (!this.locked) throw new IntakeError(503, "Intake is unavailable.");
-      if (submission.website) return { receipt: submission.submission_id, message };
+      // A filled honeypot is stored and labelled like any likely spam, never dropped (decision 4).
+      // Timing is excluded so a retry with another elapsed_ms is the same inquiry.
+      const { elapsed_ms: _elapsed, ...fingerprinted } = submission;
       const fingerprint = hash(
-        JSON.stringify({ submission, siteId: this.options.siteId, formId: this.options.formId }),
+        JSON.stringify({
+          submission: fingerprinted,
+          siteId: this.options.siteId,
+          formId: this.options.formId,
+        }),
       );
       const received_at = (this.options.now?.() ?? new Date()).toISOString();
       const build = (id: string) => this.buildInquiry(submission, fingerprint, id, received_at);
@@ -387,7 +458,8 @@ export class IntakeService {
       } catch (error) {
         this.diagnose("inbox_unavailable", error);
       }
-      const inquiry = captured?.item.inquiry ?? build(submission.submission_id);
+      // Scoring runs only after the durable inbox write and can never change the reply.
+      const inquiry = this.scored(captured?.item.inquiry ?? build(submission.submission_id));
       const reply = { receipt: submission.submission_id, message };
       if (this.persistenceFailed) {
         // Never write to the CRM without a journal, but the stored inquiry is still safe.
@@ -415,9 +487,17 @@ export class IntakeService {
         const outcome = await this.file(receipt);
         const item = this.stored.get(receipt.inquiry.id);
         if (item) {
-          if (outcome.status !== "pending" || outcome.reason !== item.item.reason)
+          if (
+            outcome.status !== "pending" ||
+            outcome.reason !== item.item.reason ||
+            item.item.inquiry.spam_verdict !== receipt.inquiry.spam_verdict
+          )
             await this.inbox
-              .mark(item, outcome.status, { reason: outcome.reason, issue_id: outcome.issueId })
+              .mark(item, outcome.status, {
+                reason: outcome.reason,
+                issue_id: outcome.issueId,
+                inquiry: receipt.inquiry,
+              })
               .catch((error) => this.diagnose("inbox_mark_failed", error));
         } else if (outcome.status === "pending" && receipt.inquiry.id === inquiry.id) throw outcome.error;
       }
@@ -437,7 +517,7 @@ export class IntakeService {
       const totals = { filed: 0, review: 0, pending: 0 };
       for (const stored of items) {
         if (stored.item.status !== "pending") continue;
-        const inquiry = stored.item.inquiry;
+        const inquiry = this.scored(stored.item.inquiry);
         this.stored.set(inquiry.id, stored);
         const receipt = (this.ledger.receipts[inquiry.id] ??= {
           fingerprint: stored.item.fingerprint,
@@ -451,6 +531,7 @@ export class IntakeService {
           await this.inbox.mark(stored, outcome.status, {
             reason: outcome.reason,
             issue_id: outcome.issueId,
+            inquiry: receipt.inquiry,
           });
       }
       return totals;
@@ -466,10 +547,15 @@ export class IntakeService {
     received_at: string,
   ): Inquiry {
     const form = this.options.form;
-    const { submission_id: _id, website: _website, campaign, page_path, ...contact } = submission;
+    const { submission_id: _id, website, campaign, page_path, elapsed_ms, ...contact } = submission;
+    const form_signals: FormSignals = {
+      ...(website ? { honeypot_filled: true as const } : {}),
+      ...(elapsed_ms !== undefined ? { elapsed_ms } : {}),
+    };
     return {
       ...(form ? { company: "", message: "" } : {}),
       ...contact,
+      ...(Object.keys(form_signals).length ? { form_signals } : {}),
       fingerprint,
       id,
       kind: form ? "waitlist" : "demo",
@@ -479,10 +565,61 @@ export class IntakeService {
   }
 
   private diagnose(event: string, cause: unknown) {
-    const reason = reasonCode(cause);
-    const entry = { event, reason };
-    if (this.options.log) this.options.log(entry);
-    else console.warn(JSON.stringify(entry));
+    this.report({ event, reason: reasonCode(cause) });
+  }
+
+  private report(entry: { event: string; reason: string }) {
+    try {
+      if (this.options.log) this.options.log(entry);
+      else console.warn(JSON.stringify(entry));
+    } catch {
+      // Diagnostics never change an intake outcome.
+    }
+  }
+
+  /**
+   * The inquiry with its layer-1 spam result. A result already stored (a replay) is kept. Never
+   * throws: any failure is stored as "unscored", which files exactly as clean.
+   */
+  private scored(inquiry: Inquiry): Inquiry {
+    try {
+      return this.score(inquiry);
+    } catch {
+      return inquiry;
+    }
+  }
+
+  private score(inquiry: Inquiry): Inquiry {
+    if (inquiry.spam_verdict && inquiry.spam_rules_version) return inquiry;
+    const scorer = this.options.spamScorer ?? scoreInquiry;
+    const result = safeScore(inquiry, (value) => scorer(spamInputFor(value)));
+    const now = this.options.now?.() ?? new Date();
+    const fields: InquirySpamFields = {
+      spam_score: result.score,
+      spam_verdict: result.verdict,
+      spam_reasons: result.reasons,
+      spam_rules_version: SPAM_RULES.rules_version,
+      spam_hints: result.hints,
+      spam_evidence: result.evidence,
+      spam_protected: result.protected,
+      spam_mode: this.options.spamLabelling ?? "shadow",
+      spam_checked_at: Number.isNaN(now.getTime()) ? inquiry.received_at : now.toISOString(),
+    };
+    // Verdict codes only; the scorer never logs input text.
+    if (result.verdict !== "clean") this.report({ event: "intake_spam_scored", reason: result.verdict });
+    return { ...inquiry, ...fields };
+  }
+
+  /** Likely spam is labelled in label mode, and always when the honeypot fired (decision 4). */
+  private labelledSpam(inquiry: Inquiry): boolean {
+    return (
+      inquiry.spam_verdict === "likely_spam" &&
+      (inquiry.spam_mode === "label" || (inquiry.spam_reasons ?? []).includes("honeypot"))
+    );
+  }
+
+  private spamCustom(inquiry: Inquiry): Record<string, unknown> {
+    return inquiry.spam_verdict ? { spam_status: inquiry.spam_verdict } : {};
   }
 
   /** Files one stored inquiry. Never throws: failures leave the inbox item pending. */
@@ -529,8 +666,9 @@ export class IntakeService {
         type: "prospect",
         assignee: this.options.owner,
         description: `Filed for review (${reason}). Merge this inquiry into the matching prospect.\n\n${inquiry.message}`,
-        labels: ["needs-review"],
+        labels: this.labelledSpam(inquiry) ? ["needs-review", LIKELY_SPAM_LABEL] : ["needs-review"],
         custom: {
+          ...this.spamCustom(inquiry),
           company: inquiry.company,
           review_contact_email: inquiry.email,
           review_reason: reason,
@@ -546,16 +684,19 @@ export class IntakeService {
   }
 
   private demoCreateBody(inquiry: Inquiry) {
+    const spam = this.labelledSpam(inquiry);
     return {
       title: inquiry.name,
       type: "prospect",
       assignee: this.options.owner,
       description: inquiry.message,
+      // Likely spam: labelled and given no follow-up, so it stays out of Today.
+      ...(spam ? { labels: [LIKELY_SPAM_LABEL] } : {}),
       custom: {
         company: inquiry.company,
         contact_email: inquiry.email,
-        next_action: "Respond to demo request",
-        next_follow_up_at: nextBusinessDay(new Date(inquiry.received_at)),
+        ...(spam ? {} : demoFollowUp(inquiry)),
+        ...this.spamCustom(inquiry),
         first_source: inquiry.source,
         latest_source: inquiry.source,
         latest_inquiry_at: inquiry.received_at,
@@ -570,10 +711,14 @@ export class IntakeService {
       type: "prospect",
       assignee: this.options.owner,
       description: `Joined the ${inquiry.source.site_id} waitlist.`,
-      labels: waitlistLabels(this.options.form!),
+      labels: [
+        ...waitlistLabels(this.options.form!),
+        ...(this.labelledSpam(inquiry) ? [LIKELY_SPAM_LABEL] : []),
+      ],
       custom: {
         company: "",
         contact_email: inquiry.email,
+        ...this.spamCustom(inquiry),
         first_source: inquiry.source,
         latest_source: inquiry.source,
         latest_inquiry_at: inquiry.received_at,
@@ -696,6 +841,14 @@ export class IntakeService {
         const missingLabels = this.options.form
           ? waitlistLabels(this.options.form).filter((label) => !existingLabels.includes(label))
           : [];
+        // A later message is never held back by an old likely-spam label: a demo inquiry that is not
+        // itself labelled spam restores the follow-up intake would have set. The label stays for a
+        // person to resolve. A likely-spam inquiry never labels an existing prospect.
+        const restoreFollowUp =
+          receipt.inquiry.kind === "demo" &&
+          existingLabels.includes(LIKELY_SPAM_LABEL) &&
+          !this.labelledSpam(receipt.inquiry) &&
+          !record.issue.custom?.next_follow_up_at;
         receipt.write = {
           method: "PATCH",
           path: `/issues/${encodeURIComponent(record.issue.id)}`,
@@ -704,6 +857,8 @@ export class IntakeService {
           body: {
             ...(missingLabels.length ? { labels: [...existingLabels, ...missingLabels] } : {}),
             custom: {
+              ...(restoreFollowUp ? demoFollowUp(receipt.inquiry) : {}),
+              ...this.spamCustom(receipt.inquiry),
               inquiries: [...inquiries, receipt.inquiry],
               latest_inquiry_at: receipt.inquiry.received_at,
               latest_source: receipt.inquiry.source,

@@ -156,25 +156,19 @@ test("durable receipts recover a lost create response and preserve subsequent in
   }
 });
 
-test("a ledger admits one worker and honeypots cause no canonical write", async () => {
+test("a ledger admits one worker", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prospectus-worker-"));
-  let calls = 0;
   const options = {
     directory,
     workspace: "test/prospectus",
     owner: "seller",
     siteId: "review",
     formId: "demo",
-    request: async () => {
-      calls++;
-      return { issues: [] };
-    },
+    request: async () => ({ issues: [] }),
   };
   const service = await openIntake(options);
   try {
     await assert.rejects(openIntake(options), /Another intake worker/);
-    await service.submit(submission({ website: "spam" }));
-    assert.equal(calls, 0);
   } finally {
     await service.close();
     await rm(directory, { recursive: true });

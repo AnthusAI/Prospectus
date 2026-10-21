@@ -14,6 +14,7 @@ import { AccountsPlane, type AccountsPlaneOptions } from "./accounts-plane";
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
 import { EvaluationIntake, type IntakeContactMode } from "./evaluation-intake";
+import type { SpamLabelling } from "../../server/intake-spam-mode";
 import type { IntakeFormConfig } from "../../server/intake-forms";
 import { throttleRoutes, throttleStageDefault } from "./throttle-routes";
 import { PortalHosting } from "./portal-hosting";
@@ -40,6 +41,7 @@ export class ProspectusBackend extends Construct {
     intakeContactMode: IntakeContactMode = "synthetic-only",
     intakeForms: readonly IntakeFormConfig[] = [],
     portal?: { assetDirectory: string },
+    intakeSpamLabelling: SpamLabelling = "shadow",
   ) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
@@ -368,6 +370,7 @@ export class ProspectusBackend extends Construct {
         evaluationCode,
         intakeContactMode,
         intakeForms,
+        intakeSpamLabelling,
       );
       outputs.EvaluationIntakeUrl = intake.url;
       if (intake.waitlistBaseUrl) outputs.IntakeWaitlistBaseUrl = intake.waitlistBaseUrl;

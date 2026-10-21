@@ -11,6 +11,7 @@ import {
   waitlistRoutePath,
   type IntakeFormConfig,
 } from "../../server/intake-forms";
+import { spamLabellingForMode, type SpamLabelling } from "../../server/intake-spam-mode";
 import { throttleRoutes } from "./throttle-routes";
 import { PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
@@ -33,8 +34,10 @@ export class EvaluationIntake extends Construct {
     code: lambda.Code,
     contactMode: IntakeContactMode = "synthetic-only",
     registryForms: readonly IntakeFormConfig[] = [],
+    spamLabelling: SpamLabelling = "shadow",
   ) {
     super(scope, id);
+    spamLabellingForMode(spamLabelling);
     const forms = enabledIntakeForms(registryForms);
     assertDistinctFormOrigins(registryForms);
     if (forms.length && contactMode !== "real-contacts")
@@ -84,6 +87,7 @@ export class EvaluationIntake extends Construct {
       environment: {
         PROSPECTUS_INTAKE_ALLOWED_ORIGINS: formOrigins.join(","),
         PROSPECTUS_INTAKE_CONTACT_MODE: contactMode,
+        PROSPECTUS_INTAKE_SPAM_LABELLING: spamLabelling,
         ...(forms.length ? { PROSPECTUS_INTAKE_FORMS: JSON.stringify(forms) } : {}),
         PROSPECTUS_EVALUATION_WORKSPACE: PROJECT_NAMESPACE,
         PROSPECTUS_EVALUATION_BUCKET: `prospectus-records-${TARGET_ACCOUNT}`,

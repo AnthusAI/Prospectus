@@ -1,0 +1,24 @@
+{
+  "id": "kanbus-72d6a8ed-177a-4295-b86a-aea48017c6b4",
+  "title": "Approve the next contact notice version with spam-protection wording",
+  "description": "Ryan decided on 2026-10-21 (intake spam decision 8) that the NEXT privacy notice version for the anth.us engage form should add the words \"and to protect this form from spam\" to the purpose sentence. contact-v1 stays unchanged and is still the accepted notice_version. To do: Ryan approves the exact new notice text and its version name (for example contact-v2). Then deploy the server first (REAL_CONTACT_POLICY.noticeVersion in server/intake-contact-policy.ts, accepting the new version) and only then the notice text in AnthusAI/Anth.us-web web/inquiry-config.json, so the page never sends a version the server rejects. Check the waitlist notices (babulus-waitlist-v1) the same way. Related: kanbus-2e713c, docs/INTAKE_SPAM.md.",
+  "type": "task",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [
+    "intake",
+    "privacy",
+    "needs-ryan"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-21T22:51:27.083163Z",
+  "updated_at": "2026-10-21T23:11:06.841830Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

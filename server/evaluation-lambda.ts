@@ -8,6 +8,7 @@ import { createEvaluationHandler } from "./evaluation-handler";
 import { canonicalRequest } from "./canonical-invoke";
 import { intakeContactPolicyForMode } from "./intake-contact-policy";
 import { enabledIntakeForms, parseIntakeFormRegistry, waitlistContactPolicy } from "./intake-forms";
+import { spamLabellingForMode } from "./intake-spam";
 
 const required = (name: string) => {
   const value = process.env[name];
@@ -19,6 +20,8 @@ const allowedOrigins = required("PROSPECTUS_INTAKE_ALLOWED_ORIGINS")
   .map((origin) => origin.trim())
   .filter(Boolean);
 const contactPolicy = intakeContactPolicyForMode(process.env.PROSPECTUS_INTAKE_CONTACT_MODE);
+// Absent means "shadow": score and store only.
+const spamLabelling = spamLabellingForMode(process.env.PROSPECTUS_INTAKE_SPAM_LABELLING);
 const workspace = required("PROSPECTUS_EVALUATION_WORKSPACE");
 const bucket = required("PROSPECTUS_EVALUATION_BUCKET");
 const region = required("AWS_REGION");
@@ -53,7 +56,14 @@ const openLocalService = async (
 ) => {
   const directory = await mkdtemp(join(tmpdir(), "prospectus-intake-"));
   try {
-    const service = await IntakeService.open({ directory, workspace, identityStore, request, ...source });
+    const service = await IntakeService.open({
+      directory,
+      workspace,
+      identityStore,
+      request,
+      spamLabelling,
+      ...source,
+    });
     return {
       submit: service.submit.bind(service),
       close: async () => {
@@ -92,6 +102,7 @@ export const handler = createEvaluationHandler({
         contactPolicy,
         identityStore,
         request,
+        spamLabelling,
       });
       return {
         submit: service.submit.bind(service),
