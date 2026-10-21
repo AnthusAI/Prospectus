@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -45,15 +45,15 @@ test("the portal bundle is built and published inside the same pipeline-deploy",
   assert.match(readFileSync("amplify/create-backend.ts", "utf8"), /portal,\n\s*\);/);
 });
 
-test("hosting is dark by default and the flag file holds only the flag", () => {
-  assert.deepEqual(JSON.parse(readFileSync("infra/portal-hosting.json", "utf8")), { enabled: false });
+test("hosting is enabled for one.anth.us and the flag file holds only the flag", () => {
+  assert.deepEqual(JSON.parse(readFileSync("infra/portal-hosting.json", "utf8")), { enabled: true });
 });
 
 test("a disabled build skips the portal build and leaves environment files alone", () => {
   const directory = mkdtempSync(join(tmpdir(), "portal-build-"));
   try {
     mkdirSync(join(directory, "infra"));
-    cpSync("infra/portal-hosting.json", join(directory, "infra/portal-hosting.json"));
+    writeFileSync(join(directory, "infra/portal-hosting.json"), JSON.stringify({ enabled: false }));
     const result = spawnSync(process.execPath, [resolve("infra/scripts/build-portal-if-enabled.mjs")], {
       cwd: directory,
       encoding: "utf8",

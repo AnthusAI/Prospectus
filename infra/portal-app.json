@@ -2,6 +2,6 @@
   "domain": "one.anth.us",
   "signIn": {
     "googleClientId": "712526614578-dp3o0ofrukf7h2qcjst345t033mi990c.apps.googleusercontent.com",
-    "accountsBffUrl": ""
+    "accountsBffUrl": "https://0ilupv6k6j.execute-api.us-east-1.amazonaws.com/api/saas"
   }
 }
