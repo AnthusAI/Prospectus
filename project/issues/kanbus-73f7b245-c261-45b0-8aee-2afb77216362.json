@@ -3,7 +3,7 @@
   "title": "Give the Anthus One portal its own Cognito app client and Google OAuth client before one.anth.us goes live",
   "description": "Risk: the portal currently signs in through the CRM's Cognito app client (infra/portal-app.json clientId). Tokens issued by that client are valid for the CRM API, so a staff token obtained from the public portal at one.anth.us would be accepted by the CRM API. Target: a separate Cognito app client in the shared pool for the portal, with its own Google OAuth client, keeping one Google login while separating token audiences so each API accepts only its own client. docs/accounts/ANTHUS_ONE_PORTAL.md recommends this separation. This blocks go-live of one.anth.us and links to AnthusAI/Prospectus PR #56.",
   "type": "task",
-  "status": "open",
+  "status": "closed",
   "priority": 1,
   "assignee": null,
   "creator": null,
@@ -13,10 +13,23 @@
     "security"
   ],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "cef9973e-2a4a-4f0f-a4f8-f354c1650244",
+      "author": "home",
+      "text": "2026-10-21: done differently than titled, at Ryan's direction: no Cognito pool or app client. The portal signs in with Google directly (Anthus One Google project, client 712526614578-…), and the new anthus-one API verifies Google ID tokens (PR #69, 82e98b4, with the security-review fixes: per-person account cap, route throttles, JWKS back-off, one.anth.us-only origins). Portal origins were removed from the CRM Cognito client. Ryan signed in at https://one.anth.us successfully.",
+      "created_at": "2026-10-21T13:08:23.168683Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude-code",
+        "model": "claude-opus-5-5",
+        "name": "prospectus-implementation"
+      }
+    }
+  ],
   "created_at": "2026-10-20T22:57:00.250807Z",
-  "updated_at": "2026-10-20T22:57:00.250844Z",
-  "closed_at": null,
+  "updated_at": "2026-10-21T13:08:23.186924Z",
+  "closed_at": "2026-10-21T13:08:23.186884Z",
   "agent": {
     "platform": "claude_code",
     "model": "claude-sonnet-5-5",
