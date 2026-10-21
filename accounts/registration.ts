@@ -1,4 +1,6 @@
+import { isDeepStrictEqual } from "node:util";
 import type { ProductRegistration } from "./auth";
+import { LAB_VERIFIER_PRODUCT, attachLabVerifier, type LabVerifier } from "./lab-verifier";
 import { GOOGLE_CLIENT_ID_PATTERN, GOOGLE_DIRECT_POLICY, GOOGLE_ISSUER } from "./google-direct";
 import {
   CLIENT_ID_PATTERN,
@@ -157,7 +159,10 @@ const delegationRules: ValidationRule<DelegationUnderValidation>[] = [
 /** Invalid/ambiguous deployment registries never become a permissive runtime.
  * Validate once where a runtime is composed; request handlers accept only the result.
  */
-export function registrations(value: unknown): ValidatedRegistrations {
+export function registrations(
+  value: unknown,
+  options: { labVerifier?: LabVerifier } = {},
+): ValidatedRegistrations {
   if (!Array.isArray(value)) throw new Error("Exact product runtime registrations are required.");
   if (value.length === 0) throw new Error("At least one product runtime registration is required.");
   if (value.length > MAXIMUM_REGISTRATIONS)
@@ -212,6 +217,22 @@ export function registrations(value: unknown): ValidatedRegistrations {
       roles.add(key);
     }
     products.add(item.product);
+  }
+  const verifier = options.labVerifier;
+  if (verifier) {
+    // The verifier is one more principal: its role name may not collide with any registration's, and it trusts only
+    // sites that are registered here exactly as reviewed, so no second issuer or client list can drift.
+    const role = rolePattern.exec(verifier.roleArn);
+    if (!role || roles.has(`${role[1]}:${role[2]}`) || products.has(LAB_VERIFIER_PRODUCT))
+      throw new Error("Runtime principals must be unique and cannot delegate transitively.");
+    const sites = verifier.sites.map((site) =>
+      registrationsSnapshot.find((registered: ProductRegistration) => isDeepStrictEqual(registered, site)),
+    );
+    if (sites.some((site: ProductRegistration | undefined) => !site))
+      throw new Error("A lab verifier trusts only registered Papyrus sites.");
+    const validated = registrationsSnapshot as unknown as ValidatedRegistrations;
+    attachLabVerifier(validated, { ...verifier, sites });
+    return validated;
   }
   return registrationsSnapshot as unknown as ValidatedRegistrations;
 }

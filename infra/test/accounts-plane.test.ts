@@ -22,6 +22,7 @@ function template(
   papyrusSites: ProductRegistration[] = [],
   loginChallengeSigner: LoginChallengeSignerConfiguration = parameterStoreSigner,
   anthusOne = false,
+  labVerifier?: { roleArn: string; reviewId: string },
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -41,6 +42,7 @@ function template(
           consoleFederationReviewId: "cyclotron-google-only-unlinked-v1-20261015",
           consolePairReviewId: "cyclotron-execution-pair-v1-20261015",
           papyrusSites,
+          ...(labVerifier ? { labVerifier } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -665,4 +667,127 @@ test("Anthus One adds a Google-direct customer API with no Cognito pool, secret 
 test("Anthus One is off unless activated, leaving the Accounts plane unchanged", () => {
   const without = template(true, true, true);
   assert.ok(!JSON.stringify(without).includes("anthus-one"));
+});
+
+const verifierEntry = {
+  roleArn: "arn:aws:iam::682849160744:role/cyclotron-lab-verifier",
+  reviewId: "cyclotron-lab-verifier-v1-20261021",
+};
+const apiPolicy = (built: any) =>
+  (Object.values(built.Resources) as any[]).find((value) => value.Type === "AWS::ApiGateway::RestApi")
+    .Properties.Policy;
+
+test("the lab verifier role may call exactly identities/me and accounts authorize and nothing else changes", () => {
+  const before = template(true, true, true, syntheticPapyrusSites(2)),
+    after = template(true, true, true, syntheticPapyrusSites(2), parameterStoreSigner, false, verifierEntry);
+  // No IAM role, policy, key, Lambda or any other resource is created or changed; the role lives in the Cyclotron account.
+  for (const [id, resource] of Object.entries(after.Resources) as [string, any][]) {
+    if (!before.Resources[id]) assert.equal(resource.Type, "AWS::ApiGateway::Deployment");
+    else if (resource.Type !== "AWS::ApiGateway::RestApi" && resource.Type !== "AWS::ApiGateway::Stage")
+      assert.deepEqual(resource, before.Resources[id], `Unrelated resource changed: ${id}`);
+  }
+  assert.equal(
+    Object.values(after.Resources).filter((value: any) => value.Type === "AWS::IAM::Role").length,
+    Object.values(before.Resources).filter((value: any) => value.Type === "AWS::IAM::Role").length,
+  );
+  const policy = apiPolicy(after).Statement,
+    previous = apiPolicy(before).Statement;
+  const verifierStatements = policy.filter((statement: any) =>
+    JSON.stringify(statement.Principal).includes("cyclotron-lab-verifier"),
+  );
+  const allow = verifierStatements.filter((statement: any) => statement.Effect === "Allow");
+  assert.equal(allow.length, 1);
+  assert.deepEqual(allow[0].Principal, { AWS: verifierEntry.roleArn });
+  assert.deepEqual(allow[0].Action, "execute-api:Invoke");
+  assert.deepEqual(allow[0].Resource, [
+    "execute-api:/api/GET/v1/identities/me",
+    "execute-api:/api/POST/v1/accounts/*/authorize",
+  ]);
+  // Deny-by-default stays: the same single Deny, with the verifier as one more exempt principal.
+  const denies = policy.filter((statement: any) => statement.Effect === "Deny");
+  assert.equal(denies.length, 1);
+  assert.deepEqual(denies[0].Condition.ArnNotEquals["aws:PrincipalArn"], [
+    ...previous.find((statement: any) => statement.Effect === "Deny").Condition.ArnNotEquals[
+      "aws:PrincipalArn"
+    ],
+    verifierEntry.roleArn,
+  ]);
+  // Every pre-existing statement is untouched.
+  assert.deepEqual(
+    policy.filter(
+      (statement: any) => !verifierStatements.includes(statement) && statement.Effect === "Allow",
+    ),
+    previous.filter((statement: any) => statement.Effect === "Allow"),
+  );
+  const deploymentIds = (built: any) =>
+    Object.entries(built.Resources)
+      .filter(([, value]: any) => value.Type === "AWS::ApiGateway::Deployment")
+      .map(([id]) => id);
+  assert.notDeepEqual(
+    deploymentIds(after),
+    deploymentIds(before),
+    "The resource policy must publish to the stage",
+  );
+});
+
+test("a disabled lab verifier leaves the synthesized template byte for byte unchanged", () => {
+  assert.deepEqual(
+    template(true, true, true, syntheticPapyrusSites(2)),
+    template(true, true, true, syntheticPapyrusSites(2), parameterStoreSigner, false, undefined),
+  );
+});
+
+test("the lab verifier must be distinct from every other runtime role and have a site to verify", () => {
+  assert.throws(() =>
+    template(true, true, true, syntheticPapyrusSites(2), parameterStoreSigner, false, {
+      ...verifierEntry,
+      roleArn: "arn:aws:iam::682849160744:role/cyclotron-console-bff-runtime",
+    }),
+  );
+  assert.throws(() =>
+    template(true, true, true, syntheticPapyrusSites(2), parameterStoreSigner, false, {
+      ...verifierEntry,
+      roleArn: "arn:aws:iam::682849160744:role/synthetic-papyrus-site-0-runtime",
+    }),
+  );
+  assert.throws(() => template(true, true, true, [], parameterStoreSigner, false, verifierEntry));
+});
+
+// Sites registered in the deployed account have long Amplify compute role names (about 95 characters).
+const deployedLengthSites = (count: number) =>
+  papyrusSiteRegistrations(
+    Array.from({ length: count }, (_, index) => ({
+      product: `papyrus-deployed-${index}`,
+      roleArn: `arn:aws:iam::712236451410:role/amplify-app-shell-site-AmplifyComputeRoleD988057-${String(index).padStart(12, "x")}`,
+      issuer: `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Deployed${index}`,
+      clientId: `deployedclient${index}`,
+      federationReviewId: `deployed-google-only-${index}`,
+      siteReviewId: `deployed-site-review-${index}`,
+    })),
+  );
+const deployedPolicySize = (built: any) =>
+  JSON.stringify(apiPolicy(built)).replaceAll(
+    "execute-api:/",
+    "arn:aws:execute-api:us-east-1:712236451410:abcdefghij/",
+  ).length;
+
+test("the lab verifier adds one small statement and twenty deployed-length sites still fit with every registration enabled", () => {
+  const without = template(true, true, true, deployedLengthSites(20), parameterStoreSigner, true),
+    withVerifier = template(
+      true,
+      true,
+      true,
+      deployedLengthSites(20),
+      parameterStoreSigner,
+      true,
+      verifierEntry,
+    );
+  assert.ok(
+    deployedPolicySize(withVerifier) - deployedPolicySize(without) < 400,
+    "The verifier statement must stay small",
+  );
+  assert.ok(
+    deployedPolicySize(withVerifier) < 8192,
+    `Deployed API resource policy would be ${deployedPolicySize(withVerifier)} bytes`,
+  );
 });

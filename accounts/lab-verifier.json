@@ -1,0 +1,5 @@
+{
+  "enabled": false,
+  "roleArn": "arn:aws:iam::682849160744:role/cyclotron-lab-verifier",
+  "reviewId": "cyclotron-lab-verifier-v1-20261021"
+}

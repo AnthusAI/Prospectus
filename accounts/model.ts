@@ -26,6 +26,8 @@ export interface Context {
   principal: string;
   human: Human;
   capabilities: readonly Operation[];
+  /** Set only for the lab verifier: the registered Papyrus site product whose enrollment identifies the person. */
+  enrollmentProduct?: string;
 }
 export class AccountsError extends Error {
   constructor(

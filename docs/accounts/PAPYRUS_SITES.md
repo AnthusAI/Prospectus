@@ -19,11 +19,20 @@ Add one reviewed entry to `accounts/papyrus-sites.json`:
 }
 ```
 
-Unknown fields, missing reviews, non-`papyrus-` product names and roles shared with any other registration are refused at synthesis and at runtime. The central Lambda reads the same bundled file, so the registry does not grow its environment. At most 40 sites fit inside the API Gateway access policy limit; `infra/test/accounts-plane.test.ts` checks the deployed size.
+Unknown fields, missing reviews, non-`papyrus-` product names and roles shared with any other registration are refused at synthesis and at runtime. The central Lambda reads the same bundled file, so the registry does not grow its environment. The registry holds at most 40 sites, but the API Gateway access policy limit (8192 characters) is reached sooner with the real Amplify role names (about 95 characters each): with the other registrations and the lab verifier enabled, twenty deployed-length sites fit and twenty-four do not. `infra/test/accounts-plane.test.ts` checks that size.
 
 ## What a site may call
 
 Identity challenge, resolve and `/v1/identities/me`; account list, detail and authorize; and the account directory, which lists every product on each of the person's own accounts. Sites cannot create accounts or change memberships. Each site's own runtime role also needs `execute-api:Invoke` on these routes in its own account.
+
+## Cyclotron lab verification
+
+Cyclotron Lab accepts a Papyrus editor's token because Prospectus verifies it for the lab. Each Papyrus site's Next server forwards the editor's Cognito access token to the lab BFF (`cyclotron-console-bff`). The lab assumes `arn:aws:iam::682849160744:role/cyclotron-lab-verifier` and calls `GET /v1/identities/me` and then `POST /v1/accounts/{account}/authorize` with that token in `X-Prospectus-Human-Token`. Prospectus accepts the token only when its `iss` and `client_id` equal a site in `accounts/papyrus-sites.json`; adding a site here is all it takes for the lab to accept that site, and removing one stops the lab accepting it, with no list in the lab.
+
+- **Who the person is.** The person the site enrolled (the site must have completed its identity challenge for that login). A person the site never enrolled gets `{"person": null}` and nothing else.
+- **What authorize decides.** Whether the account has the `cyclotron` product active and the person is an active member. The Papyrus site's own entitlement is irrelevant; a Papyrus editor has exactly the Cyclotron capabilities their Prospectus membership role gives: `console:read` for viewers, `console:read` and `console:write` for members, admins and owners. `members:read` and `members:write` are refused for every role.
+- **What the lab gets.** `{allowed, accountId, personId, product: "cyclotron", role, operation, revision}` for an allowed operation, and one identical `403 forbidden` for anything else. The lab must require `accountId` to equal its `X-Cyclotron-Account` pin and re-check immediately before each effect.
+- **What it cannot do.** Everything else: challenge, resolve, account list, detail and creation, memberships, the directory and operator routes. It cannot look up another person or account.
 
 ## Deployment
 

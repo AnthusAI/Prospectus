@@ -10,6 +10,7 @@ import { Construct } from "constructs";
 import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
 import { papyrusSiteRoutes } from "../../accounts/papyrus-sites";
+import { labVerifierRoutes, type LabVerifierEntry } from "../../accounts/lab-verifier";
 export interface AccountsPlaneOptions {
   code: lambda.Code;
   bffCode: lambda.Code;
@@ -20,6 +21,9 @@ export interface AccountsPlaneOptions {
   consoleFederationReviewId?: string;
   consolePairReviewId?: string;
   papyrusSites?: readonly ProductRegistration[];
+  /** The Cyclotron lab verifier: an IAM role in the Cyclotron account (created there, not here) that may call only
+   * identities/me and accounts/{id}/authorize. The central Lambda reads the same reviewed file at runtime. */
+  labVerifier?: LabVerifierEntry;
   /** The Anthus One portal: a google-direct product with its own role, Lambda and API; no Cognito pool or secret. */
   anthusOne?: { googleClientId: string; federationReviewId: string };
   loginChallengeSigner: LoginChallengeSignerConfiguration;
@@ -310,11 +314,38 @@ export class AccountsPlane extends Construct {
       );
       api.latestDeployment?.addToLogicalId({ anthusOne: options.anthusOne!.federationReviewId });
     }
+    const labVerifierRole = options.labVerifier?.roleArn;
+    if (labVerifierRole) {
+      if (!papyrusSiteRoles.length)
+        throw new Error("The lab verifier needs at least one registered Papyrus site.");
+      const roleName = (arn: string) =>
+        arn
+          .split(":")
+          .slice(4)
+          .join(":")
+          .replace(/role\/(?:.*\/)?/, "");
+      if (
+        [consoleBff, consoleWorker, ...papyrusSiteRoles].some(
+          (role) => roleName(role) === roleName(labVerifierRole),
+        )
+      )
+        throw new Error("The lab verifier role must be distinct from every other registered runtime role.");
+      // The role lives in another account, so this is a literal ARN: no resource is created or imported here.
+      api.addToResourcePolicy(
+        new iam.PolicyStatement({
+          principals: [new iam.ArnPrincipal(labVerifierRole)],
+          actions: ["execute-api:Invoke"],
+          resources: labVerifierRoutes.map((route) => `execute-api:/api/${route}`),
+        }),
+      );
+      api.latestDeployment?.addToLogicalId({ labVerifier: options.labVerifier!.reviewId, labVerifierRole });
+    }
     const permittedPrincipals = [
       bffRole.roleArn,
       ...(portalRole ? [portalRole.roleArn] : []),
       ...(options.consolePairEnabled ? [consoleBff, consoleWorker] : []),
       ...papyrusSiteRoles,
+      ...(labVerifierRole ? [labVerifierRole] : []),
     ];
     api.addToResourcePolicy(
       new iam.PolicyStatement({
