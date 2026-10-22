@@ -14,6 +14,7 @@ import { BrandMark, Eyebrow, Wordmark } from "../shared/ui";
 import { PortalShell, PORTAL_PAGES, portalHref, readPortalLocation, type PortalPage } from "./PortalShell";
 import { AppsPage, HomePage, PeoplePage, SettingsPage, UnavailablePage } from "./pages";
 import { usePortalTheme } from "./theme";
+import { WorkspaceUnavailableNote } from "./RequestAccess";
 
 /** The Anthus One Google OAuth client (a public identifier). Without it this copy of the portal cannot sign in. */
 const googleClientId: string = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
@@ -216,10 +217,9 @@ export function PortalApp() {
           A workspace holds your apps, your people and one shared quota. Ask the owner of an existing Anthus
           workspace to add you, then sign in again.
         </p>
-        <div className="one-unavailable" role="note">
-          <strong>Creating a workspace here is not yet available.</strong>
-          <span>Until it is, Anthus sets up new workspaces for you.</span>
-        </div>
+        <WorkspaceUnavailableNote heading="Creating a workspace here is not yet available.">
+          Until it is, Anthus sets up new workspaces for you. Ask us and we will set one up.
+        </WorkspaceUnavailableNote>
         <button type="button" className="one-button tall" onClick={signOut}>
           Sign out
         </button>
@@ -364,12 +364,9 @@ function SignInPage({
             ) : (
               <p role="status">Sign-in has not been configured for this copy of the portal.</p>
             )}
-            <div className="one-unavailable" role="note">
-              <strong>New to Anthus?</strong>
-              <span>
-                Creating a workspace here is not yet available. Anthus sets up new workspaces for you.
-              </span>
-            </div>
+            <WorkspaceUnavailableNote heading="New to Anthus?">
+              Creating a workspace here is not yet available. Anthus sets up new workspaces for you.
+            </WorkspaceUnavailableNote>
           </div>
         </main>
       </div>
