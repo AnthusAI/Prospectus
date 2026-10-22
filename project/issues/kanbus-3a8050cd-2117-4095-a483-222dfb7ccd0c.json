@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-3a8050cd-2117-4095-a483-222dfb7ccd0c",
+  "title": "Mailing lists: newsletter signup with double opt-in for Papyrus (p.apyr.us) and other sites",
+  "description": "As Ryan, I want Prospectus to manage mailing lists for Anthus sites, starting with the Papyrus newsletter on https://p.apyr.us, so sites stop needing their own list tools.\n\nContext: p.apyr.us already ships a disabled footer Subscribe form (email plus an unticked 'Email me Papyrus news. Unsubscribe any time.' box), labelled COMING SOON. Papyrus-web task papw-c13281 is blocked on this. Prospectus today sends no email, and the contact notices promise details are 'never added to a mailing list', so lists need their own notice versions and consent records.\n\nScope:\n- A list registry entry, e.g. in intake-forms.json as kind 'newsletter', bound to its origin with per-form throttle, honeypot, spam scoring and always-accept capture.\n- Its own notice version for Ryan's approval.\n- Double opt-in: a confirmation email with a signed, expiring token; a subscription is active only after the confirm click.\n- One-click unsubscribe (RFC 8058 List-Unsubscribe headers plus a link) and a suppression list honoured forever.\n- Consent records: when, which notice version, IP-free.\n- A way to send campaigns, or at least to export confirmed subscribers.\n- CRM visibility of each person's subscriptions.\n- An email-sending service: Amazon SES is the cheapest option. It needs a verified sending domain (SPF, DKIM, DMARC on anth.us or apyr.us DNS, all as IaC), production access out of the sandbox, and bounce and complaint handling. Ryan must approve cost and new resources; secrets go in SSM SecureString, not Secrets Manager.\n- Privacy page and notice updates on each site.\n\nAcceptance:\n- A labelled signup from p.apyr.us receives a confirmation email.\n- Confirming makes the subscription active.\n- Unsubscribe works with one click.\n- No email is sent to an unconfirmed address.\n\nBlocks Papyrus-web papw-c13281.",
+  "type": "story",
+  "status": "open",
+  "priority": 3,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-22T01:51:20.181457Z",
+  "updated_at": "2026-10-22T01:51:20.181513Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude-opus-5-5",
+    "name": "prospectus-implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
