@@ -125,6 +125,19 @@ The default `alias/aws/ssm` key encrypts it. Until the parameter exists, challen
 
 Rotation: create `/prospectus/central-accounts/login-challenge-mac/v2` with the same command, set `currentKeyId` to `v2` and `previousKeyId` to `v1` in `accounts/deployment.json`, review and merge, and after at least 5 minutes remove `previousKeyId`. Delete the old parameter afterwards with `aws ssm delete-parameter`. Never paste the value into a ticket, chat or commit.
 
+### Site subject secret
+
+Public-reader Papyrus sites receive pairwise site subjects derived with an HMAC secret held in the SSM SecureString `/prospectus/central-accounts/site-subject/v1` (`siteSubjectSecret` in `accounts/deployment.json`). Nothing is configured by hand: the normal deployment creates it once with the create-only custom resource `Custom::ProspectusSiteSubjectSecret`, whose Lambda (`prospectus-site-subject-secret-init`) generates 48 random bytes and stores them with `Overwrite: false`. If the parameter already exists it is left as it is. Updates and stack deletion never change or remove it.
+
+Until the parameter exists, or whenever it cannot be read, public-reader sites get `503` on every identity call; editor sites, the CRM and Anthus One are unaffected. Failed reads are not cached, so readers recover as soon as the parameter is readable. Check that it exists without printing it:
+
+```bash
+aws ssm describe-parameters --profile papyrus-production --region us-east-1 \
+  --parameter-filters Key=Name,Values=/prospectus/central-accounts/site-subject/v1
+```
+
+Never rotate, overwrite or remove this parameter. Every reader site keys its readers on the subjects it produces; a new value would turn every reader into a stranger and orphan their data. If it must ever change (for example after a suspected disclosure), that is a planned migration to a `v2` secret with `ss2_` subjects, run together with each reader site, not a rotation. Never paste the value into a ticket, chat or commit. If the parameter is lost, only the same value restores the subjects; a regenerated value is a new secret.
+
 ## Verification
 
 Run from the repository root after building the pinned Kanbus UI (see [README.md](../README.md#development)):

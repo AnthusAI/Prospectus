@@ -4,6 +4,7 @@ import { papyrusSiteRegistrations } from "./papyrus-sites";
 import { reviewedLabVerifierEntry } from "./lab-verifier";
 import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { loginChallengeSignerConfiguration } from "./challenge-signer";
+import { siteSubjectSecretConfiguration } from "./site-subjects";
 import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
 import { PORTAL_GOOGLE_CLIENT_ID } from "../infra/lib/scope";
 
@@ -37,6 +38,11 @@ export function accountsDeployment() {
   membershipLookupMode(config.membershipLookup);
   accountCreationLimits(config.accountCreationLimits);
   const loginChallengeSigner = loginChallengeSignerConfiguration(config.loginChallengeSigner);
+  // Public-reader sites need it; without it they fail closed (503) and editor sites are unaffected.
+  const siteSubjectSecret =
+    config.siteSubjectSecret === undefined
+      ? undefined
+      : siteSubjectSecretConfiguration(config.siteSubjectSecret);
   const consoleConfig = JSON.parse(
     readFileSync(new URL("./console-deployment.json", import.meta.url), "utf8"),
   );
@@ -56,6 +62,7 @@ export function accountsDeployment() {
     anthusOne: anthusOneDeployment(),
     googlePolicyReviewId: config.googlePolicyReviewId as string,
     loginChallengeSigner,
+    ...(siteSubjectSecret ? { siteSubjectSecret } : {}),
     labVerifier: reviewedLabVerifierEntry(
       JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
     ),

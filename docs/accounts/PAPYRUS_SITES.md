@@ -23,11 +23,52 @@ Unknown fields, missing reviews, non-`papyrus-` product names and roles shared w
 
 ### Public-reader sites
 
-A site whose readers are the general public (no account membership) adds `"audience": "public-reader"` to its entry. The only other value is absence. A public reader signs in with Google through the site's Google-only client and gets a Prospectus person identity that the site uses for a public handle, votes, ratings, comments and karma; Prospectus never gives the site a name or email to publish. The registration has no capabilities and no account directory, so the site can run the identity challenge, resolve and `/v1/identities/me` and nothing about accounts: the account list is empty, account detail, authorize and directory calls are refused, and the lab verifier does not trust its tokens. Shipped (`papyrus-shipped`) is the first, registered 2026-10-21 on Ryan's decision ("yes, Prospectus for public readers; you do the registration"), who also approved its reviews (`papyrus-shipped-google-only-unlinked-v1-2026-10-21`, `papyrus-shipped-site-v1-2026-10-21`).
+A site whose readers are the general public (no account membership) adds `"audience": "public-reader"` to its entry. The only other value is absence. A public reader signs in with Google through the site's Google-only client and gets a pairwise site subject (never the Person ID; see below) that the site uses for a public handle, votes, ratings, comments and karma; Prospectus never gives the site a name or email to publish. The registration has no capabilities and no account directory, so the site can run the identity challenge, resolve and `/v1/identities/me` and nothing about accounts: the account list is empty, account detail, authorize and directory calls are refused, and the lab verifier does not trust its tokens. Shipped (`papyrus-shipped`) is the first, registered 2026-10-21 on Ryan's decision ("yes, Prospectus for public readers; you do the registration"), who also approved its reviews (`papyrus-shipped-google-only-unlinked-v1-2026-10-21`, `papyrus-shipped-site-v1-2026-10-21`).
+
+### What a reader site receives
+
+A reader site never receives the Prospectus Person ID. It receives `siteSubject`, a stable identifier for that person on that site only: `ss1_` followed by 43 base64url characters (`^ss1_[A-Za-z0-9_-]{43}$`). The same person gets an unrelated subject on every other site. Use it as the reader's key; do not try to decode it. See [SECURITY.md](../SECURITY.md#public-reader-site-subjects) for the derivation and the secret.
+
+| Call | Editor sites (unchanged) | Reader sites |
+| --- | --- | --- |
+| `POST /v1/identities/google/resolve` | `{"person": {"id", "createdAt"}}` | `{"person": {"siteSubject"}}` |
+| `GET /v1/identities/me` | `{"person": {"id", "createdAt"} or null}` | `{"person": {"siteSubject"} or null}` |
+| `GET /v1/accounts` | `{"person": {"id", "createdAt"} or null, "accounts": [...]}` | `{"person": {"siteSubject"} or null, "accounts": []}` |
+| `POST /v1/identities/google/challenge` | unchanged | unchanged (no person) |
+| `GET /v1/accounts/site-subjects/retired` | `403 reader_route_forbidden` | see below |
+
+`siteSubject` is the only person field. `createdAt` is withheld because it is the same on every site and would link the subjects, and Prospectus has no display name or email to give. Errors carry only `error` and `message`. If the central secret is unavailable every reader call returns `503 identity_unavailable`; retry later, and never fall back to anything else.
+
+Before this change (PR #79) a reader site received the editor shape, `{"person": {"id", "createdAt"}}`. Anything a reader site stored under a Person ID must be re-keyed: sign the reader in again and store the new `siteSubject`.
+
+#### Retired subjects
+
+When Prospectus deletes or merges a Person, each reader site the person used gets a retirement record. Poll:
+
+```
+GET /v1/accounts/site-subjects/retired?since=<cursor>
+```
+
+`since` is optional (omit it the first time). The response lists only the calling site's own records, oldest first, at most 100:
+
+```json
+{
+  "retired": [
+    { "siteSubject": "ss1_...", "reason": "deleted", "retiredAt": "2026-10-21T14:00:00Z" },
+    { "siteSubject": "ss1_...", "reason": "merged", "survivingSiteSubject": "ss1_...", "retiredAt": "2026-10-21T14:00:00Z" }
+  ],
+  "cursor": "<opaque>",
+  "more": false
+}
+```
+
+Store `cursor` and send it as `since` next time; while `more` is true, call again at once. On `deleted`, drop the data held for that subject. On `merged`, move it to `survivingSiteSubject`, the surviving person's subject on your site (whether or not they have signed in there yet). The same subject may appear twice, so apply each record as "ensure dropped" or "ensure remapped". `retiredAt` is the start of the hour the retirement was recorded, and an hour is listed only once it has ended, so a record can take a little over an hour to appear. Only `since` is accepted; any other query parameter or a malformed cursor returns `400`.
+
+The site's existing `execute-api:Invoke` grant on `GET/v1/accounts/*` already covers this route. Prospectus does not delete or merge Persons yet, so the list stays empty until it does.
 
 ## What a site may call
 
-Identity challenge, resolve and `/v1/identities/me`; account list, detail and authorize; and the account directory, which lists every product on each of the person's own accounts. Sites cannot create accounts or change memberships. Each site's own runtime role also needs `execute-api:Invoke` on these routes in its own account.
+Identity challenge, resolve and `/v1/identities/me`; account list, detail and authorize; and the account directory, which lists every product on each of the person's own accounts. Reader sites also call `GET /v1/accounts/site-subjects/retired`. It falls under the existing `GET/v1/accounts/*` entry, so neither the API access policy nor the site's own `execute-api:Invoke` grant changes, and the central handler refuses it to everyone but reader sites. Sites cannot create accounts or change memberships. Each site's own runtime role also needs `execute-api:Invoke` on these routes in its own account.
 
 ## Cyclotron lab verification
 

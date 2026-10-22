@@ -57,6 +57,7 @@ Canonical identity files are under `<scope>/identities/`:
 - `people/<UUID>.json`: Person lookup, always verified against the Google file and a completed enrollment.
 - `logins/<challengeUUID>.json`: login state (pending for challenges issued before the signed-token rollout, then prepared, committed, conflicted) with a digest of the evidence. A signed challenge creates its file only when first resolved. No raw tokens or email are stored.
 - `sessions/<GoogleKey>/<AliasKey>/<challengeUUID>.json`: a pointer to a committed login receipt; a pointer alone never authorizes.
+- `retired-subjects/<hex product>/<YYYYMMDDHH>-<hex subject>.json`: a public-reader site subject retired by a Person deletion or merge (reason, the surviving subject for a merge, the hour). No Person ID is stored. See [PAPYRUS_SITES.md](accounts/PAPYRUS_SITES.md#what-a-reader-site-receives).
 
 Enrollment is a recoverable multi-file protocol, not an atomic S3 transaction: issue challenge, freeze evidence, create the Google file, create the alias, ensure the Person pointer, publish the session pointer, then commit the login. Only the commit makes the Person usable. Every phase has a stable operation ID so a replay after a crash or lost response converges on the original result. A claim interrupted before canonical publication stays denied until an operator reconciles it; there is no automatic or public reset.
 

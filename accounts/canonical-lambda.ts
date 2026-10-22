@@ -15,6 +15,7 @@ import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
 import { GOOGLE_ISSUER, GoogleKeys } from "./google-direct";
 import { challengeSignerFromConfiguration, loginChallengeSignerConfiguration } from "./challenge-signer";
+import { ParameterStoreSiteSubjectSecret, siteSubjectSecretConfiguration } from "./site-subjects";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
   throw new Error("Canonical accounts runtime not enabled.");
 const bucket = process.env.PROSPECTUS_ACCOUNTS_BUCKET ?? "",
@@ -49,6 +50,12 @@ const challengeSigner = process.env.PROSPECTUS_LOGIN_CHALLENGE_SIGNER
   ? challengeSignerFromConfiguration(
       loginChallengeSignerConfiguration(JSON.parse(process.env.PROSPECTUS_LOGIN_CHALLENGE_SIGNER)),
       process.env.PROSPECTUS_CHALLENGE_MAC_KEY_ARN,
+    )
+  : undefined;
+// Without the reviewed configuration, public-reader sites get 503 and never a Person ID.
+const siteSubjectSecret = process.env.PROSPECTUS_SITE_SUBJECT_SECRET
+  ? new ParameterStoreSiteSubjectSecret(
+      siteSubjectSecretConfiguration(JSON.parse(process.env.PROSPECTUS_SITE_SUBJECT_SECRET)),
     )
   : undefined;
 let activeRequestId = "unavailable";
@@ -97,6 +104,7 @@ export const handler = async (
       membershipLookup,
       challengeSigner,
       creationLimits,
+      siteSubjectSecret,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

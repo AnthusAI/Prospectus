@@ -11,6 +11,8 @@ import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
 import { papyrusSiteRoutes } from "../../accounts/papyrus-sites";
 import { labVerifierRoutes, type LabVerifierEntry } from "../../accounts/lab-verifier";
+import type { SiteSubjectSecretConfiguration } from "../../accounts/site-subjects";
+import { SITE_SUBJECT_SECRET_INITIALIZER_SOURCE } from "./site-subject-secret";
 export interface AccountsPlaneOptions {
   code: lambda.Code;
   bffCode: lambda.Code;
@@ -27,6 +29,9 @@ export interface AccountsPlaneOptions {
   /** The Anthus One portal: a google-direct product with its own role, Lambda and API; no Cognito pool or secret. */
   anthusOne?: { googleClientId: string; federationReviewId: string };
   loginChallengeSigner: LoginChallengeSignerConfiguration;
+  /** The v1 HMAC secret behind public-reader site subjects: an SSM SecureString created once by a create-only custom
+   * resource and read by the central runtime. Absent: reader sites get 503 and no site subjects exist. */
+  siteSubjectSecret?: SiteSubjectSecretConfiguration;
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
@@ -186,6 +191,65 @@ export class AccountsPlane extends Construct {
       );
       challengeSignerEnvironment = { PROSPECTUS_LOGIN_CHALLENGE_SIGNER: JSON.stringify(signer) };
     }
+    const siteSubject = options.siteSubjectSecret;
+    let siteSubjectSecretResource: cdk.CustomResource | undefined;
+    if (siteSubject) {
+      if (
+        !/^\/[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*\/v1$/.test(siteSubject.parameterName) ||
+        siteSubject.version !== "v1"
+      )
+        throw new Error("The site subject secret must be a reviewed v1 parameter.");
+      const parameterArn = `arn:${stack.partition}:ssm:${stack.region}:${stack.account}:parameter${siteSubject.parameterName}`;
+      runtime.addToPolicy(
+        new iam.PolicyStatement({ actions: ["ssm:GetParameter"], resources: [parameterArn] }),
+      );
+      // Create-only: the initializer may put this one parameter and never overwrite it.
+      const initializerRole = new iam.Role(this, "SiteSubjectSecretInitializerRuntime", {
+        roleName: "prospectus-site-subject-secret-init",
+        assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      });
+      initializerRole.addToPolicy(
+        new iam.PolicyStatement({ actions: ["ssm:PutParameter"], resources: [parameterArn] }),
+      );
+      initializerRole.addToPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.DENY,
+          actions: ["ssm:PutParameter"],
+          resources: [parameterArn],
+          conditions: { StringEquals: { "ssm:Overwrite": "true" } },
+        }),
+      );
+      const initializerLogs = new logs.LogGroup(this, "SiteSubjectSecretInitializerLogs", {
+        logGroupName: "/aws/lambda/prospectus-site-subject-secret-init",
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+      });
+      initializerRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
+          resources: [initializerLogs.logGroupArn],
+        }),
+      );
+      const initializer = new lambda.Function(this, "SiteSubjectSecretInitializer", {
+        functionName: "prospectus-site-subject-secret-init",
+        description:
+          "Create-only: generates the site subject secret once; never overwrites, logs or returns it.",
+        runtime: lambda.Runtime.NODEJS_24_X,
+        architecture: lambda.Architecture.X86_64,
+        handler: "index.handler",
+        code: lambda.Code.fromInline(SITE_SUBJECT_SECRET_INITIALIZER_SOURCE),
+        role: initializerRole,
+        logGroup: initializerLogs,
+        memorySize: 128,
+        timeout: cdk.Duration.seconds(60),
+      });
+      siteSubjectSecretResource = new cdk.CustomResource(this, "SiteSubjectSecret", {
+        serviceToken: initializer.functionArn,
+        resourceType: "Custom::ProspectusSiteSubjectSecret",
+        properties: { ParameterName: siteSubject.parameterName },
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+      });
+    }
     const centralLogs = new logs.LogGroup(this, "Logs", {
       logGroupName: "/aws/lambda/prospectus-central-accounts",
       retention: logs.RetentionDays.ONE_MONTH,
@@ -221,9 +285,12 @@ export class AccountsPlane extends Construct {
         PROSPECTUS_ACCOUNTS_BUCKET: bucket.bucketName,
         PROSPECTUS_ACCOUNTS_OWNER: stack.account,
         ...challengeSignerEnvironment,
+        ...(siteSubject ? { PROSPECTUS_SITE_SUBJECT_SECRET: JSON.stringify(siteSubject) } : {}),
         PROSPECTUS_PRODUCTS: cdk.Stack.of(this).toJsonString(products),
       },
     });
+    // The secret exists before the runtime that reads it is updated.
+    if (siteSubjectSecretResource) central.node.addDependency(siteSubjectSecretResource);
     const api = new gateway.RestApi(this, "Api", {
       restApiName: "prospectus-accounts",
       cloudWatchRole: false,

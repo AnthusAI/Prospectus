@@ -8,5 +8,9 @@
     "kind": "parameter-store",
     "parameterPrefix": "/prospectus/central-accounts/login-challenge-mac/",
     "currentKeyId": "v1"
+  },
+  "siteSubjectSecret": {
+    "version": "v1",
+    "parameterName": "/prospectus/central-accounts/site-subject/v1"
   }
 }

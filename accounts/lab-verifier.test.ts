@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID, sign, type JsonWebKey } from "node:crypto";
 import { canonicalAccountsHandler } from "./canonical-handler";
+import { FakeSiteSubjectSecret } from "./testing/fake-site-subject-secret";
+import { siteSubject } from "./site-subjects";
+
+const siteSubjectSecret = new FakeSiteSubjectSecret();
 import { VirtuusIdentityFiles, VirtuusAccountFiles, type IdentityFiles } from "./identity-files";
 import { DurableGoogleIdentities } from "./durable-google-identities";
 import { DurableAccountsService } from "./durable-accounts";
@@ -158,7 +162,19 @@ async function fixture() {
     registered = products,
     identityFiles: IdentityFiles = identities,
     accountFiles: IdentityFiles = accounts,
-  ) => canonicalAccountsHandler(identityFiles, accountFiles, registered, keys, () => NOW);
+  ) =>
+    canonicalAccountsHandler(
+      identityFiles,
+      accountFiles,
+      registered,
+      keys,
+      () => NOW,
+      [],
+      "scan",
+      undefined,
+      {},
+      siteSubjectSecret,
+    );
   const run = async (request: RestEvent, target = make()) => {
     const result = await target(request);
     return { status: result.statusCode, body: JSON.parse(result.body) };
@@ -562,14 +578,18 @@ test("a public-reader site is a real caller that signs in and sees nothing: no a
     target,
   );
   assert.equal(resolved.status, 200);
-  assert.equal(resolved.body.person.id, env.people.alice.site.person.id);
+  // A reader site gets its own pairwise subject for the Person, never the Person ID.
+  const readerPerson = {
+    siteSubject: await siteSubject(siteSubjectSecret, reader.product, env.people.alice.site.person.id),
+  };
+  assert.deepEqual(resolved.body.person, readerPerson);
   const asReader = (path: string, method = "GET", body: unknown = {}) =>
     env.run(event(reader.roleArn, path, method, body, tokens), target);
   const before = await env.accounts.get(`accounts/${env.labAccount}.json`);
 
   const me = await asReader("/v1/identities/me");
   assert.equal(me.status, 200);
-  assert.equal(me.body.person.id, env.people.alice.site.person.id);
+  assert.deepEqual(me.body.person, readerPerson);
 
   const list = await asReader("/v1/accounts");
   assert.equal(list.status, 200);
