@@ -122,7 +122,8 @@ const openWaitlist = async (form: IntakeFormConfig, request: IntakeOptions["requ
 };
 
 test("the registry file ships the Babulus waitlist enabled with a recorded approval, its own notice and only the babulus.anth.us origin", async () => {
-  const forms = parseIntakeFormRegistry(JSON.parse(await readFile("intake-forms.json", "utf8")));
+  const all = parseIntakeFormRegistry(JSON.parse(await readFile("intake-forms.json", "utf8")));
+  const forms = all.filter((form) => form.siteId === "babulus");
   assert.equal(forms.length, 1);
   assert.equal(forms[0].siteId, "babulus");
   assert.equal(forms[0].formId, "babulus-waitlist-v1");
@@ -131,7 +132,7 @@ test("the registry file ships the Babulus waitlist enabled with a recorded appro
   assert.equal(forms[0].enabled, true);
   assert.match(forms[0].approval ?? "", /Ryan approved 2026-10-20/);
   assert.equal(forms[0].owner, "intake-queue");
-  assert.deepEqual(enabledIntakeForms(forms), forms);
+  assert.ok(enabledIntakeForms(all).includes(forms[0]));
   assert.deepEqual(forms[0].origins, ["https://babulus.anth.us"]);
   assert.equal(waitlistRoutePath(forms[0]), "/intake/waitlist/babulus-waitlist-v1");
 });

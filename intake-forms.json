@@ -11,10 +11,55 @@
       "owner": "intake-queue",
       "defaultPagePath": "/waitlist",
       "attributes": {
-        "persona": { "values": ["business", "agency", "marketer", "creator", "developer", "other"] },
-        "source": { "pattern": "^[a-z0-9][a-z0-9-]{0,39}$" }
+        "persona": {
+          "values": ["business", "agency", "marketer", "creator", "developer", "other"]
+        },
+        "source": {
+          "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+        }
       },
-      "throttle": { "rate": 1, "burst": 2 }
+      "throttle": {
+        "rate": 1,
+        "burst": 2
+      }
+    },
+    {
+      "enabled": true,
+      "approval": "Ryan approved 2026-10-21: owner intake-queue; notice papyrus-waitlist-v1 = 'We use your email to tell you about early access to Papyrus and to protect this form from spam. If you tick the box, we'll also send occasional product updates. We never sell your details, and we keep your signup until you ask us to delete it.' linking to https://p.apyr.us/privacy/; marketing opt-in unticked by default; retention until deletion requested; abuse controls rate 1 burst 2, origin p.apyr.us only, honeypot, strict attributes, spam scoring; acceptance by labelled test after deploy.",
+      "siteId": "papyrus",
+      "formId": "papyrus-waitlist-v1",
+      "kind": "waitlist",
+      "origins": ["https://p.apyr.us"],
+      "noticeVersion": "papyrus-waitlist-v1",
+      "owner": "intake-queue",
+      "defaultPagePath": "/early-access",
+      "attributes": {
+        "persona": {
+          "values": ["personal-feed", "personal-blog"]
+        },
+        "source": {
+          "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+        }
+      },
+      "throttle": {
+        "rate": 1,
+        "burst": 2
+      }
+    },
+    {
+      "enabled": true,
+      "approval": "Ryan approved 2026-10-21: owner intake-queue; notice papyrus-contact-v1 = 'Your details are used only to reply to you, to keep a record of our conversation and to protect this form from spam. They are never sold or added to a mailing list, and they are kept until you ask us to delete them.' linking to https://p.apyr.us/privacy/; retention until deletion requested; abuse controls rate 1 burst 2, origin p.apyr.us only, honeypot, spam scoring; acceptance by labelled test after deploy.",
+      "siteId": "papyrus",
+      "formId": "papyrus-contact-v1",
+      "kind": "contact",
+      "origins": ["https://p.apyr.us"],
+      "noticeVersion": "papyrus-contact-v1",
+      "owner": "intake-queue",
+      "defaultPagePath": "/contact",
+      "throttle": {
+        "rate": 1,
+        "burst": 2
+      }
     }
   ]
 }

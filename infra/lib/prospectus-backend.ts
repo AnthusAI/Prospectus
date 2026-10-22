@@ -374,6 +374,7 @@ export class ProspectusBackend extends Construct {
       );
       outputs.EvaluationIntakeUrl = intake.url;
       if (intake.waitlistBaseUrl) outputs.IntakeWaitlistBaseUrl = intake.waitlistBaseUrl;
+      if (intake.contactBaseUrl) outputs.IntakeContactBaseUrl = intake.contactBaseUrl;
     }
     if (accountsPlane) {
       outputs.AccountsBffUrl = `${api.apiEndpoint}/api/saas`;

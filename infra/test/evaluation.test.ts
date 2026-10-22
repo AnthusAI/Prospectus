@@ -265,31 +265,167 @@ test("each enabled form gets its own throttle so one app cannot spend another's 
   });
 });
 
-test("the shipped registry file enables only the Babulus waitlist for https://babulus.anth.us", async () => {
+test("the shipped registry file enables Babulus and both Papyrus forms, each on its own route and origin", async () => {
   const { readFileSync } = await import("node:fs");
   const shipped = parseIntakeFormRegistry(JSON.parse(readFileSync("../intake-forms.json", "utf8")));
   const { template, intake } = synthesize(shipped, "real-contacts");
-  assert.deepEqual(routeKeys(template), ["POST /intake/demo", "POST /intake/waitlist/babulus-waitlist-v1"]);
+  assert.deepEqual(routeKeys(template), [
+    "POST /intake/contact/papyrus-contact-v1",
+    "POST /intake/demo",
+    "POST /intake/waitlist/babulus-waitlist-v1",
+    "POST /intake/waitlist/papyrus-waitlist-v1",
+  ]);
   assert.deepEqual(corsOrigins(template), [
     "https://prospectus.anth.us",
     "https://anth.us",
     "https://www.anth.us",
     "https://babulus.anth.us",
+    "https://p.apyr.us",
   ]);
   assert.equal(
     lambdaEnvironment(template).PROSPECTUS_INTAKE_ALLOWED_ORIGINS,
     "https://prospectus.anth.us,https://anth.us,https://www.anth.us",
-    "babulus.anth.us is not a demo origin",
+    "neither babulus.anth.us nor p.apyr.us is a demo origin",
   );
   const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
   assert.deepEqual(stage.Properties.RouteSettings, {
     "POST /intake/waitlist/babulus-waitlist-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    "POST /intake/waitlist/papyrus-waitlist-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    "POST /intake/contact/papyrus-contact-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
   });
   assert.deepEqual(policyActions(template), policyActions(synthesize([], "real-contacts").template));
   assert.deepEqual(unscopableRoutesWithScopes(template.toJSON()), []);
   for (const route of Object.values(template.findResources("AWS::ApiGatewayV2::Route")) as any[])
     assert.equal(route.Properties.AuthorizationScopes, undefined);
   assert.match(intake.waitlistBaseUrl!, /\/intake\/waitlist$/);
+  assert.match(intake.contactBaseUrl!, /\/intake\/contact$/);
+});
+
+const papyrusWaitlist = parseIntakeForm({
+  enabled: true,
+  approval: "Ryan approved the Papyrus waitlist for this synthesis test only",
+  siteId: "papyrus",
+  formId: "papyrus-waitlist-v1",
+  kind: "waitlist",
+  origins: ["https://p.apyr.us"],
+  noticeVersion: "papyrus-waitlist-v1",
+  owner: "intake-queue",
+  defaultPagePath: "/early-access",
+  attributes: { persona: { values: ["personal-feed", "personal-blog"] } },
+  throttle: { rate: 1, burst: 2 },
+});
+const papyrusContact = parseIntakeForm({
+  enabled: true,
+  approval: "Ryan approved the Papyrus contact form for this synthesis test only",
+  siteId: "papyrus",
+  formId: "papyrus-contact-v1",
+  kind: "contact",
+  origins: ["https://p.apyr.us"],
+  noticeVersion: "papyrus-contact-v1",
+  owner: "intake-queue",
+  defaultPagePath: "/contact",
+  throttle: { rate: 1, burst: 2 },
+});
+
+test("both Papyrus forms disabled leave the synthesized template identical to no forms", () => {
+  const baseline = synthesize([], "real-contacts");
+  const disabled = synthesize(
+    [
+      { ...papyrusWaitlist, enabled: false },
+      { ...papyrusContact, enabled: false },
+    ],
+    "real-contacts",
+  );
+  assert.deepEqual(disabled.template.toJSON(), baseline.template.toJSON());
+  assert.equal(disabled.intake.waitlistBaseUrl, undefined);
+  assert.equal(disabled.intake.contactBaseUrl, undefined);
+});
+
+test("an enabled contact form adds exactly a route, an integration, a permission, a throttle and a CORS origin", () => {
+  const baseline = synthesize([], "real-contacts");
+  const { template, intake } = synthesize([papyrusWaitlist, papyrusContact], "real-contacts");
+  assert.deepEqual(routeKeys(template), [
+    "POST /intake/contact/papyrus-contact-v1",
+    "POST /intake/demo",
+    "POST /intake/waitlist/papyrus-waitlist-v1",
+  ]);
+  assert.deepEqual(corsOrigins(template), [
+    "https://prospectus.anth.us",
+    "https://anth.us",
+    "https://www.anth.us",
+    "https://p.apyr.us",
+  ]);
+  const count = (t: Template, type: string) => Object.keys(t.findResources(type)).length;
+  assert.equal(
+    count(template, "AWS::ApiGatewayV2::Route"),
+    count(baseline.template, "AWS::ApiGatewayV2::Route") + 2,
+  );
+  assert.equal(
+    count(template, "AWS::ApiGatewayV2::Integration"),
+    count(baseline.template, "AWS::ApiGatewayV2::Integration") + 2,
+  );
+  assert.equal(
+    count(template, "AWS::Lambda::Permission"),
+    count(baseline.template, "AWS::Lambda::Permission") + 2,
+  );
+  template.resourceCountIs("AWS::Lambda::Function", 1);
+  template.resourceCountIs("AWS::IAM::Role", 1);
+  assert.deepEqual(policyActions(template), policyActions(baseline.template));
+  assert.ok(!JSON.stringify(template.toJSON()).includes("s3:ListBucket"));
+  assert.deepEqual(
+    JSON.parse(lambdaEnvironment(template).PROSPECTUS_INTAKE_FORMS).map((form: any) => form.formId),
+    ["papyrus-waitlist-v1", "papyrus-contact-v1"],
+  );
+  assert.equal(
+    lambdaEnvironment(template).PROSPECTUS_INTAKE_ALLOWED_ORIGINS,
+    "https://prospectus.anth.us,https://anth.us,https://www.anth.us",
+    "the demo route keeps its own origin list",
+  );
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  assert.deepEqual(stage.Properties.RouteSettings, {
+    "POST /intake/waitlist/papyrus-waitlist-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    "POST /intake/contact/papyrus-contact-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+  });
+  const routes = template.findResources("AWS::ApiGatewayV2::Route");
+  const dependsOn: string[] = stage.DependsOn ?? [];
+  for (const key of Object.keys(stage.Properties.RouteSettings)) {
+    const ids = Object.entries(routes)
+      .filter(([, route]: [string, any]) => route.Properties.RouteKey === key)
+      .map(([logicalId]) => logicalId);
+    assert.equal(ids.length, 1);
+    assert.ok(dependsOn.includes(ids[0]), `${key} route must be in the stage's DependsOn`);
+  }
+  assert.deepEqual(unscopableRoutesWithScopes(template.toJSON()), []);
+  for (const route of Object.values(routes) as any[])
+    assert.equal(route.Properties.AuthorizationScopes, undefined);
+  assert.match(intake.contactBaseUrl!, /\/intake\/contact$/);
+});
+
+test("a contact form's own throttle is applied to its route alone", () => {
+  const { template } = synthesize(
+    [papyrusContact, { ...papyrusWaitlist, throttle: { rate: 3, burst: 6 } }],
+    "real-contacts",
+  );
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  assert.deepEqual(stage.Properties.RouteSettings, {
+    "POST /intake/contact/papyrus-contact-v1": { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
+    "POST /intake/waitlist/papyrus-waitlist-v1": { ThrottlingBurstLimit: 6, ThrottlingRateLimit: 3 },
+  });
+});
+
+test("the synthesized intake refuses a contact form on the anth.us demo origins or another site's origin", () => {
+  assert.throws(
+    () => synthesize([{ ...papyrusContact, origins: ["https://www.anth.us"] }], "real-contacts"),
+    /demo origin/,
+  );
+  assert.throws(
+    () =>
+      synthesize(
+        [papyrusWaitlist, { ...papyrusContact, siteId: "other", formId: "other-contact-v1" }],
+        "real-contacts",
+      ),
+    /more than one form/,
+  );
 });
 
 test("a disabled registry form leaves routes, environment, stage settings and CORS exactly as before", () => {

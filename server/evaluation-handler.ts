@@ -1,5 +1,5 @@
 import { IntakeError, type IntakeService } from "./intake";
-import { DEMO_ROUTE_PATH, waitlistRoutePath, type IntakeFormConfig } from "./intake-forms";
+import { DEMO_ROUTE_PATH, formRoutePath, type IntakeFormConfig } from "./intake-forms";
 
 export interface EvaluationEvent {
   requestContext?: { http?: { method?: string } };
@@ -48,7 +48,7 @@ export function createEvaluationHandler(options: {
       body: JSON.stringify(body),
     });
     if (event.requestContext?.http?.method !== "POST") return response(404, { message: "Not found." });
-    const form = options.forms?.find((candidate) => waitlistRoutePath(candidate) === event.rawPath);
+    const form = options.forms?.find((candidate) => formRoutePath(candidate) === event.rawPath);
     if (event.rawPath !== DEMO_ROUTE_PATH && !(form && options.openForm))
       return response(404, { message: "Not found." });
     const routeOrigins = form ? form.origins : options.allowedOrigins;

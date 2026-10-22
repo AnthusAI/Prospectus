@@ -61,7 +61,7 @@ export const MAX_ELAPSED_MS = 86_400_000;
 
 /** What the scorer reads. Built from the stored inquiry, so a refile scores exactly the same. */
 export interface SpamInput {
-  kind: "demo" | "waitlist";
+  kind: "demo" | "contact" | "waitlist";
   name: string;
   email: string;
   company: string;
@@ -181,7 +181,7 @@ export function scoreInquiry(input: SpamInput, rules: SpamRules = SPAM_RULES): S
   if (company) fired.set("gibberish_company", { ...company });
 
   let ownLetters = 0;
-  if (input.kind === "demo") {
+  if (input.kind !== "waitlist") {
     const own = ownText(input.message, rules);
     ownLetters = letters(own.text);
     if (own.prompts > 0 && ownLetters <= rules.template.max_own_letters)
@@ -227,7 +227,7 @@ export function scoreInquiry(input: SpamInput, rules: SpamRules = SPAM_RULES): S
 
   const hints: SpamHint[] = [];
   const evidence: SpamEvidence = Object.fromEntries(fired);
-  if (input.kind === "demo") {
+  if (input.kind !== "waitlist") {
     const lower = input.message.toLowerCase();
     const matches = rules.vendor_pitch.phrases.filter((phrase) => lower.includes(phrase)).length;
     if (matches > 0) {
