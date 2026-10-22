@@ -7,7 +7,7 @@ import {
   labVerifierRoutes,
   reviewedLabVerifierEntry,
 } from "../accounts/lab-verifier";
-import { papyrusSiteRegistrations } from "../accounts/papyrus-sites";
+import { editorSiteRegistrations, papyrusSiteRegistrations } from "../accounts/papyrus-sites";
 import { registrations } from "../accounts/registration";
 import reviewedPapyrusSites from "../accounts/papyrus-sites.json";
 import reviewedLabVerifier from "../accounts/lab-verifier.json";
@@ -27,12 +27,24 @@ test("the committed lab verifier file is exact reviewed configuration and is val
     roleArn: "arn:aws:iam::682849160744:role/cyclotron-lab-verifier",
     reviewId: reviewedLabVerifier.reviewId,
   });
-  const verifier = labVerifier(entry, sites);
+  const editors = editorSiteRegistrations(sites);
+  assert.ok(editors.length > 0 && editors.every((site) => site.capabilities.length > 0));
+  // The composition the Lambda uses: reader sites are filtered out, and the verifier would refuse them anyway.
+  const verifier = labVerifier(entry, editors);
   assert.equal(verifier.entitlementProduct, "cyclotron");
   assert.deepEqual(
     verifier.sites.map((site) => site.product),
-    sites.map((site) => site.product),
+    editors.map((site) => site.product),
   );
+  const readers = sites.filter((site) => site.capabilities.length === 0);
+  assert.ok(
+    readers.some((site) => site.product === "papyrus-shipped"),
+    "Shipped is a reviewed public-reader site",
+  );
+  for (const reader of readers) assert.ok(!verifier.sites.some((site) => site.product === reader.product));
+  assert.throws(() => labVerifier(entry, sites), /never trusts a public-reader Papyrus site/);
+  for (const reader of readers)
+    assert.throws(() => labVerifier(entry, [...editors, reader]), /never trusts a public-reader/);
   // It must coexist with the deployed cyclotron registrations without a role-name collision.
   const issuer = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticConsole";
   const federation = {

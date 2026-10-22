@@ -21,6 +21,8 @@ export interface ProductRegistration {
   capabilities: Operation[];
   enabled: boolean;
   accountDirectory?: true;
+  /** A Papyrus site that only signs readers in: no capabilities, no directory, no delegation. */
+  audience?: "public-reader";
   googleFederation?: {
     policy: "google-only-unlinked-v1" | "google-direct-v1";
     reviewedPolicyId: string;

@@ -1,6 +1,7 @@
 import type { ProductRegistration } from "./auth";
 import { fail, type Operation } from "./model";
 import {
+  PAPYRUS_SITE_PRODUCT_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
   hasExactlyKeys,
   matchesStringPattern,
@@ -35,7 +36,6 @@ export interface LabVerifier {
 }
 
 const verifierRolePattern = /^arn:aws:iam::\d{12}:role\/(?:[A-Za-z0-9+=,.@_-]+\/)*[A-Za-z0-9+=,.@_-]+$/;
-const PAPYRUS_SITE_PRODUCT = /^papyrus-[a-z0-9][a-z0-9-]{0,31}$/;
 
 const entryRules: ValidationRule<LabVerifierEntry>[] = [
   rule((entry) => !!entry && typeof entry === "object", "A lab verifier entry must be an object."),
@@ -64,14 +64,18 @@ export function labVerifier(entry: unknown, sites: readonly ProductRegistration[
   validateEntry(entry);
   const reviewed = entry as LabVerifierEntry;
   if (sites.length === 0) throw new Error("A lab verifier needs at least one registered Papyrus site.");
-  for (const site of sites)
+  for (const site of sites) {
+    // A public-reader site holds no capabilities and is never trusted by the lab, whatever the caller passed.
+    if (site.capabilities.length === 0 || site.audience === "public-reader")
+      throw new Error("A lab verifier never trusts a public-reader Papyrus site: it holds no capabilities.");
     if (
       !site.enabled ||
-      !PAPYRUS_SITE_PRODUCT.test(site.product) ||
+      !PAPYRUS_SITE_PRODUCT_PATTERN.test(site.product) ||
       site.googleFederation?.policy !== "google-only-unlinked-v1" ||
       site.clientIds.length !== 1
     )
       throw new Error("A lab verifier trusts only reviewed Google-only Papyrus site registrations.");
+  }
   return {
     product: LAB_VERIFIER_PRODUCT,
     roleArn: reviewed.roleArn,

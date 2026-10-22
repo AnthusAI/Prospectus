@@ -8,6 +8,7 @@ import {
   hasOnlyKeys,
   isCognitoIssuer,
   isProductName,
+  PAPYRUS_SITE_PRODUCT_PATTERN,
   matchesStringPattern,
   requireRules,
   throwErrorWithPrefix,
@@ -26,6 +27,7 @@ const registrationFields = [
   "enabled",
   "googleFederation",
   "accountDirectory",
+  "audience",
   "executionDelegation",
   "audience",
 ];
@@ -57,6 +59,11 @@ const isRoleArn = (value: unknown) => matchesStringPattern(value, rolePattern);
 const isReviewIdentifier = (value: unknown) => matchesStringPattern(value, REVIEW_IDENTIFIER_PATTERN);
 const isClientId = (value: unknown) => matchesStringPattern(value, CLIENT_ID_PATTERN);
 const isGoogleClientId = (value: unknown) => matchesStringPattern(value, GOOGLE_CLIENT_ID_PATTERN);
+/** The only product allowed no capabilities: a Papyrus site that is explicitly a reviewed Google-only public reader. */
+const isPublicReaderShape = (item: any) =>
+  item.audience === "public-reader" &&
+  matchesStringPattern(item.product, PAPYRUS_SITE_PRODUCT_PATTERN) &&
+  item.googleFederation?.policy === "google-only-unlinked-v1";
 const isGoogleDirectItem = (item: any) => item?.googleFederation?.policy === GOOGLE_DIRECT_POLICY;
 
 const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
@@ -96,12 +103,29 @@ const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
   ),
   rule(({ item }) => Array.isArray(item.capabilities), "Product capabilities must be an array."),
   rule(
-    ({ item }) =>
-      item.capabilities.length > 0 ||
-      (item.googleFederation?.policy === "google-only-unlinked-v1" &&
-        !item.accountDirectory &&
-        !item.executionDelegation),
+    ({ item }) => item.capabilities.length > 0 || isPublicReaderShape(item),
     "A product needs at least one capability.",
+  ),
+  rule(
+    ({ item }) => item.audience === undefined || item.audience === "public-reader",
+    "A product audience must be absent or public-reader.",
+  ),
+  rule(
+    ({ item }) =>
+      item.audience === undefined || matchesStringPattern(item.product, PAPYRUS_SITE_PRODUCT_PATTERN),
+    "A public-reader product must be a Papyrus site named papyrus-<site>.",
+  ),
+  rule(
+    ({ item }) => item.audience === undefined || item.capabilities.length === 0,
+    "A public-reader product holds no capabilities.",
+  ),
+  rule(
+    ({ item }) => item.audience === undefined || item.accountDirectory === undefined,
+    "A public-reader product cannot hold an account directory.",
+  ),
+  rule(
+    ({ item }) => item.audience === undefined || item.executionDelegation === undefined,
+    "A public-reader product cannot hold an execution delegation.",
   ),
   rule(
     ({ item }) => item.capabilities.every((operation: unknown) => operations.has(operation as string)),
