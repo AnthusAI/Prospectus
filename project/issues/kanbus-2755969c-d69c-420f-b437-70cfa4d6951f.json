@@ -89,11 +89,16 @@
       "author": "home",
       "text": "Registered Shipped (papyrus-shipped) as a public-reader Papyrus site on 2026-10-21: audience public-reader = sign-in and profile only (no capabilities, no directory, not trusted by the lab verifier). Ryan approved 2026-10-21: 'yes, Prospectus for public readers; you do the registration', including its reviews papyrus-shipped-google-only-unlinked-v1-2026-10-21 and papyrus-shipped-site-v1-2026-10-21.",
       "created_at": "2026-10-22T00:17:37.897426Z",
-      "comment_type": "default"
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "Claude Sonnet 5.5",
+        "name": "Shipped registration agent"
+      }
     }
   ],
   "created_at": "2026-10-17T07:14:48.913519Z",
-  "updated_at": "2026-10-22T00:17:37.950841Z",
+  "updated_at": "2026-10-22T00:17:44.537936Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
