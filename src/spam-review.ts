@@ -130,14 +130,17 @@ export function spamReviewChanges(
     spam_corrections: [...history, correction].slice(-50),
   };
   if (label === "not_spam") {
-    const demo = websiteInquiries(issue).some((inquiry) => inquiry.kind !== "waitlist");
+    const messages = websiteInquiries(issue).filter((inquiry) => inquiry.kind !== "waitlist");
+    const demo = messages.length > 0;
+    const nextAction =
+      messages[messages.length - 1]?.kind === "contact" ? "Respond to inquiry" : "Respond to demo request";
     const reopen = isClosed && canMove(configuration.initial_status);
     return {
       labels: kept,
       ...(reopen ? { status: configuration.initial_status } : {}),
       custom: {
         ...recorded,
-        ...(demo ? { next_action: "Respond to demo request", next_follow_up_at: nextBusinessDay(now) } : {}),
+        ...(demo ? { next_action: nextAction, next_follow_up_at: nextBusinessDay(now) } : {}),
       },
     };
   }

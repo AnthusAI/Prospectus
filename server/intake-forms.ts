@@ -10,12 +10,14 @@ export interface IntakeFormThrottle {
   burst: number;
 }
 
+export type IntakeFormKind = "waitlist" | "contact";
+
 export interface IntakeFormConfig {
   enabled: boolean;
   approval?: string;
   siteId: string;
   formId: string;
-  kind: "waitlist";
+  kind: IntakeFormKind;
   origins: string[];
   noticeVersion: string;
   owner: string;
@@ -36,11 +38,29 @@ export function waitlistRoutePath(form: Pick<IntakeFormConfig, "formId">): strin
   return `/intake/waitlist/${form.formId}`;
 }
 
+export function contactRoutePath(form: Pick<IntakeFormConfig, "formId">): string {
+  return `/intake/contact/${form.formId}`;
+}
+
+/** The route a registry form is served on, by kind. */
+export function formRoutePath(form: Pick<IntakeFormConfig, "formId" | "kind">): string {
+  return form.kind === "contact" ? contactRoutePath(form) : waitlistRoutePath(form);
+}
+
 export function waitlistLabels(form: Pick<IntakeFormConfig, "siteId">): string[] {
   return ["waitlist", `app-${form.siteId}`];
 }
 
-export function waitlistContactPolicy(form: IntakeFormConfig): IntakeContactPolicy {
+export function contactLabels(form: Pick<IntakeFormConfig, "siteId">): string[] {
+  return ["contact", `app-${form.siteId}`];
+}
+
+/** The labels a registry form puts on the prospects it files. */
+export function formLabels(form: Pick<IntakeFormConfig, "siteId" | "kind">): string[] {
+  return form.kind === "contact" ? contactLabels(form) : waitlistLabels(form);
+}
+
+export function formContactPolicy(form: IntakeFormConfig): IntakeContactPolicy {
   return {
     ...REAL_CONTACT_POLICY,
     noticeVersion: form.noticeVersion,
@@ -49,6 +69,8 @@ export function waitlistContactPolicy(form: IntakeFormConfig): IntakeContactPoli
     staleNoticeMessage: "Reload the page to read the current privacy notice.",
   };
 }
+
+export const waitlistContactPolicy = formContactPolicy;
 
 function anchoredAttributePattern(pattern: string): string | null {
   const trailingBackslashes = pattern.slice(0, -1).match(/\\*$/)![0].length;
@@ -93,7 +115,9 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
   if (entry.approval !== undefined && typeof entry.approval !== "string")
     invalid(formId, "approval must be a string");
   if (typeof entry.enabled !== "boolean") invalid(formId, "enabled must be true or false");
-  if (entry.kind !== "waitlist") invalid(formId, "kind must be waitlist");
+  if (entry.kind !== "waitlist" && entry.kind !== "contact")
+    invalid(formId, "kind must be waitlist or contact");
+  const kind: IntakeFormKind = entry.kind;
   if (!identifier.test(formId)) invalid(formId, "formId must be a lowercase slug");
   if (typeof entry.siteId !== "string" || !identifier.test(entry.siteId))
     invalid(formId, "siteId must be a lowercase slug");
@@ -140,6 +164,8 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     }
     attributes[name] = hasValues ? { values: candidate.values } : { pattern: candidate.pattern };
   }
+  if (kind === "contact" && Object.keys(attributes).length)
+    invalid(formId, "a contact form takes no attributes");
   if (Object.keys(attributes).length > 8) invalid(formId, "at most 8 attributes are allowed");
   const throttle = (entry.throttle ?? DEFAULT_FORM_THROTTLE) as IntakeFormThrottle;
   if (
@@ -157,7 +183,7 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     ...(typeof entry.approval === "string" ? { approval: entry.approval } : {}),
     siteId: entry.siteId as string,
     formId,
-    kind: "waitlist",
+    kind,
     origins,
     noticeVersion: entry.noticeVersion as string,
     owner: entry.owner as string,
@@ -167,15 +193,20 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
   };
 }
 
+/**
+ * An origin belongs to one form, except that one site may use the same origin for one waitlist
+ * and one contact form: they are served on different routes, each of which checks the origin.
+ */
 export function assertDistinctFormOrigins(forms: readonly IntakeFormConfig[]): void {
-  const owners = new Map<string, string>();
+  const owners = new Map<string, IntakeFormConfig[]>();
   for (const form of forms)
     for (const item of form.origins) {
       if (RESERVED_DEMO_ORIGINS.includes(item)) invalid(form.formId, `${item} is a demo origin`);
-      const other = owners.get(item);
-      if (other && other !== form.formId)
-        invalid(form.formId, `origin ${item} is used by more than one form (${other})`);
-      owners.set(item, form.formId);
+      const clash = (owners.get(item) ?? []).find(
+        (other) => other.formId !== form.formId && (other.siteId !== form.siteId || other.kind === form.kind),
+      );
+      if (clash) invalid(form.formId, `origin ${item} is used by more than one form (${clash.formId})`);
+      owners.set(item, [...(owners.get(item) ?? []), form]);
     }
 }
 

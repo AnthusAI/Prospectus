@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ConditionalControlStore } from "./control-store";
 import { IntakeInbox, type StoredInboxItem } from "./inbox";
 import { IntakeService, type Inquiry, type IntakeOptions } from "./intake";
-import { waitlistContactPolicy, type IntakeFormConfig } from "./intake-forms";
+import { formContactPolicy, type IntakeFormConfig } from "./intake-forms";
 import type { IntakeContactPolicy } from "./intake-contact-policy";
 import type { SpamLabelling } from "./intake-spam-mode";
 
@@ -58,11 +58,16 @@ export async function refileInbox(options: RefileOptions): Promise<RefileSummary
     if (stored.item.status !== "pending") continue;
     summary.pending++;
     const source = stored.item.inquiry.source;
-    const form =
-      stored.item.inquiry.kind === "waitlist"
-        ? options.forms.find((item) => item.siteId === source.site_id && item.formId === source.form_id)
-        : undefined;
-    if (stored.item.inquiry.kind === "waitlist" && !form) {
+    const fromRegistry = stored.item.inquiry.kind !== "demo";
+    const form = fromRegistry
+      ? options.forms.find(
+          (item) =>
+            item.siteId === source.site_id &&
+            item.formId === source.form_id &&
+            item.kind === stored.item.inquiry.kind,
+        )
+      : undefined;
+    if (fromRegistry && !form) {
       summary.unroutable++;
       continue;
     }
@@ -74,7 +79,7 @@ export async function refileInbox(options: RefileOptions): Promise<RefileSummary
   for (const { form, items } of groups.values()) {
     const directory = await mkdtemp(join(tmpdir(), "prospectus-refile-"));
     try {
-      const policy = form ? waitlistContactPolicy(form) : options.demoPolicy;
+      const policy = form ? formContactPolicy(form) : options.demoPolicy;
       const service = await IntakeService.open({
         directory,
         workspace: options.workspace,

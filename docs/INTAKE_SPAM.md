@@ -8,7 +8,7 @@ A potential client's valid message is always accepted. The visitor always gets "
 
 So spam handling only **classifies and labels after the inquiry is durably stored** (see [Store first, then file](ARCHITECTURE.md#store-first-then-file)). It never rejects, never deletes, and never hides a record where it cannot be found again. A false positive is one click to find and one click to restore.
 
-The rule covers the anth.us contact form (`engage-contact-v1`) and every app waitlist form in `intake-forms.json`.
+The rule covers the anth.us contact form (`engage-contact-v1`) and every app waitlist and contact form in `intake-forms.json`. A registry contact form (`kind: "contact"`, for example `papyrus-contact-v1`) is scored exactly like the demo form, with every message rule; its stored inquiries have `kind: "contact"`, label `contact` and `app-<siteId>`, and Not spam restores "Respond to inquiry" for them ("Respond to demo request" for demo inquiries).
 
 ## What happened
 

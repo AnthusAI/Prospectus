@@ -163,7 +163,7 @@ Intake sends no email and creates no accounts, invitations, bookings, billing or
 
 Other Anthus apps send waitlist signups to Prospectus instead of running their own waitlist backend. A signup is intake: it creates or extends a lead (a `prospect`) and nothing else. It never creates an account, membership, entitlement, invitation, appointment or email, and it is not an Anthus One product access request.
 
-**Registry.** `intake-forms.json` lists the forms. Each entry names its app (`siteId`), `formId`, `kind` (`waitlist`), the `origins` allowed to post it, its own `noticeVersion`, the `owner` queue, a `defaultPagePath`, the `attributes` it accepts (each an enum `values` list or a fully anchored `pattern` that starts with `^` and ends with `$`) and an optional `throttle`. Source identity is decided from the entry that the request path selects and whose `origins` include the request `Origin`; the body can never name a site, form, owner or status. The same file drives the gateway CORS origins, the per-form route and throttle, and the Lambda's origin check, so each origin is accepted only for its own form: a Babulus origin cannot post to `/intake/demo`, and an anth.us origin cannot post a Babulus signup. Origins must be unique across forms and may not be a demo origin. An entry with `"enabled": false` adds no route, origin or configuration. Enabling one needs a recorded `approval` string and the `real-contacts` runtime, and deploys on merge.
+**Registry.** `intake-forms.json` lists the forms. Each entry names its app (`siteId`), `formId`, `kind` (`waitlist`, or `contact`, see [Integrating an app's contact form](#integrating-an-apps-contact-form)), the `origins` allowed to post it, its own `noticeVersion`, the `owner` queue, a `defaultPagePath`, the `attributes` it accepts (each an enum `values` list or a fully anchored `pattern` that starts with `^` and ends with `$`) and an optional `throttle`. Source identity is decided from the entry that the request path selects and whose `origins` include the request `Origin`; the body can never name a site, form, owner or status. The same file drives the gateway CORS origins, the per-form route and throttle, and the Lambda's origin check, so each origin is accepted only for its own form: a Babulus origin cannot post to `/intake/demo`, and an anth.us origin cannot post a Babulus signup. Origins must be unique across forms, except that one site may share an origin between its one waitlist and its one contact form, and may not be a demo origin. An entry with `"enabled": false` adds no route, origin or configuration. Enabling one needs a recorded `approval` string and the `real-contacts` runtime, and deploys on merge.
 
 **Request.** `POST /intake/waitlist/<formId>` on the intake API (the `IntakeWaitlistBaseUrl` deployment output plus `/<formId>`). Babulus (`babulus-waitlist-v1`) is enabled for `https://babulus.anth.us` only (Ryan's approval is recorded in the entry); other Babulus origins are added by a later reviewed change. Its URL goes live when the change deploys, and real-cloud acceptance is a labelled test signup after that deploy.
 
@@ -209,6 +209,50 @@ await fetch(`${WAITLIST_BASE_URL}/babulus-waitlist-v1`, {
 ```
 
 **How it lands.** Identity is the normalized email within the workspace, as for demo intake, so a signup from a person who already exists resolves to the same prospect and appends a `kind: "waitlist"` inquiry with its `source` (`site_id`, `form_id`, `page_path`, `campaign`), `attributes`, `marketing_opt_in` and `received_at`. A new person gets a prospect in the `new` stage, assigned to the form's owner (`intake-queue`), titled with the name or else the email, and labelled `waitlist` and `app-<siteId>`; existing prospects gain missing labels and keep their stage, owner, notes, next action and follow-up. Waitlist signups set no `next_action` or `next_follow_up_at`, so the follow-up queue is not flooded. Deduplication is per email and app: a repeat signup from the same app is dropped when its `marketing_opt_in` and `notice_version` match the latest waitlist inquiry for that app (name and attribute changes alone are not stored). When either differs, the new inquiry is appended, so the latest consent choice is recorded and earlier consent stays in the history; no follow-up is added. Another app may still add its own inquiry. Receipt and identity claims use the existing `intake-receipts/` and `intake-identities/` prefixes and the same create-first pattern, so the intake role gains no permission and still has no `s3:ListBucket`. There is no localhost origin in the registry because it is a public endpoint; develop against the handler and service tests (`test/waitlist-intake.test.ts`).
+
+## Integrating an app's contact form
+
+A site other than anth.us can send contact messages to Prospectus on its own route, with the registry `kind` `contact`. The fields and semantics are those of `POST /intake/demo`; only the route, the origins, the notice and the throttle are the form's own. `/intake/demo` stays exactly as it is for anth.us: it never serves a registry form, and a registry origin can never post to it.
+
+**Registry.** A `contact` entry has the same keys as a waitlist entry (`siteId`, `formId`, `origins`, `noticeVersion`, `owner`, `defaultPagePath`, optional `throttle`, `enabled` and `approval`) but takes no `attributes`. The shipped entry is `papyrus-contact-v1` for `https://p.apyr.us`, with notice `papyrus-contact-v1` and default page `/contact`. Origins are bound per form and per route: `https://p.apyr.us` is accepted on `/intake/contact/papyrus-contact-v1` and on `/intake/waitlist/papyrus-waitlist-v1`, and on no other route, and no anth.us origin is accepted on either. The registry rejects an origin shared by two forms, with one exception: a single site may use the same origin for one waitlist and one contact form, because they are different routes that each check the origin. A demo origin is never allowed.
+
+**Request.** `POST /intake/contact/<formId>` (the `IntakeContactBaseUrl` deployment output plus `/<formId>`).
+
+```http
+POST /intake/contact/papyrus-contact-v1 HTTP/1.1
+Origin: https://p.apyr.us
+Content-Type: application/json
+
+{
+  "submission_id": "a client-generated UUID",
+  "name": "Casey Example",
+  "email": "casey@example.com",
+  "company": "Example Studio",
+  "message": "Can Papyrus publish a feed for our team blog?",
+  "website": "",
+  "notice_version": "papyrus-contact-v1",
+  "marketing_opt_in": false,
+  "page_path": "/contact",
+  "campaign": { "utm_campaign": "launch" },
+  "elapsed_ms": 5200
+}
+```
+
+`submission_id`, `name`, `email`, `message` and `notice_version` are required; `company`, `marketing_opt_in`, `page_path` (default `/contact`), `campaign` and `elapsed_ms` are optional; `website` is the honeypot. Any other field is a 400. Bodies are JSON, at most 16 KiB.
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| `202` | `{"receipt":"<submission_id>","message":"Message received."}` | Stored. A filled honeypot or a likely-spam score gets the same response |
+| `400` | `{"message":"..."}` | Validation: bad email, stale notice (`Reload the page to read the current privacy notice.`), missing name or message, unknown field, size or JSON |
+| `403` | `{"message":"This form origin is not allowed."}` | The Origin is not in this form's `origins` |
+| `404` | `{"message":"Not found."}` | Unknown form, a form id under the wrong kind's prefix, or another method |
+| `415` | `{"message":"A JSON submission is required."}` | Content type is not `application/json` |
+| `429` | `{"message":"Too Many Requests"}` | The form's own route throttle (default 1 request per second, burst 2) |
+| `503` | `{"message":"The inquiry could not be confirmed. Retry the same receipt."}` | Only when neither the inbox nor the CRM could take the inquiry |
+
+**How it lands.** The message is stored first and filed after, exactly as in [Store first, then file](#store-first-then-file), and is scored by the same spam rules as a demo inquiry ([INTAKE_SPAM.md](INTAKE_SPAM.md)). Identity is the normalized email, so a sender who already exists (for example from the Papyrus waitlist) gets the message appended to the same prospect, keeping stage, owner and notes. A new sender becomes a `new` prospect owned by the form's owner, titled with the name, labelled `contact` and `app-<siteId>`, with the message as the description and `next_action` "Respond to inquiry" on the next business day. Likely spam is labelled `likely-spam` and gets no follow-up; Not spam restores "Respond to inquiry".
+
+**Inquiry kind.** The stored inquiry has `kind: "contact"`, not `demo`. Two reasons: the follow-up wording differs ("Respond to inquiry", because a contact message is not necessarily a demo request), and the kind lets the refile script route a pending item back to its registry form (a `demo` kind is always the anth.us form). Everything that treated a non-waitlist inquiry as a message (spam rules, the follow-up restore, Not spam) treats `contact` the same way as `demo`. The `source` (`site_id`, `form_id`, `page_path`) still identifies the form.
 
 ## Infrastructure layout
 

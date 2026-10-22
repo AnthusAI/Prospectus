@@ -8,7 +8,7 @@ import { Construct } from "constructs";
 import {
   assertDistinctFormOrigins,
   enabledIntakeForms,
-  waitlistRoutePath,
+  formRoutePath,
   type IntakeFormConfig,
 } from "../../server/intake-forms";
 import { spamLabellingForMode, type SpamLabelling } from "../../server/intake-spam-mode";
@@ -28,6 +28,7 @@ export function intakeFormOriginsForMode(contactMode: IntakeContactMode): string
 export class EvaluationIntake extends Construct {
   readonly url: string;
   readonly waitlistBaseUrl?: string;
+  readonly contactBaseUrl?: string;
   constructor(
     scope: Construct,
     id: string,
@@ -41,7 +42,7 @@ export class EvaluationIntake extends Construct {
     const forms = enabledIntakeForms(registryForms);
     assertDistinctFormOrigins(registryForms);
     if (forms.length && contactMode !== "real-contacts")
-      throw new Error("Registry waitlist forms collect real contacts and need the real-contacts runtime.");
+      throw new Error("Registry forms collect real contacts and need the real-contacts runtime.");
     const formOrigins = intakeFormOriginsForMode(contactMode);
     const corsOrigins = [...new Set([...formOrigins, ...forms.flatMap((form) => form.origins)])];
     const logGroup = logs.LogGroup.fromLogGroupName(this, "Logs", "/aws/lambda/prospectus-intake-evaluation");
@@ -108,27 +109,35 @@ export class EvaluationIntake extends Construct {
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration("SyntheticSubmission", handler),
     });
-    const waitlistRoutes = forms.map((form, index) => ({
+    const formRoutes = forms.map((form, index) => ({
       form,
       route: api.addRoutes({
-        path: waitlistRoutePath(form),
+        path: formRoutePath(form),
         methods: [apigw.HttpMethod.POST],
-        integration: new HttpLambdaIntegration(`WaitlistSubmission${index}`, handler),
+        integration: new HttpLambdaIntegration(
+          `${form.kind === "contact" ? "Contact" : "Waitlist"}Submission${index}`,
+          handler,
+        ),
       })[0],
     }));
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 2, throttlingRateLimit: 1 };
-    if (waitlistRoutes.length)
+    if (formRoutes.length)
       throttleRoutes(
         api.defaultStage!,
-        waitlistRoutes.map(({ form, route }) => ({
-          routeKey: `POST ${waitlistRoutePath(form)}`,
+        formRoutes.map(({ form, route }) => ({
+          routeKey: `POST ${formRoutePath(form)}`,
           route,
           burstLimit: form.throttle.burst,
           rateLimit: form.throttle.rate,
         })),
       );
     this.url = `${api.apiEndpoint}/intake/demo`;
-    this.waitlistBaseUrl = forms.length ? `${api.apiEndpoint}/intake/waitlist` : undefined;
+    this.waitlistBaseUrl = forms.some((form) => form.kind === "waitlist")
+      ? `${api.apiEndpoint}/intake/waitlist`
+      : undefined;
+    this.contactBaseUrl = forms.some((form) => form.kind === "contact")
+      ? `${api.apiEndpoint}/intake/contact`
+      : undefined;
   }
 }

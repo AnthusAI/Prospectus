@@ -8,7 +8,7 @@ import type { ConditionalControlStore } from "./control-store";
 import { IdentityClaims, SharedReceiptConflict } from "./identity";
 import { IntakeInbox, derivedUuid, type StoredInboxItem } from "./inbox";
 import { SYNTHETIC_CONTACT_POLICY, type IntakeContactPolicy } from "./intake-contact-policy";
-import { matchesAttributePattern, waitlistLabels, type IntakeFormConfig } from "./intake-forms";
+import { formLabels, matchesAttributePattern, type IntakeFormConfig } from "./intake-forms";
 import {
   MAX_ELAPSED_MS,
   SPAM_RULES,
@@ -84,7 +84,8 @@ export interface InquirySpamFields {
 }
 export interface Inquiry extends Partial<InquirySpamFields> {
   id: string;
-  kind: "demo" | "waitlist";
+  /** "contact" is a message from a registry contact form on another site; "demo" is the anth.us form. */
+  kind: "demo" | "contact" | "waitlist";
   name: string;
   email: string;
   company: string;
@@ -195,6 +196,7 @@ function readPagePath(fields: Record<string, unknown>, fallback: string) {
 export function validateSubmission(
   raw: unknown,
   contactPolicy: IntakeContactPolicy = SYNTHETIC_CONTACT_POLICY,
+  defaultPagePath = "/request-demo",
 ): Submission {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new IntakeError(400, "Invalid request.");
   const fields = raw as Record<string, unknown>;
@@ -225,7 +227,7 @@ export function validateSubmission(
   if (fields.marketing_opt_in !== undefined && typeof fields.marketing_opt_in !== "boolean")
     throw new IntakeError(400, "Invalid marketing preference.");
   const attribution = readCampaign(fields.campaign);
-  const page_path = readPagePath(fields, "/request-demo");
+  const page_path = readPagePath(fields, defaultPagePath);
   return {
     submission_id,
     name: text("name", 150, true),
@@ -315,10 +317,23 @@ export function spamInputFor(inquiry: Inquiry): SpamInput {
   };
 }
 
-/** The response intake sets on a demo inquiry; Not spam restores the same values. */
+/** Validates a registry contact form's message: the demo form's fields under the form's own notice. */
+export function validateContactSubmission(
+  raw: unknown,
+  form: IntakeFormConfig,
+  contactPolicy: IntakeContactPolicy,
+): Submission {
+  return validateSubmission(
+    raw,
+    { ...contactPolicy, noticeVersion: form.noticeVersion },
+    form.defaultPagePath,
+  );
+}
+
+/** The response intake sets on a message inquiry; Not spam restores the same values. */
 function demoFollowUp(inquiry: Inquiry) {
   return {
-    next_action: "Respond to demo request",
+    next_action: inquiry.kind === "contact" ? "Respond to inquiry" : "Respond to demo request",
     next_follow_up_at: nextBusinessDay(new Date(inquiry.received_at)),
   };
 }
@@ -432,10 +447,18 @@ export class IntakeService {
         new IntakeError(503, "Intake is unavailable. Restart after repairing local receipt storage."),
       );
     const form = this.options.form;
-    const submission: Submission | WaitlistSubmission = form
-      ? validateWaitlistSubmission(raw, form, this.options.contactPolicy!)
-      : validateSubmission(raw, this.options.contactPolicy);
-    const message = form ? "Waitlist signup received." : "Demo request received.";
+    const submission: Submission | WaitlistSubmission =
+      form?.kind === "waitlist"
+        ? validateWaitlistSubmission(raw, form, this.options.contactPolicy!)
+        : form
+          ? validateContactSubmission(raw, form, this.options.contactPolicy!)
+          : validateSubmission(raw, this.options.contactPolicy);
+    const message =
+      form?.kind === "waitlist"
+        ? "Waitlist signup received."
+        : form
+          ? "Message received."
+          : "Demo request received.";
     const run = this.queue.then(async () => {
       if (!this.locked) throw new IntakeError(503, "Intake is unavailable.");
       // A filled honeypot is stored and labelled like any likely spam, never dropped (decision 4).
@@ -553,12 +576,12 @@ export class IntakeService {
       ...(elapsed_ms !== undefined ? { elapsed_ms } : {}),
     };
     return {
-      ...(form ? { company: "", message: "" } : {}),
+      ...(form?.kind === "waitlist" ? { company: "", message: "" } : {}),
       ...contact,
       ...(Object.keys(form_signals).length ? { form_signals } : {}),
       fingerprint,
       id,
-      kind: form ? "waitlist" : "demo",
+      kind: form ? form.kind : "demo",
       received_at,
       source: { site_id: this.options.siteId, form_id: this.options.formId, page_path, campaign },
     } as Inquiry;
@@ -705,16 +728,35 @@ export class IntakeService {
     };
   }
 
+  private contactCreateBody(inquiry: Inquiry) {
+    const spam = this.labelledSpam(inquiry);
+    return {
+      title: inquiry.name,
+      type: "prospect",
+      assignee: this.options.owner,
+      description: inquiry.message,
+      labels: [...formLabels(this.options.form!), ...(spam ? [LIKELY_SPAM_LABEL] : [])],
+      custom: {
+        company: inquiry.company,
+        contact_email: inquiry.email,
+        // Likely spam gets no follow-up, so it stays out of Today.
+        ...(spam ? {} : demoFollowUp(inquiry)),
+        ...this.spamCustom(inquiry),
+        first_source: inquiry.source,
+        latest_source: inquiry.source,
+        latest_inquiry_at: inquiry.received_at,
+        inquiries: [inquiry],
+      },
+    };
+  }
+
   private waitlistCreateBody(inquiry: Inquiry) {
     return {
       title: inquiry.name || inquiry.email,
       type: "prospect",
       assignee: this.options.owner,
       description: `Joined the ${inquiry.source.site_id} waitlist.`,
-      labels: [
-        ...waitlistLabels(this.options.form!),
-        ...(this.labelledSpam(inquiry) ? [LIKELY_SPAM_LABEL] : []),
-      ],
+      labels: [...formLabels(this.options.form!), ...(this.labelledSpam(inquiry) ? [LIKELY_SPAM_LABEL] : [])],
       custom: {
         company: "",
         contact_email: inquiry.email,
@@ -778,7 +820,12 @@ export class IntakeService {
               method: "POST",
               path: "/issues",
               operation: randomUUID(),
-              body: this.options.form ? this.waitlistCreateBody(inquiry) : this.demoCreateBody(inquiry),
+              body:
+                this.options.form?.kind === "waitlist"
+                  ? this.waitlistCreateBody(inquiry)
+                  : this.options.form
+                    ? this.contactCreateBody(inquiry)
+                    : this.demoCreateBody(inquiry),
             },
           };
         });
@@ -839,13 +886,13 @@ export class IntakeService {
         if (inquiries.length >= 100) throw new ReviewRequired("history_full", record.issue.id);
         const existingLabels = Array.isArray(record.issue.labels) ? (record.issue.labels as string[]) : [];
         const missingLabels = this.options.form
-          ? waitlistLabels(this.options.form).filter((label) => !existingLabels.includes(label))
+          ? formLabels(this.options.form).filter((label) => !existingLabels.includes(label))
           : [];
         // A later message is never held back by an old likely-spam label: a demo inquiry that is not
         // itself labelled spam restores the follow-up intake would have set. The label stays for a
         // person to resolve. A likely-spam inquiry never labels an existing prospect.
         const restoreFollowUp =
-          receipt.inquiry.kind === "demo" &&
+          receipt.inquiry.kind !== "waitlist" &&
           existingLabels.includes(LIKELY_SPAM_LABEL) &&
           !this.labelledSpam(receipt.inquiry) &&
           !record.issue.custom?.next_follow_up_at;

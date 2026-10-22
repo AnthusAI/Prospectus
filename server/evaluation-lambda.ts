@@ -7,7 +7,7 @@ import { createScopedS3ControlStore } from "./s3-control-store";
 import { createEvaluationHandler } from "./evaluation-handler";
 import { canonicalRequest } from "./canonical-invoke";
 import { intakeContactPolicyForMode } from "./intake-contact-policy";
-import { enabledIntakeForms, parseIntakeFormRegistry, waitlistContactPolicy } from "./intake-forms";
+import { enabledIntakeForms, parseIntakeFormRegistry, formContactPolicy } from "./intake-forms";
 import { spamLabellingForMode } from "./intake-spam";
 
 const required = (name: string) => {
@@ -85,7 +85,7 @@ export const handler = createEvaluationHandler({
       owner: form.owner,
       siteId: form.siteId,
       formId: form.formId,
-      contactPolicy: waitlistContactPolicy(form),
+      contactPolicy: formContactPolicy(form),
       form,
     }),
   open: async () => {

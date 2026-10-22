@@ -13,6 +13,7 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 | Cyclotron lab verifier (`cyclotron-lab-verifier`)      | One reviewed role in the Cyclotron account           | Same SigV4 and resource policy; the role may call only `GET /v1/identities/me` and `POST /v1/accounts/{id}/authorize`, with a registered Papyrus site's access token         |
 | Inquiry intake (`POST /intake/demo`)                   | The public, from allowed origins                    | Origin and notice checks, throttling and a fixed intake actor; no read access                                                                                              |
 | App waitlist intake (`POST /intake/waitlist/<formId>`) | The public, from the origins declared for that form | Per-form origin binding, per-form notice version, strict attribute allowlist, a route-level throttle and a fixed intake actor; no read access, no accounts or entitlements |
+| App contact intake (`POST /intake/contact/<formId>`)   | The public, from the origins declared for that form | Same controls as the demo form on its own route: per-form origin binding (an anth.us origin cannot post it and a registry origin cannot post `/intake/demo`), per-form notice version, a route-level throttle, always-accept store-then-file, spam scoring and a fixed intake actor; no read access, no accounts or entitlements |
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 
