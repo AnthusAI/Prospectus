@@ -354,3 +354,30 @@ test("every waitlist route in the stage's route settings is created before the s
     assert.ok(dependsOn.includes(routeLogicalIds[0]), `${key} route must be in the stage's DependsOn`);
   }
 });
+
+test("intake spam labelling defaults to shadow, is passed only as environment and adds no resource or permission", () => {
+  const build = (spamLabelling?: "shadow" | "label") => {
+    const stack = new cdk.Stack(new cdk.App(), "SpamReview", {
+      env: { account: "712236451410", region: "us-east-1" },
+    });
+    new EvaluationIntake(
+      stack,
+      "Intake",
+      lambda.Code.fromInline("exports.handler=async()=>({statusCode:503})"),
+      "real-contacts",
+      [],
+      spamLabelling,
+    );
+    return Template.fromStack(stack);
+  };
+  const shadow = build();
+  const label = build("label");
+  assert.equal(lambdaEnvironment(shadow).PROSPECTUS_INTAKE_SPAM_LABELLING, "shadow");
+  assert.equal(lambdaEnvironment(label).PROSPECTUS_INTAKE_SPAM_LABELLING, "label");
+  assert.deepEqual(policyActions(label), policyActions(shadow));
+  assert.deepEqual(
+    Object.keys(label.toJSON().Resources).sort(),
+    Object.keys(shadow.toJSON().Resources).sort(),
+  );
+  assert.throws(() => build("off" as never), /Unknown spam labelling/);
+});

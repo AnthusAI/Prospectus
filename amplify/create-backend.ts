@@ -6,6 +6,7 @@ import { Stack, Token, RemovalPolicy } from "aws-cdk-lib";
 import type { AccountsPlaneOptions } from "../infra/lib/accounts-plane";
 import type { IntakeContactMode } from "../infra/lib/evaluation-intake";
 import type { IntakeFormConfig } from "../server/intake-forms";
+import type { SpamLabelling } from "../server/intake-spam-mode";
 import { ProspectusBackend } from "../infra/lib/prospectus-backend";
 import {
   TARGET_ACCOUNT,
@@ -23,6 +24,7 @@ export function createProspectusBackend(
   intakeContactMode: IntakeContactMode = "synthetic-only",
   intakeForms: readonly IntakeFormConfig[] = [],
   portal?: { assetDirectory: string },
+  intakeSpamLabelling: SpamLabelling = "shadow",
 ) {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
   if (
@@ -120,6 +122,7 @@ export function createProspectusBackend(
     intakeContactMode,
     intakeForms,
     portal,
+    intakeSpamLabelling,
   );
   backend.addOutput({ custom: resources.outputs });
 

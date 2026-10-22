@@ -3,12 +3,17 @@ import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { accountsDeployment } from "../accounts/deployment";
 import { parseIntakeFormRegistry } from "../server/intake-forms";
+import { spamLabellingForMode } from "../server/intake-spam-mode";
 import { portalHostingDeployment } from "../infra/lib/portal-deployment";
 import { createProspectusBackend } from "./create-backend";
 const evaluation = JSON.parse(readFileSync(resolve("evaluation-deployment.json"), "utf8"));
 const intakeContactMode = evaluation.mode === "real-contacts" ? "real-contacts" : "synthetic-only";
 if (evaluation.mode !== intakeContactMode)
   throw new Error(`Unknown evaluation-deployment.json mode ${evaluation.mode}`);
+// Committed as "shadow": score and store only, no labels and no follow-up change.
+const intakeSpamLabelling = spamLabellingForMode(evaluation.spamLabelling ?? "");
+if (evaluation.spamLabelling !== intakeSpamLabelling)
+  throw new Error(`evaluation-deployment.json spamLabelling must be "shadow" or "label"`);
 const intakeForms = parseIntakeFormRegistry(JSON.parse(readFileSync(resolve("intake-forms.json"), "utf8")));
 const artifact = resolve(".artifacts/backend/bootstrap.zip");
 if (!existsSync(artifact))
@@ -44,4 +49,5 @@ createProspectusBackend(
   intakeContactMode,
   evaluation.enabled ? intakeForms : [],
   portal ?? undefined,
+  intakeSpamLabelling,
 );

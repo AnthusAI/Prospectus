@@ -77,3 +77,12 @@ export function addDays(date: string, days: number): string {
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
+
+/** The next weekday after `now` (UTC), as `YYYY-MM-DD`: the follow-up intake sets on a demo request. */
+export function nextBusinessDay(now: Date): string {
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  do {
+    date.setUTCDate(date.getUTCDate() + 1);
+  } while ([0, 6].includes(date.getUTCDay()));
+  return date.toISOString().slice(0, 10);
+}

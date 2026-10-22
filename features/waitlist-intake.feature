@@ -55,7 +55,7 @@ Feature: Other Anthus apps send waitlist signups to Prospectus as leads
   Scenario: Honeypot
     Given the Babulus waitlist form
     When the hidden website field is filled
-    Then the visitor sees success and nothing is claimed or written
+    Then the visitor sees success and the signup is stored and labelled likely-spam (see intake-spam.feature)
 
   Scenario: Keep anth.us demo intake unchanged
     Given the deployed real-contacts demo form

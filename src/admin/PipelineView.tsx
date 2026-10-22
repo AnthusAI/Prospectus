@@ -1,3 +1,5 @@
+import { hiddenAsSpam } from "../spam-review";
+import { SpamReview } from "./SpamReview";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { IssueCollection, IssueDetailPanel, type KanbanIssue } from "@kanbus/ui";
 import { ANTHUS_APPS } from "../apps";
@@ -54,6 +56,7 @@ export function PipelineView({
   const [owner, setOwner] = useState<"everyone" | "mine">("everyone");
   const [interest, setInterest] = useState("");
   const [layout, setLayout] = useState<"board" | "list">("board");
+  const [showSpam, setShowSpam] = useState(false);
   const requestSequence = useRef(0);
 
   const query = useMemo<Query>(
@@ -93,6 +96,12 @@ export function PipelineView({
         : records;
     return interest ? merged.filter((record) => prospectInterests(record.issue).includes(interest)) : merged;
   }, [records, selected, interest]);
+  // Likely spam and spam are hidden by default, behind a visible count that can show them.
+  const hiddenSpam = useMemo(() => visible.filter((record) => hiddenAsSpam(record.issue)).length, [visible]);
+  const shown = useMemo(
+    () => (showSpam ? visible : visible.filter((record) => !hiddenAsSpam(record.issue))),
+    [visible, showSpam],
+  );
   const owners = useMemo(
     () =>
       [...new Set([configuration.actor_id, ...records.map((record) => record.issue.assignee ?? "")])].filter(
@@ -143,15 +152,30 @@ export function PipelineView({
       </div>
       <div className="one-pipeline">
         <section className="one-board" aria-label="Prospect board">
+          {loaded && (hiddenSpam > 0 || showSpam) && (
+            <p className="one-spam-hidden" role="status">
+              {showSpam
+                ? `Showing ${hiddenSpam} likely spam or spam.`
+                : `${hiddenSpam} hidden as likely spam or spam.`}{" "}
+              <button
+                type="button"
+                className="one-button small"
+                aria-pressed={showSpam}
+                onClick={() => setShowSpam((value) => !value)}
+              >
+                {showSpam ? "Hide" : "Show"}
+              </button>
+            </p>
+          )}
           {loaded ? (
             <IssueCollection
-              issues={visible.map((record) => record.issue)}
+              issues={shown.map((record) => record.issue)}
               config={configuration}
               query={query}
               view={layout}
               selectedIssueId={selected?.issue.id}
               onSelectIssue={(issue: KanbanIssue) => {
-                onSelect(visible.find((record) => record.issue.id === issue.id) ?? null);
+                onSelect(shown.find((record) => record.issue.id === issue.id) ?? null);
                 onCreating(false);
               }}
               initialScroll="start"
@@ -502,6 +526,7 @@ function ProspectDrawer({
         className="prospect-panel"
       >
         <div className="one-drawer-body">
+          <SpamReview record={record} configuration={configuration} api={api} busy={busy} write={write} />
           <p className="one-contact">
             <span className="one-muted one-mono">{source}</span>
             <br />

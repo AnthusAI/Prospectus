@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { IntakeError, IntakeService, type IntakeOptions } from "./intake";
 import { FileControlStore } from "./control-store";
+import { spamLabellingForMode } from "./intake-spam";
 import { KANBUS_API_PATH } from "../src/board";
 
 export function intakeHandler(service: IntakeService, allowedOrigin: string) {
@@ -107,6 +108,7 @@ async function main() {
       owner: "local-member",
       siteId: "prospectus-web-review",
       formId: "demo-v1",
+      spamLabelling: spamLabellingForMode(process.env.PROSPECTUS_INTAKE_SPAM_LABELLING),
       identityStore: new FileControlStore(
         process.env.PROSPECTUS_IDENTITY_DIRECTORY ?? "local-data/review/identity-claims",
       ),

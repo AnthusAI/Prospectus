@@ -25,6 +25,7 @@ import { canonicalRequest } from "../server/canonical-invoke";
 import { refileInbox } from "../server/inbox-refile";
 import { intakeContactPolicyForMode } from "../server/intake-contact-policy";
 import { parseIntakeFormRegistry } from "../server/intake-forms";
+import { spamLabellingForMode } from "../server/intake-spam-mode";
 
 const exec = promisify(execFile);
 const workspace = process.env.PROSPECTUS_INBOX_WORKSPACE ?? "cyclotron/prospectus";
@@ -127,6 +128,9 @@ const summary = await refileInbox({
   request: canonicalRequest(invoke),
   forms,
   demoPolicy: intakeContactPolicyForMode(process.env.PROSPECTUS_INBOX_CONTACT_MODE),
+  spamLabelling: spamLabellingForMode(
+    JSON.parse(await readFile("evaluation-deployment.json", "utf8")).spamLabelling,
+  ),
   apply,
 });
 console.log(JSON.stringify({ mode: apply ? "apply" : "dry-run", ...summary }, null, 2));

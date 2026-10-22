@@ -455,7 +455,7 @@ test("a different app may add its own waitlist inquiry for the same email", asyn
   }
 });
 
-test("the honeypot returns success and neither claims nor writes anything", async () => {
+test("a filled honeypot returns success and is stored and labelled, never dropped", async () => {
   const shared = await mkdtemp(join(tmpdir(), "prospectus-waitlist-shared-"));
   const crm = fakeCrm();
   const { service, close } = await openWaitlist(babulus, crm.request, shared);
@@ -465,8 +465,13 @@ test("the honeypot returns success and neither claims nor writes anything", asyn
       receipt: input.submission_id,
       message: "Waitlist signup received.",
     });
-    assert.deepEqual(crm.calls, []);
-    assert.equal(crm.records.size, 0);
+    const [record] = [...crm.records.values()];
+    assert.deepEqual(record.issue.labels, ["waitlist", "app-babulus", "likely-spam"]);
+    assert.equal(record.issue.custom!.spam_status, "likely_spam");
+    const inquiry = (record.issue.custom!.inquiries as any[])[0];
+    assert.deepEqual(inquiry.spam_reasons, ["honeypot"]);
+    assert.deepEqual(inquiry.form_signals, { honeypot_filled: true });
+    assert.equal(JSON.stringify(record).includes("spam.example"), false);
   } finally {
     await close();
     await rm(shared, { recursive: true, force: true });
@@ -537,7 +542,10 @@ test("demo intake still creates exactly the fields it created before the registr
       "latest_source",
       "next_action",
       "next_follow_up_at",
+      // Added by intake spam scoring (kanbus-2e713c), not by the registry.
+      "spam_status",
     ]);
+    assert.equal(create.body.custom.spam_status, "clean");
     assert.equal(create.body.custom.next_action, "Respond to demo request");
     assert.equal(create.body.custom.next_follow_up_at, "2026-10-19");
     assert.equal(create.body.custom.inquiries[0].kind, "demo");

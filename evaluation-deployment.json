@@ -1,5 +1,7 @@
 {
   "enabled": true,
   "mode": "real-contacts",
-  "approval": "Ryan approved real-contact intake for the anth.us engage page on 2026-10-17: privacy notice contact-v1, inquiries kept until the person asks for deletion, owner intake-queue"
+  "approval": "Ryan approved real-contact intake for the anth.us engage page on 2026-10-17: privacy notice contact-v1, inquiries kept until the person asks for deletion, owner intake-queue",
+  "spamLabelling": "shadow",
+  "spamLabellingApproval": "Ryan approved intake spam scoring on 2026-10-21 (docs/INTAKE_SPAM.md). Rollout starts in shadow: score and store only. Move to label only after the shadow review in docs/INTAKE_SPAM.md finds no false positives."
 }
