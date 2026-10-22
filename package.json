@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-lambda": "3.1152.0",
+    "@aws-sdk/client-sesv2": "3.1152.0",
     "@kanbus/ui": "file:.build/kanbus-ui/packages/ui",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

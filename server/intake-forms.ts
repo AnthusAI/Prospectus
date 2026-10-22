@@ -10,7 +10,35 @@ export interface IntakeFormThrottle {
   burst: number;
 }
 
-export type IntakeFormKind = "waitlist" | "contact";
+export type IntakeFormKind = "waitlist" | "contact" | "newsletter";
+
+/** How a newsletter presents itself in its emails and pages, and who sends it. */
+export interface NewsletterListConfig {
+  /** Display name, for example "Papyrus". */
+  name: string;
+  /** The site's home page, linked from every page and email. */
+  siteUrl: string;
+  /** The site's privacy notice, linked from every page and email. */
+  privacyUrl: string;
+  /** The From mailbox name, for example "papyrus". */
+  senderLocalPart: string;
+  /** The From domain; one of NEWSLETTER_MAIL_DOMAINS. */
+  senderDomain: string;
+}
+
+/**
+ * Sending domains that have an SES identity, DKIM, MAIL FROM and DMARC in infrastructure as code
+ * (infra/lib/newsletter-mail.ts). A subdomain per sending brand keeps list reputation apart from the
+ * root domain's own mail.
+ */
+export const NEWSLETTER_MAIL_DOMAINS = ["news.apyr.us"] as const;
+/** The one SES configuration set every list email is sent through. */
+export const NEWSLETTER_CONFIGURATION_SET = "prospectus-newsletter";
+/** The SSM SecureString holding the HMAC key for confirmation and unsubscribe tokens. */
+export const NEWSLETTER_TOKEN_PARAMETER = "/prospectus/newsletter/token-signing/v1";
+/** Route names under /intake/newsletter/ that are pages, never list ids. */
+export const NEWSLETTER_PAGES = ["confirm", "unsubscribe"] as const;
+export type NewsletterPage = (typeof NEWSLETTER_PAGES)[number];
 
 export interface IntakeFormConfig {
   enabled: boolean;
@@ -24,6 +52,8 @@ export interface IntakeFormConfig {
   defaultPagePath: string;
   attributes: Record<string, IntakeAttributeRule>;
   throttle: IntakeFormThrottle;
+  /** Present exactly when kind is newsletter. */
+  list?: NewsletterListConfig;
 }
 
 export const DEMO_ROUTE_PATH = "/intake/demo";
@@ -42,8 +72,16 @@ export function contactRoutePath(form: Pick<IntakeFormConfig, "formId">): string
   return `/intake/contact/${form.formId}`;
 }
 
+export function newsletterRoutePath(form: Pick<IntakeFormConfig, "formId">): string {
+  return `/intake/newsletter/${form.formId}`;
+}
+
+/** The confirm and unsubscribe pages that list emails link to. */
+export const newsletterPagePath = (page: NewsletterPage) => `/intake/newsletter/${page}`;
+
 /** The route a registry form is served on, by kind. */
 export function formRoutePath(form: Pick<IntakeFormConfig, "formId" | "kind">): string {
+  if (form.kind === "newsletter") return newsletterRoutePath(form);
   return form.kind === "contact" ? contactRoutePath(form) : waitlistRoutePath(form);
 }
 
@@ -109,14 +147,15 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     "defaultPagePath",
     "attributes",
     "throttle",
+    "list",
   ];
   if (Object.keys(entry).some((key) => !allowedKeys.includes(key))) invalid(formId, "unknown setting");
   if (typeof entry.formId !== "string") invalid(formId, "formId must be a string");
   if (entry.approval !== undefined && typeof entry.approval !== "string")
     invalid(formId, "approval must be a string");
   if (typeof entry.enabled !== "boolean") invalid(formId, "enabled must be true or false");
-  if (entry.kind !== "waitlist" && entry.kind !== "contact")
-    invalid(formId, "kind must be waitlist or contact");
+  if (entry.kind !== "waitlist" && entry.kind !== "contact" && entry.kind !== "newsletter")
+    invalid(formId, "kind must be waitlist, contact or newsletter");
   const kind: IntakeFormKind = entry.kind;
   if (!identifier.test(formId)) invalid(formId, "formId must be a lowercase slug");
   if (typeof entry.siteId !== "string" || !identifier.test(entry.siteId))
@@ -164,8 +203,10 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     }
     attributes[name] = hasValues ? { values: candidate.values } : { pattern: candidate.pattern };
   }
-  if (kind === "contact" && Object.keys(attributes).length)
-    invalid(formId, "a contact form takes no attributes");
+  if (kind !== "waitlist" && Object.keys(attributes).length)
+    invalid(formId, `a ${kind} form takes no attributes`);
+  if (kind !== "newsletter" && entry.list !== undefined) invalid(formId, "only a newsletter has a list");
+  const list = kind === "newsletter" ? parseNewsletterList(formId, entry.list) : undefined;
   if (Object.keys(attributes).length > 8) invalid(formId, "at most 8 attributes are allowed");
   const throttle = (entry.throttle ?? DEFAULT_FORM_THROTTLE) as IntakeFormThrottle;
   if (
@@ -190,12 +231,49 @@ export function parseIntakeForm(raw: unknown): IntakeFormConfig {
     defaultPagePath,
     attributes,
     throttle: { rate: throttle.rate, burst: throttle.burst },
+    ...(list ? { list } : {}),
   };
 }
 
+const pageUrl =
+  /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\/(?:[a-z0-9_-]+\/)*$/;
+const localPart = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+
+function parseNewsletterList(formId: string, raw: unknown): NewsletterListConfig {
+  if ((NEWSLETTER_PAGES as readonly string[]).includes(formId))
+    invalid(formId, "a newsletter formId may not be a page name");
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) invalid(formId, "a newsletter needs a list");
+  const list = raw as Record<string, unknown>;
+  const keys = ["name", "siteUrl", "privacyUrl", "senderLocalPart", "senderDomain"];
+  if (Object.keys(list).some((key) => !keys.includes(key))) invalid(formId, "unknown list setting");
+  if (typeof list.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9 .&'-]{0,39}$/.test(list.name))
+    invalid(formId, "list name must be a short plain name");
+  for (const key of ["siteUrl", "privacyUrl"] as const)
+    if (typeof list[key] !== "string" || !pageUrl.test(list[key] as string))
+      invalid(formId, `list ${key} must be an https URL ending in /`);
+  if (typeof list.senderLocalPart !== "string" || !localPart.test(list.senderLocalPart))
+    invalid(formId, "list senderLocalPart must be a plain mailbox name");
+  if (
+    typeof list.senderDomain !== "string" ||
+    !(NEWSLETTER_MAIL_DOMAINS as readonly string[]).includes(list.senderDomain)
+  )
+    invalid(formId, "list senderDomain must be a shipped mail domain");
+  return {
+    name: list.name as string,
+    siteUrl: list.siteUrl as string,
+    privacyUrl: list.privacyUrl as string,
+    senderLocalPart: list.senderLocalPart as string,
+    senderDomain: list.senderDomain as string,
+  };
+}
+
+/** A newsletter's From address, built from its registry entry. */
+export const senderAddress = (list: NewsletterListConfig) => `${list.senderLocalPart}@${list.senderDomain}`;
+
 /**
- * An origin belongs to one form, except that one site may use the same origin for one waitlist
- * and one contact form: they are served on different routes, each of which checks the origin.
+ * An origin belongs to one form, except that one site may use the same origin for one form of each
+ * kind (one waitlist, one contact form and one newsletter): they are served on different routes,
+ * each of which checks the origin.
  */
 export function assertDistinctFormOrigins(forms: readonly IntakeFormConfig[]): void {
   const owners = new Map<string, IntakeFormConfig[]>();

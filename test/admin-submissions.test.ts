@@ -167,3 +167,26 @@ test("inquiries without a parseable time sort after dated ones and keep their ra
   );
   assert.equal(details.inquiries[1].receivedAtLabel, "not a date");
 });
+
+test("a prospect shows its newsletter subscriptions with status and consent times", () => {
+  const html = render(
+    issue({
+      contact_email: "pat@example.com",
+      newsletters: {
+        "papyrus-newsletter-v1": {
+          list: "Papyrus",
+          status: "active",
+          requested_at: "2026-10-21T12:00:00.000Z",
+          confirmed_at: "2026-10-21T13:00:00.000Z",
+          notice_version: "papyrus-newsletter-v1",
+          source_page: "/blog/hello",
+        },
+      },
+    }),
+  );
+  assert.match(html, /Newsletters/);
+  assert.match(html, /<strong>Papyrus<\/strong> · Subscribed/);
+  assert.match(html, /papyrus-newsletter-v1/);
+  assert.match(html, /\/blog\/hello/);
+  assert.match(html, /Confirmed/);
+});

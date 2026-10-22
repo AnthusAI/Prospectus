@@ -7,7 +7,16 @@ import { createScopedS3ControlStore } from "./s3-control-store";
 import { createEvaluationHandler } from "./evaluation-handler";
 import { canonicalRequest } from "./canonical-invoke";
 import { intakeContactPolicyForMode } from "./intake-contact-policy";
-import { enabledIntakeForms, parseIntakeFormRegistry, formContactPolicy } from "./intake-forms";
+import {
+  NEWSLETTER_CONFIGURATION_SET,
+  NEWSLETTER_TOKEN_PARAMETER,
+  enabledIntakeForms,
+  parseIntakeFormRegistry,
+  formContactPolicy,
+} from "./intake-forms";
+import { NEWSLETTER_CONTACT_POLICY, NewsletterService } from "./newsletter";
+import { sesListMailer } from "./newsletter-mailer";
+import { parameterStoreTokenSecret } from "./newsletter-token";
 import { spamLabellingForMode } from "./intake-spam";
 
 const required = (name: string) => {
@@ -77,9 +86,23 @@ const openLocalService = async (
   }
 };
 
+const newsletterForms = forms.filter((form) => form.kind === "newsletter");
+let newsletter: NewsletterService | undefined;
+const openNewsletter = async () =>
+  (newsletter ??= new NewsletterService({
+    workspace,
+    store: identityStore,
+    forms: newsletterForms,
+    contactPolicy: NEWSLETTER_CONTACT_POLICY,
+    tokenSecret: parameterStoreTokenSecret(NEWSLETTER_TOKEN_PARAMETER),
+    mailer: sesListMailer(NEWSLETTER_CONFIGURATION_SET),
+    request,
+  }));
+
 export const handler = createEvaluationHandler({
   allowedOrigins,
   forms,
+  ...(newsletterForms.length ? { newsletter: openNewsletter } : {}),
   openForm: (form) =>
     openLocalService({
       owner: form.owner,

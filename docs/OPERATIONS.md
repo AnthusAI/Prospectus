@@ -66,7 +66,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `accounts/lab-verifier.json` | The Cyclotron lab verifier: the external role `cyclotron-lab-verifier` (created by Cyclotron in its own account) and one Allow in the API access policy for two routes; it trusts the sites in `accounts/papyrus-sites.json` and needs at least one. Enable only after Cyclotron has deployed the role and Ryan has approved the synthesized policy change | `enabled: false` |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
 | `evaluation-deployment.json` | Inquiry intake runtime, its mode (`synthetic-only` or `real-contacts`) and `spamLabelling` (`shadow` or `label`, see [INTAKE_SPAM.md](INTAKE_SPAM.md)) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
-| `intake-forms.json` | App waitlist and contact forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist) and [the contact form](ARCHITECTURE.md#integrating-an-apps-contact-form)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: true` for `https://babulus.anth.us` only (Ryan approved 2026-10-20, recorded in the entry); it collects real contacts once deployed, and acceptance is a labelled test signup after deploy. `papyrus-waitlist-v1` and `papyrus-contact-v1` are `enabled: true` for `https://p.apyr.us` only (Ryan approved 2026-10-21, recorded in each entry); enabling them adds, per form, one route, one Lambda integration and permission, one route throttle and the `https://p.apyr.us` CORS origin, and the `IntakeContactBaseUrl` output once. Acceptance is a labelled test message after deploy |
+| `intake-forms.json` | App waitlist and contact forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist) and [the contact form](ARCHITECTURE.md#integrating-an-apps-contact-form)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: true` for `https://babulus.anth.us` only (Ryan approved 2026-10-20, recorded in the entry); it collects real contacts once deployed, and acceptance is a labelled test signup after deploy. `papyrus-waitlist-v1` and `papyrus-contact-v1` are `enabled: true` for `https://p.apyr.us` only (Ryan approved 2026-10-21, recorded in each entry); enabling them adds, per form, one route, one Lambda integration and permission, one route throttle and the `https://p.apyr.us` CORS origin, and the `IntakeContactBaseUrl` output once. Acceptance is a labelled test message after deploy. `papyrus-newsletter-v1` is `enabled: true` for `https://p.apyr.us` only (Ryan approved 2026-10-21, recorded in the entry); enabling it adds its signup route, the confirm and unsubscribe page routes, the SES identity, configuration set, DNS records and token key in [Newsletter sending](#newsletter-sending), and the `IntakeNewsletterBaseUrl` output. Acceptance is a labelled test signup after deploy and SES production access |
 
 Whether a flag is deployed is a fact about the cloud account, not the repository. Check the Amplify build history before claiming an activation is live. The anth.us engage form is not a working Prospectus intake until the intake runtime is deployed and the public form's endpoint and privacy notice settings in AnthusAI/Anth.us-Papyrus point at the `EvaluationIntakeUrl` output.
 
@@ -137,6 +137,65 @@ aws ssm describe-parameters --profile papyrus-production --region us-east-1 \
 ```
 
 Never rotate, overwrite or remove this parameter. Every reader site keys its readers on the subjects it produces; a new value would turn every reader into a stranger and orphan their data. If it must ever change (for example after a suspected disclosure), that is a planned migration to a `v2` secret with `ss2_` subjects, run together with each reader site, not a rotation. Never paste the value into a ticket, chat or commit. If the parameter is lost, only the same value restores the subjects; a regenerated value is a new secret.
+
+### Newsletter sending
+
+Everything is created by the normal deployment when a newsletter entry is enabled (`infra/lib/newsletter-mail.ts`); nothing is configured by hand except the one SES production-access request below, which AWS does not offer as infrastructure as code.
+
+| Resource | Name | Monthly cost |
+| --- | --- | --- |
+| SES domain identity, Easy DKIM 2048-bit, custom MAIL FROM | `news.apyr.us`, MAIL FROM `bounce.news.apyr.us` | Free |
+| SES configuration set (bounce and complaint suppression, reputation metrics) | `prospectus-newsletter` | Free |
+| SES sending | confirmation emails now; campaigns later | $0.10 per 1,000 emails (well under $1 at expected volume) |
+| Route 53 records in the existing `apyr.us` zone (`Z0630882HVOV46S7IPV7`) | 3 DKIM CNAMEs, MX and SPF TXT on `bounce.news.apyr.us`, DMARC TXT on `_dmarc.news.apyr.us` | Free (no new zone; queries are cents at most) |
+| SSM SecureString (standard tier, `aws/ssm` key) | `/prospectus/newsletter/token-signing/v1` | Free; KMS decrypts are cached per Lambda instance (cents at most) |
+| Create-only initializer Lambda, role and log group (one month retention) | `prospectus-newsletter-token-init` | Free (runs once per deploy) |
+| API routes and throttles on the existing intake API | signup, confirm and unsubscribe | $1 per million requests (effectively free) |
+
+`news.apyr.us` is a sending-only subdomain: list reputation, bounces and DMARC results stay off `apyr.us` and off `p.apyr.us`, which receives mail through SES inbound. DMARC starts at `p=none` with no report address, because none exists; adding `rua=` (and later `p=quarantine`) is a reviewed change once a reporting mailbox exists.
+
+**After the deploy** (read only, from your Mac):
+
+```bash
+# DKIM and MAIL FROM: both must reach SUCCESS (DNS is in the same stack, usually within an hour)
+aws sesv2 get-email-identity --profile papyrus-production --region us-east-1 \
+  --email-identity news.apyr.us \
+  --query '{verified:VerifiedForSendingStatus,dkim:DkimAttributes.Status,mailFrom:MailFromAttributes.MailFromDomainStatus,configurationSet:ConfigurationSetName}'
+aws sesv2 get-configuration-set --profile papyrus-production --region us-east-1 \
+  --configuration-set-name prospectus-newsletter --query SuppressionOptions
+aws ssm describe-parameters --profile papyrus-production --region us-east-1 \
+  --parameter-filters Key=Name,Values=/prospectus/newsletter/token-signing/v1 --query 'Parameters[].Name'
+dig +short MX bounce.news.apyr.us; dig +short TXT bounce.news.apyr.us; dig +short TXT _dmarc.news.apyr.us
+```
+
+**SES production access.** The account's SES is in the sandbox (200 emails a day, verified recipients only), so a confirmation to an ordinary address fails until production access is granted. The signup is still stored and answered 202 with the send marked `send_failed`, but the person gets no email and must sign up again later, so p.apyr.us should not turn its form on until access is granted. Request it once the identity shows DKIM `SUCCESS` (Ryan approves and runs it, or has it run):
+
+```bash
+aws sesv2 put-account-details --profile papyrus-production --region us-east-1 \
+  --production-access-enabled \
+  --mail-type MARKETING \
+  --website-url https://p.apyr.us/ \
+  --contact-language EN \
+  --use-case-description "$(cat <<'TEXT'
+Anthus sends a low-volume, opt-in newsletter for Papyrus (https://p.apyr.us/) from the dedicated subdomain news.apyr.us. People subscribe only on our own website, and every subscription is double opt-in: we send exactly one confirmation email, limited to one per address per 24 hours, and nothing else is sent until the person clicks the signed confirmation link (valid 7 days). Signups that fill our honeypot field or score as likely spam get no email. Every email carries List-Unsubscribe and List-Unsubscribe-Post (RFC 8058) one-click headers and a visible unsubscribe link; an unsubscribe is permanent. We send through a configuration set whose suppression options put bounces and complaints on the account-level suppression list, so those addresses are never mailed again. The domain uses Easy DKIM (2048-bit), a custom MAIL FROM domain with SPF, and DMARC. We never buy, rent or import lists. Expected volume is under 1,000 emails a month at first: one newsletter about monthly plus confirmation emails.
+TEXT
+)"
+```
+
+AWS answers by support case, usually within a day, and may ask follow-up questions. Check the result with `aws sesv2 get-account --profile papyrus-production --region us-east-1 --query ProductionAccessEnabled`. Testing before then needs a verified recipient (`aws sesv2 create-email-identity --email-identity <your address>` and the link in the verification email, then deleting that identity afterwards); Ryan chose not to test in the sandbox, so acceptance is a labelled signup from p.apyr.us after production access.
+
+<a id="newsletter-export"></a>**Export of confirmed subscribers.** Run with your own credentials; it only lists and reads the `intake-newsletter/` prefix and the SES account suppression list. Without `--output` it prints counts per list and status only:
+
+```bash
+AWS_PROFILE=papyrus-production PROSPECTUS_NEWSLETTER_BUCKET=prospectus-records-712236451410 \
+  node --import tsx scripts/export-newsletter-subscribers.ts
+AWS_PROFILE=papyrus-production PROSPECTUS_NEWSLETTER_BUCKET=prospectus-records-712236451410 \
+  node --import tsx scripts/export-newsletter-subscribers.ts --list papyrus-newsletter-v1 --output ~/papyrus-subscribers.csv
+```
+
+The CSV (created new, mode 600) holds confirmed subscribers who have not unsubscribed and are not on the SES suppression list, with their confirmation time, notice version, request time and source page. It is personal data: keep it off shared drives and delete it after use. Campaign sending is not built; its rules are in [ARCHITECTURE.md](ARCHITECTURE.md#newsletter-mailing-lists).
+
+**Deletion requests.** Delete the subscription object for the address (its key is the hash in `NewsletterService.subscriptionHash`) and the prospect's `custom.newsletters` entry; leave the suppression object, which holds no address, so the address is still never mailed.
 
 ## Verification
 

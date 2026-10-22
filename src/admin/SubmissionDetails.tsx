@@ -77,7 +77,11 @@ export function SubmissionDetails({
   onOpenIssue: (issueId: string) => void;
 }) {
   const nothingToShow =
-    !details.needsReview && !details.inquiries.length && !details.firstSource && !details.latestSource;
+    !details.needsReview &&
+    !details.inquiries.length &&
+    !details.newsletters.length &&
+    !details.firstSource &&
+    !details.latestSource;
   if (nothingToShow) return null;
 
   function open(event: MouseEvent<HTMLAnchorElement>) {
@@ -113,6 +117,30 @@ export function SubmissionDetails({
           ["Follow up", details.followUp],
         ]}
       />
+      {details.newsletters.length > 0 && (
+        <>
+          <span className="one-field-label">Newsletters</span>
+          <ul className="one-inquiries">
+            {details.newsletters.map((newsletter) => (
+              <li key={newsletter.key} className="one-inquiry">
+                <p className="one-inquiry-head">
+                  <strong>{newsletter.list}</strong>
+                  {newsletter.status && ` · ${newsletter.status}`}
+                </p>
+                <Rows
+                  rows={[
+                    ["Requested", newsletter.requestedAt],
+                    ["Confirmed", newsletter.confirmedAt],
+                    ["Unsubscribed", newsletter.unsubscribedAt],
+                    ["Notice version", newsletter.noticeVersion],
+                    ["Source page", newsletter.sourcePage],
+                  ]}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {details.inquiries.length > 0 && (
         <ol className="one-inquiries">
           {details.inquiries.map((inquiry) => (

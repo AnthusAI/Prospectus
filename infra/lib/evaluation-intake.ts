@@ -6,18 +6,29 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import {
+  NEWSLETTER_PAGES,
   assertDistinctFormOrigins,
   enabledIntakeForms,
   formRoutePath,
+  newsletterPagePath,
   type IntakeFormConfig,
 } from "../../server/intake-forms";
 import { spamLabellingForMode, type SpamLabelling } from "../../server/intake-spam-mode";
-import { throttleRoutes } from "./throttle-routes";
+import { NewsletterMail } from "./newsletter-mail";
+import { throttleRoutes, type RouteThrottle } from "./throttle-routes";
 import { PROJECT_NAMESPACE, SITE_DOMAIN, TARGET_ACCOUNT } from "./scope";
 
 export type IntakeContactMode = "synthetic-only" | "real-contacts";
 
 export const ANTHUS_WEBSITE_ORIGINS = ["https://anth.us", "https://www.anth.us"];
+
+/**
+ * The registry entry as the runtime receives it. The approval text stays in intake-forms.json: the
+ * Lambda does not need it, and Lambda environment variables are limited to 4 KB in total.
+ */
+export function runtimeForm(form: IntakeFormConfig): IntakeFormConfig {
+  return { ...form, approval: "Recorded in intake-forms.json." };
+}
 
 export function intakeFormOriginsForMode(contactMode: IntakeContactMode): string[] {
   const prospectusOrigin = `https://${SITE_DOMAIN}`;
@@ -29,6 +40,7 @@ export class EvaluationIntake extends Construct {
   readonly url: string;
   readonly waitlistBaseUrl?: string;
   readonly contactBaseUrl?: string;
+  readonly newsletterBaseUrl?: string;
   constructor(
     scope: Construct,
     id: string,
@@ -40,6 +52,7 @@ export class EvaluationIntake extends Construct {
     super(scope, id);
     spamLabellingForMode(spamLabelling);
     const forms = enabledIntakeForms(registryForms);
+    const newsletterForms = forms.filter((form) => form.kind === "newsletter");
     assertDistinctFormOrigins(registryForms);
     if (forms.length && contactMode !== "real-contacts")
       throw new Error("Registry forms collect real contacts and need the real-contacts runtime.");
@@ -77,7 +90,9 @@ export class EvaluationIntake extends Construct {
       architecture: lambda.Architecture.X86_64,
       description:
         contactMode === "real-contacts"
-          ? "Contact and demo inquiries from anth.us and Prospectus; no email, invitations, accounts or public CRM reads."
+          ? newsletterForms.length
+            ? "Contact, demo, waitlist and newsletter intake; newsletter confirmation email only; no invitations, accounts or public CRM reads."
+            : "Contact and demo inquiries from anth.us and Prospectus; no email, invitations, accounts or public CRM reads."
           : "Synthetic .invalid inquiry evaluation only; no email, invitations, accounts or public CRM reads.",
       handler: "index.handler",
       code,
@@ -89,7 +104,7 @@ export class EvaluationIntake extends Construct {
         PROSPECTUS_INTAKE_ALLOWED_ORIGINS: formOrigins.join(","),
         PROSPECTUS_INTAKE_CONTACT_MODE: contactMode,
         PROSPECTUS_INTAKE_SPAM_LABELLING: spamLabelling,
-        ...(forms.length ? { PROSPECTUS_INTAKE_FORMS: JSON.stringify(forms) } : {}),
+        ...(forms.length ? { PROSPECTUS_INTAKE_FORMS: JSON.stringify(forms.map(runtimeForm)) } : {}),
         PROSPECTUS_EVALUATION_WORKSPACE: PROJECT_NAMESPACE,
         PROSPECTUS_EVALUATION_BUCKET: `prospectus-records-${TARGET_ACCOUNT}`,
         PROSPECTUS_CANONICAL_FUNCTION: "prospectus-api",
@@ -109,30 +124,60 @@ export class EvaluationIntake extends Construct {
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration("SyntheticSubmission", handler),
     });
+    const integrationName = { waitlist: "Waitlist", contact: "Contact", newsletter: "Newsletter" };
     const formRoutes = forms.map((form, index) => ({
       form,
       route: api.addRoutes({
         path: formRoutePath(form),
         methods: [apigw.HttpMethod.POST],
-        integration: new HttpLambdaIntegration(
-          `${form.kind === "contact" ? "Contact" : "Waitlist"}Submission${index}`,
-          handler,
-        ),
+        integration: new HttpLambdaIntegration(`${integrationName[form.kind]}Submission${index}`, handler),
       })[0],
     }));
+    const pageRoutes: RouteThrottle[] = [];
+    if (newsletterForms.length) {
+      const mail = new NewsletterMail(this, "Newsletter", {
+        forms: newsletterForms,
+        runtime: role,
+        controlPrefixArn: `arn:aws:s3:::prospectus-records-${TARGET_ACCOUNT}/_virtuus/${PROJECT_NAMESPACE}/intake-newsletter/*`,
+      });
+      // The key exists before the runtime that reads it is updated.
+      handler.node.addDependency(mail.tokenSecret);
+      for (const page of NEWSLETTER_PAGES) {
+        const methods = [apigw.HttpMethod.GET, apigw.HttpMethod.POST];
+        const routes = api.addRoutes({
+          path: newsletterPagePath(page),
+          methods,
+          integration: new HttpLambdaIntegration(
+            `Newsletter${page === "confirm" ? "Confirm" : "Unsubscribe"}Page`,
+            handler,
+          ),
+        });
+        routes.forEach((route, index) =>
+          pageRoutes.push({
+            routeKey: `${methods[index]} ${newsletterPagePath(page)}`,
+            route,
+            // Links opened from email and one-click requests from mail providers; still well inside
+            // the account's 10 concurrent Lambda executions.
+            burstLimit: 4,
+            rateLimit: 2,
+          }),
+        );
+      }
+    }
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 2, throttlingRateLimit: 1 };
     if (formRoutes.length)
-      throttleRoutes(
-        api.defaultStage!,
-        formRoutes.map(({ form, route }) => ({
+      throttleRoutes(api.defaultStage!, [
+        ...formRoutes.map(({ form, route }) => ({
           routeKey: `POST ${formRoutePath(form)}`,
           route,
           burstLimit: form.throttle.burst,
           rateLimit: form.throttle.rate,
         })),
-      );
+        ...pageRoutes,
+      ]);
     this.url = `${api.apiEndpoint}/intake/demo`;
+    this.newsletterBaseUrl = newsletterForms.length ? `${api.apiEndpoint}/intake/newsletter` : undefined;
     this.waitlistBaseUrl = forms.some((form) => form.kind === "waitlist")
       ? `${api.apiEndpoint}/intake/waitlist`
       : undefined;

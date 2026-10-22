@@ -52,6 +52,7 @@ fn validate_path(path: &str) -> Result<()> {
     let key = path
         .strip_prefix("intake-identities/")
         .or_else(|| path.strip_prefix("intake-receipts/"))
+        .or_else(|| path.strip_prefix("intake-newsletter/"))
         .and_then(|value| value.strip_suffix(".json"));
     if !key.is_some_and(|value| {
         value.len() == 64
@@ -60,7 +61,7 @@ fn validate_path(path: &str) -> Result<()> {
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }) {
         return Err(StoreError::Invalid(
-            "only hashed intake identity and receipt controls are allowed".into(),
+            "only hashed intake identity, receipt and newsletter controls are allowed".into(),
         ));
     }
     Ok(())
@@ -154,6 +155,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn binding_accepts_hashed_newsletter_controls() {
+        let root = tempfile::tempdir().unwrap();
+        let binding = IntakeControls::new(
+            Arc::new(FileStore::new(root.path()).unwrap()),
+            Scope::new("test", "prospectus").unwrap(),
+        );
+        let path = format!("intake-newsletter/{}.json", "c".repeat(64));
+        binding
+            .put_control(&path, b"{\"version\":1}", WriteCondition::Absent)
+            .await
+            .unwrap();
+        assert!(binding.get_control(&path).await.unwrap().is_some());
+        assert!(matches!(
+            binding
+                .put_control(&path, b"{\"version\":2}", WriteCondition::Absent)
+                .await,
+            Err(StoreError::Conflict)
+        ));
+    }
+
+    #[tokio::test]
     async fn binding_refuses_journal_access_and_oversized_claims() {
         let root = tempfile::tempdir().unwrap();
         let binding = IntakeControls::new(
@@ -164,6 +186,8 @@ mod tests {
             "intents/secret.json",
             "../issues/record.json",
             "intake-identities/not-a-hash.json",
+            "intake-newsletter/not-a-hash.json",
+            "intake-newsletters/0000000000000000000000000000000000000000000000000000000000000000.json",
         ] {
             assert!(matches!(
                 binding.get_control(path).await,
