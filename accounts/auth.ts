@@ -27,6 +27,8 @@ export interface ProductRegistration {
     clientId: string;
   };
   executionDelegation?: ExecutionDelegation;
+  /** Absent for every product except a public-reader Papyrus site, which receives pairwise site subjects only. */
+  audience?: "public-reader";
 }
 export interface RestEvent {
   httpMethod: string;
@@ -34,6 +36,8 @@ export interface RestEvent {
   headers?: Record<string, string | undefined>;
   body?: string | null;
   isBase64Encoded?: boolean;
+  queryStringParameters?: Record<string, string | undefined> | null;
+  multiValueQueryStringParameters?: Record<string, string[] | undefined> | null;
   requestContext?: { identity?: { userArn?: string; accountId?: string }; stage?: string };
 }
 export type VerifiedCaller =

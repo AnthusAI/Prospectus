@@ -10,6 +10,7 @@ Feature: Register each Papyrus site through reviewed configuration
     Given a reviewed site entry with audience public-reader
     When the site is registered
     Then the site may enroll its readers and read their own profile through the identity routes
+    And it identifies each reader by a pairwise site subject and never receives the Person ID (see site-subjects.feature)
     And it holds no capabilities, so it cannot list accounts, authorize an operation or read the account directory
     And the lab verifier does not trust its tokens
 

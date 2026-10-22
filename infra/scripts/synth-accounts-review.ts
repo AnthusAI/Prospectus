@@ -74,6 +74,43 @@ if (labVerifier) {
   ]);
 } else
   assert.equal(verifierAllows.length, 0, "A disabled lab verifier must leave no trace in the access policy");
+// The site subject secret: one create-only custom resource, retained, and no SSM parameter in the template.
+const siteSubjectSecret = accountsDeployment()!.siteSubjectSecret;
+const secretResources = resources.filter(
+  (resource) => resource.Type === "Custom::ProspectusSiteSubjectSecret",
+);
+assert.equal(resources.filter((resource) => resource.Type.startsWith("AWS::SSM::")).length, 0);
+if (siteSubjectSecret) {
+  assert.equal(secretResources.length, 1);
+  assert.equal(secretResources[0].Properties.ParameterName, siteSubjectSecret.parameterName);
+  assert.equal(secretResources[0].DeletionPolicy, "Retain");
+  assert.equal(secretResources[0].UpdateReplacePolicy, "Retain");
+  const initializerPolicy = resources.find(
+    (resource) =>
+      resource.Type === "AWS::IAM::Policy" &&
+      JSON.stringify(resource.Properties.PolicyDocument).includes("ssm:PutParameter"),
+  );
+  const putStatements = initializerPolicy.Properties.PolicyDocument.Statement.filter((statement: any) =>
+    JSON.stringify(statement.Action).includes("ssm:"),
+  );
+  assert.deepEqual(
+    putStatements.map((statement: any) => [statement.Effect, statement.Action, statement.Condition ?? null]),
+    [
+      ["Allow", "ssm:PutParameter", null],
+      ["Deny", "ssm:PutParameter", { StringEquals: { "ssm:Overwrite": "true" } }],
+    ],
+  );
+  for (const statement of putStatements)
+    assert.ok(
+      JSON.stringify(statement.Resource).endsWith(`:parameter${siteSubjectSecret.parameterName}"]]}`),
+    );
+  assert.equal(
+    resources.filter((resource) => JSON.stringify(resource.Properties ?? {}).includes("ssm:PutParameter"))
+      .length,
+    1,
+    "Only the initializer may put the parameter",
+  );
+} else assert.equal(secretResources.length, 0);
 assert.ok(
   !resources.some(
     (resource) =>

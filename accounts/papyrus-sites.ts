@@ -120,7 +120,7 @@ export function papyrusSiteRegistrations(value: unknown): ProductRegistration[] 
       clientIds: [site.clientId],
       capabilities: reader ? [] : [...papyrusSiteCapabilities],
       enabled: true,
-      ...(reader ? {} : { accountDirectory: true as const }),
+      ...(reader ? { audience: "public-reader" as const } : { accountDirectory: true as const }),
       googleFederation: {
         policy: "google-only-unlinked-v1" as const,
         reviewedPolicyId: site.federationReviewId,
