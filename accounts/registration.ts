@@ -29,7 +29,6 @@ const registrationFields = [
   "accountDirectory",
   "audience",
   "executionDelegation",
-  "audience",
 ];
 const federationFields = ["policy", "reviewedPolicyId", "clientId"];
 const delegationFields = [
@@ -132,20 +131,6 @@ const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
     "Product capabilities must be known operations.",
   ),
   rule(({ item }) => typeof item.enabled === "boolean", "A product enabled flag must be a boolean."),
-  rule(
-    ({ item }) => item.audience === undefined || item.audience === "public-reader",
-    "A product audience must be absent or public-reader.",
-  ),
-  // A public reader gets pairwise site subjects and nothing about accounts.
-  rule(
-    ({ item }) =>
-      item.audience === undefined ||
-      (item.capabilities.length === 0 &&
-        item.googleFederation?.policy === "google-only-unlinked-v1" &&
-        !item.accountDirectory &&
-        !item.executionDelegation),
-    "A public-reader product holds no capabilities, directory or delegation.",
-  ),
   rule(
     ({ item, registeredProducts }) => !registeredProducts.has(item.product),
     "Each product may be registered only once.",

@@ -29,8 +29,6 @@ export interface ProductRegistration {
     clientId: string;
   };
   executionDelegation?: ExecutionDelegation;
-  /** Absent for every product except a public-reader Papyrus site, which receives pairwise site subjects only. */
-  audience?: "public-reader";
 }
 export interface RestEvent {
   httpMethod: string;
