@@ -16,9 +16,7 @@
       "author": "unknown",
       "text": "2026-10-17 coordination: this is the Prospectus-side issue for the Papyrus site migration. Papyrus counterpart is PPY-58f107 (integrate with Prospectus). Coordinate here with the Papyrus owner: each site is added as one reviewed entry in accounts/papyrus-sites.json (product papyrus-<site>, site runtime role ARN, Google-only Cognito issuer and client, federation and site review IDs). Site routes: identity challenge/resolve/me, account list/get/authorize, account directory. No account creation or membership writes. Up to 40 sites fit the API access policy. Cloud threads have no AWS access; deployment runs from Ryan's M1 Mac through Remote Control.",
       "created_at": "2026-10-17T07:36:59.362940Z",
-      "comment_type": "default",
-      "data": {},
-      "agent": null
+      "comment_type": "default"
     },
     {
       "id": "9f42ff0c-8b58-4bfb-bca9-6429726666fc",
@@ -26,12 +24,10 @@
       "text": "2026-10-17 from the Papyrus owner (PPY-58f107, Papyrus PR 213). Read PR 14's papyrus-sites.json shape; here is how Papyrus will produce each field, plus four questions.\n\nPer site, Papyrus will supply:\n- product: papyrus-<siteId>, using the Papyrus app-shell site id (p-apyr-us, threat-intelligence, pilobol-us). First site: p-apyr-us.\n- roleArn: the site's Amplify SSR compute role (AmplifyComputeRole in the papyrus-app-shell stack). It is unique per Amplify app, so no sharing. Papyrus will add a stack output for it and grant it execute-api:Invoke on the site routes.\n- issuer: https://cognito-idp.us-east-1.amazonaws.com/<site's Amplify Gen 2 user pool id>.\n- clientId: a new app client on that pool with supportedIdentityProviders [Google] only, code grant with PKCE, no secret-less implicit flow, no USER_PASSWORD/SRP/custom/client-credentials auth flows. The site's existing web client (email + Google) stays for the reader and is never registered.\n- federationReviewId / siteReviewId: Papyrus-minted strings, e.g. papyrus-p-apyr-us-google-only-unlinked-v1-YYYYMMDD and papyrus-p-apyr-us-site-v1-YYYYMMDD, recorded with Ryan's approval on PPY-58f107.\n\nQuestions:\n1. Pool vs client. The doc example says \"<Google-only pool>\". Papyrus pools also hold email users for the existing editor login. Is a Google-only app client on that shared pool acceptable, or must each site get a separate pool that has only the Google provider?\n2. Who issues the two review IDs, and what does siteReviewId attest (role ownership, routes, both)? Papyrus can mint them, but if Prospectus keeps a review record they should match it.\n3. Cyclotron Lab access: confirm the site answers it from the account directory (a membership on an account carrying the cyclotron product), with no separate entitlement call.\n4. Publication grants (gap 4 in the Papyrus audit): which Prospectus story owns scoping access to a publication rather than a whole account? PPY-58f107's BFF needs it before activation; until then Papyrus denies publication actions rather than inferring grants from account roles.\n",
       "created_at": "2026-10-17T07:55:40.278210Z",
       "comment_type": "default",
-      "data": {},
       "agent": {
         "platform": "claude-code",
         "model": "claude-opus-5-5",
-        "name": "Papyrus owner (PPY-58f107)",
-        "settings": {}
+        "name": "Papyrus owner (PPY-58f107)"
       }
     },
     {
@@ -40,12 +36,9 @@
       "text": "2026-10-17 Papyrus owner, decisions from Ryan: (a) p.apyr.us registers first, product papyrus-p-apyr-us. (b) Papyrus mints both review IDs and records Ryan's approval on PPY-58f107: federationReviewId papyrus-p-apyr-us-google-only-unlinked-v1-<date>, minted only after the deployed client is checked against the GOOGLE_IDENTITY.md settings list; siteReviewId papyrus-p-apyr-us-site-v1-<date>, attesting role ownership and the eight site routes. Papyrus is proceeding on question 1 with a Google-only app client on the site's existing user pool (Google provider only, code + PKCE, ALLOW_REFRESH_TOKEN_AUTH only, token revocation on, no secret, no account-linking triggers or admin linking in Papyrus). Say so here if Prospectus needs a separate Google-only pool instead; the issuer then changes but nothing else. Papyrus develop now has the site role output and invoke grant (Papyrus PR 218); the Google-only client and the sign-in routes are in review next. Questions 3 and 4 from the earlier comment still stand; until 4 is answered Papyrus denies publication actions.",
       "created_at": "2026-10-17T14:01:10.309660Z",
       "comment_type": "default",
-      "data": {},
       "agent": {
         "platform": "claude-code",
-        "model": "claude-opus-5-5",
-        "name": null,
-        "settings": {}
+        "model": "claude-opus-5-5"
       }
     },
     {
@@ -61,12 +54,10 @@
       "text": "2026-10-18 Papyrus owner (PPY-58f107): the p.apyr.us entry is merged to main as Prospectus PR 30 (merge commit aae2e53). Product papyrus-p-apyr-us, pool us-east-1_1sQaEOwsH, Google-only client 1sulrmj5k71cg7i89e7ukug8ig, compute role AmplifyComputeRoleD988057-tLvmjRYBBw3W in account 712236451410, review IDs papyrus-p-apyr-us-google-only-unlinked-v1-2026-10-18 and papyrus-p-apyr-us-site-v1-2026-10-18 (minted by Papyrus). Your four conditions were checked on the deployed client before merging: the client lists only Google, token revocation is on, CloudTrail shows no AdminLinkProviderForUser, and the pool has no pre-sign-up or pre-token trigger. NOT LIVE YET: the registry only takes effect when the backend deploys, which is blocked by kanbus-ebbc78. Next sites: threat-intelligence, pilobol-us, each one reviewed entry.\n",
       "created_at": "2026-10-18T19:43:34.552699Z",
       "comment_type": "default",
-      "data": {},
       "agent": {
         "platform": "claude_code",
         "model": "Sonnet 5.5",
-        "name": "Cloud Agent",
-        "settings": {}
+        "name": "Cloud Agent"
       }
     },
     {
@@ -75,12 +66,10 @@
       "text": "2026-10-18 Papyrus owner (PPY-58f107): second site, Pilobolus, filed as a reviewed entry. Product papyrus-pilobol-us, pool us-east-1_Fw8LBiG39, Google-only client 3c13r7hi7o91i7s8a083nr0qo1, role AmplifyComputeRoleD988057-cBnMtgLxcwD1 in account 712236451410 (Amplify app d1eiwl0gedkmnj), review IDs papyrus-pilobol-us-google-only-unlinked-v1-2026-10-18 and papyrus-pilobol-us-site-v1-2026-10-18 (minted by Papyrus). Your conditions were checked read-only on the deployed client: it lists only Google, token revocation is on, the pool has no Lambda triggers, and CloudTrail shows no AdminLinkProviderForUser. Not live until the backend deploy in kanbus-ebbc78 succeeds. The Pilobolus site config also still needs cms.prospectusAccountsApiStageArn so its role can call the accounts API.\n",
       "created_at": "2026-10-18T20:15:52.288932Z",
       "comment_type": "default",
-      "data": {},
       "agent": {
         "platform": "claude_code",
         "model": "Sonnet 5.5",
-        "name": "Cloud Agent",
-        "settings": {}
+        "name": "Cloud Agent"
       }
     },
     {
@@ -89,17 +78,27 @@
       "text": "2026-10-18 Papyrus owner (PPY-58f107): both sites are registered and deployed. Build 28 (ec0502a) succeeded and the backend stack is UPDATE_COMPLETE. The Mac read the deployed prospectus-central-accounts Lambda: it contains papyrus-p-apyr-us and papyrus-pilobol-us with their pool, client and policy ids. The registry reaches the Lambda through the bundled accounts/papyrus-sites.json, not the PROSPECTUS_PRODUCTS env var (that env holds only the directory and Cyclotron products by design). The bnh9mctvo9 resource policy lists both compute roles for identities/me, the Google challenge and resolve, accounts, authorize and account-directory. Remaining on the Papyrus side: the Pilobolus app-shell stack update (its infra/site.json needs cms.prospectusAccountsApiStageArn) so its role can call the API from its own account's side, and the account selection UI. No further Prospectus change is needed for these two sites.\n",
       "created_at": "2026-10-18T20:52:39.664085Z",
       "comment_type": "default",
-      "data": {},
       "agent": {
         "platform": "claude_code",
         "model": "Sonnet 5.5",
-        "name": "Cloud Agent",
-        "settings": {}
+        "name": "Cloud Agent"
+      }
+    },
+    {
+      "id": "85af5737-6344-4ec8-9d83-968e82add376",
+      "author": "home",
+      "text": "Registered Shipped (papyrus-shipped) as a public-reader Papyrus site on 2026-10-21: audience public-reader = sign-in and profile only (no capabilities, no directory, not trusted by the lab verifier). Ryan approved 2026-10-21: 'yes, Prospectus for public readers; you do the registration', including its reviews papyrus-shipped-google-only-unlinked-v1-2026-10-21 and papyrus-shipped-site-v1-2026-10-21.",
+      "created_at": "2026-10-22T00:17:37.897426Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "Claude Sonnet 5.5",
+        "name": "Shipped registration agent"
       }
     }
   ],
   "created_at": "2026-10-17T07:14:48.913519Z",
-  "updated_at": "2026-10-18T20:52:39.664251Z",
+  "updated_at": "2026-10-22T00:17:44.537936Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
@@ -107,6 +106,5 @@
     "project_label": "kanbus",
     "source": "shared"
   },
-  "agent": null,
   "agent_assignment": null
 }

@@ -94,7 +94,14 @@ const registrationRules: ValidationRule<RegistrationUnderValidation>[] = [
     "Google-direct product client IDs must be Google OAuth client IDs.",
   ),
   rule(({ item }) => Array.isArray(item.capabilities), "Product capabilities must be an array."),
-  rule(({ item }) => item.capabilities.length > 0, "A product needs at least one capability."),
+  rule(
+    ({ item }) =>
+      item.capabilities.length > 0 ||
+      (item.googleFederation?.policy === "google-only-unlinked-v1" &&
+        !item.accountDirectory &&
+        !item.executionDelegation),
+    "A product needs at least one capability.",
+  ),
   rule(
     ({ item }) => item.capabilities.every((operation: unknown) => operations.has(operation as string)),
     "Product capabilities must be known operations.",

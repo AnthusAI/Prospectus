@@ -6,6 +6,13 @@ Feature: Register each Papyrus site through reviewed configuration
     And the site may read the person's account directory to answer Cyclotron Lab access
     And the site may not create accounts or change memberships
 
+  Scenario: A public-reader site
+    Given a reviewed site entry with audience public-reader
+    When the site is registered
+    Then the site may enroll its readers and read their own profile through the identity routes
+    And it holds no capabilities, so it cannot list accounts, authorize an operation or read the account directory
+    And the lab verifier does not trust its tokens
+
   Scenario: Ambiguous or unreviewed site entries
     Given a site entry with extra fields, a missing review, a non-Papyrus product name or a role shared with another registration
     When the registry loads

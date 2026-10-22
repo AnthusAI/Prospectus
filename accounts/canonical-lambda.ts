@@ -6,7 +6,7 @@ import type { RestEvent } from "./auth";
 import { registrations } from "./registration";
 import grants from "./operator-grants.json";
 import reviewedPapyrusSites from "./papyrus-sites.json";
-import { papyrusSiteRegistrations } from "./papyrus-sites";
+import { editorSiteRegistrations, papyrusSiteRegistrations } from "./papyrus-sites";
 import reviewedLabVerifier from "./lab-verifier.json";
 import { labVerifier, reviewedLabVerifierEntry } from "./lab-verifier";
 import reviewedDeployment from "./deployment.json";
@@ -34,7 +34,9 @@ const papyrusSites = papyrusSiteRegistrations(reviewedPapyrusSites),
 // The lab verifier trusts exactly the reviewed Papyrus sites registered here; it has no issuer or client list.
 const products = registrations(
     [...JSON.parse(process.env.PROSPECTUS_PRODUCTS ?? "[]"), ...papyrusSites],
-    labVerifierEntry ? { labVerifier: labVerifier(labVerifierEntry, papyrusSites) } : {},
+    labVerifierEntry
+      ? { labVerifier: labVerifier(labVerifierEntry, editorSiteRegistrations(papyrusSites)) }
+      : {},
   ),
   reviewedGrants = operatorGrants(grants),
   membershipLookup = membershipLookupMode(
