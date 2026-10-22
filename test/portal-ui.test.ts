@@ -97,6 +97,10 @@ test(
       await page.goto(root);
       await expect(page.getByRole("heading", { name: "Every Anthus app, in one place." })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Request access" })).toHaveAttribute(
+        "href",
+        "https://anth.us/engage/?solution=Anthus%20One&cta=portal",
+      );
 
       await page.evaluate(() =>
         sessionStorage.setItem(
@@ -112,6 +116,10 @@ test(
       mode = "none";
       await page.reload();
       await expect(page.getByRole("heading", { name: "You don’t have a workspace yet" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Request access" })).toHaveAttribute(
+        "href",
+        "https://anth.us/engage/?solution=Anthus%20One&cta=portal",
+      );
 
       mode = "two";
       await page.reload();

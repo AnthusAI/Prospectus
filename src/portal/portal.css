@@ -266,3 +266,9 @@
     min-width: 0;
   }
 }
+
+/* The "Request access" link under a "not yet available" note sits at its natural width, not stretched. */
+.one-unavailable .portal-request-access {
+  align-self: flex-start;
+  margin-top: 6px;
+}
