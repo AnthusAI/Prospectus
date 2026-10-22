@@ -4,7 +4,7 @@ import {
   CLIENT_ID_PATTERN,
   COGNITO_ISSUER_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
-  hasExactlyKeys,
+  hasOnlyKeys,
   matchesStringPattern,
   requireRules,
   throwErrorWithPrefix,
@@ -19,6 +19,8 @@ export interface PapyrusSiteEntry {
   clientId: string;
   federationReviewId: string;
   siteReviewId: string;
+  /** Absent: an editor site that reads its people's accounts. "public-reader": sign-in and profile only. */
+  audience?: "public-reader";
 }
 export const papyrusSiteCapabilities: readonly Operation[] = [
   "console:read",
@@ -38,14 +40,27 @@ export const papyrusSiteRoutes: readonly string[] = [
 const siteRolePattern = /^arn:aws:iam::\d{12}:role\/(?:[A-Za-z0-9+=,.@_-]+\/)*[A-Za-z0-9+=,.@_-]+$/;
 const PAPYRUS_PRODUCT_PATTERN = /^papyrus-[a-z0-9][a-z0-9-]{0,31}$/;
 const MAXIMUM_PAPYRUS_SITES = 40;
-const siteEntryKeys = "clientId,federationReviewId,issuer,product,roleArn,siteReviewId";
+const siteEntryKeys = [
+  "audience",
+  "clientId",
+  "federationReviewId",
+  "issuer",
+  "product",
+  "roleArn",
+  "siteReviewId",
+];
+const requiredSiteKeys = siteEntryKeys.filter((key) => key !== "audience");
 const isString = (value: unknown): value is string => typeof value === "string";
 
 const siteEntryRules: ValidationRule<PapyrusSiteEntry>[] = [
   rule((site) => !!site && typeof site === "object", "A Papyrus site entry must be an object."),
   rule(
-    (site) => hasExactlyKeys(site, siteEntryKeys),
+    (site) => hasOnlyKeys(site, siteEntryKeys) && requiredSiteKeys.every((key) => key in site),
     "A Papyrus site entry must have exactly the reviewed fields.",
+  ),
+  rule(
+    (site) => site.audience === undefined || site.audience === "public-reader",
+    "A Papyrus site audience must be absent or public-reader.",
   ),
   rule((site) => isString(site.product), "A Papyrus site product must be a string."),
   rule(
@@ -95,14 +110,17 @@ export function papyrusSiteRegistrations(value: unknown): ProductRegistration[] 
     if (roles.has(site.roleArn)) throw new Error("Each Papyrus site needs its own runtime role.");
     products.add(site.product);
     roles.add(site.roleArn);
+    // A public-reader site gets sign-in and a profile (identity challenge, resolve and /me) and nothing else: no
+    // capabilities, so no account, membership or console decision, and no account directory.
+    const reader = site.audience === "public-reader";
     return {
       product: site.product,
       roleArn: site.roleArn,
       issuer: site.issuer,
       clientIds: [site.clientId],
-      capabilities: [...papyrusSiteCapabilities],
+      capabilities: reader ? [] : [...papyrusSiteCapabilities],
       enabled: true,
-      accountDirectory: true as const,
+      ...(reader ? {} : { accountDirectory: true as const }),
       googleFederation: {
         policy: "google-only-unlinked-v1" as const,
         reviewedPolicyId: site.federationReviewId,
@@ -111,3 +129,7 @@ export function papyrusSiteRegistrations(value: unknown): ProductRegistration[] 
     };
   });
 }
+
+/** Registrations that may be trusted by the lab verifier: editor sites only, never public readers. */
+export const editorSiteRegistrations = (sites: readonly ProductRegistration[]) =>
+  sites.filter((site) => site.capabilities.length > 0);

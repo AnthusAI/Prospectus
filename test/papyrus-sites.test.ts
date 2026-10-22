@@ -5,6 +5,7 @@ import {
   papyrusSiteRoutes,
   type PapyrusSiteEntry,
 } from "../accounts/papyrus-sites";
+import { editorSiteRegistrations } from "../accounts/papyrus-sites";
 import { registrations } from "../accounts/registration";
 import reviewedPapyrusSites from "../accounts/papyrus-sites.json";
 
@@ -75,4 +76,32 @@ test("more than twenty sites register exactly alongside the existing products", 
   };
   assert.equal(registrations([directory, ...sites]).length, 41);
   assert.throws(() => registrations([directory, { ...sites[0], roleArn: directory.roleArn }]));
+});
+
+test("a public-reader site gets sign-in and a profile only: no capabilities and no account directory", () => {
+  const [registration] = papyrusSiteRegistrations([{ ...syntheticSite(1), audience: "public-reader" }]);
+  assert.deepEqual(registration.capabilities, []);
+  assert.equal(registration.accountDirectory, undefined);
+  assert.equal(registration.googleFederation?.policy, "google-only-unlinked-v1");
+  assert.equal(registrations([registration]).length, 1);
+});
+
+test("public readers register beside editor sites but the lab verifier never trusts them", () => {
+  const sites = papyrusSiteRegistrations([
+    syntheticSite(1),
+    { ...syntheticSite(2), audience: "public-reader" },
+  ]);
+  assert.equal(registrations(sites).length, 2);
+  assert.deepEqual(
+    editorSiteRegistrations(sites).map((site) => site.product),
+    ["papyrus-synthetic-1"],
+  );
+});
+
+test("only the public-reader audience is accepted, and empty capabilities need the reader shape", () => {
+  for (const audience of ["editor", "", null, "public-reader "])
+    assert.throws(() => papyrusSiteRegistrations([{ ...syntheticSite(1), audience } as never]));
+  const [reader] = papyrusSiteRegistrations([{ ...syntheticSite(1), audience: "public-reader" }]);
+  assert.throws(() => registrations([{ ...reader, accountDirectory: true }]));
+  assert.throws(() => registrations([{ ...reader, googleFederation: undefined }]));
 });

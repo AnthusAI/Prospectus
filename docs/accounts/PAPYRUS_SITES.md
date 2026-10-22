@@ -21,6 +21,10 @@ Add one reviewed entry to `accounts/papyrus-sites.json`:
 
 Unknown fields, missing reviews, non-`papyrus-` product names and roles shared with any other registration are refused at synthesis and at runtime. The central Lambda reads the same bundled file, so the registry does not grow its environment. The registry holds at most 40 sites, but the API Gateway access policy limit (8192 characters) is reached sooner with the real Amplify role names (about 95 characters each): with the other registrations and the lab verifier enabled, twenty deployed-length sites fit and twenty-four do not. `infra/test/accounts-plane.test.ts` checks that size.
 
+### Public-reader sites
+
+A site whose readers are the general public (no account membership) adds `"audience": "public-reader"` to its entry. The only other value is absence. A public reader signs in with Google through the site's Google-only client and gets a Prospectus person identity that the site uses for a public handle, votes, ratings, comments and karma; Prospectus never gives the site a name or email to publish. The registration has no capabilities and no account directory, so the site can run the identity challenge, resolve and `/v1/identities/me` and nothing about accounts: the account list is empty, account detail, authorize and directory calls are refused, and the lab verifier does not trust its tokens. Shipped (`papyrus-shipped`) is the first, registered 2026-10-21 on Ryan's decision ("yes, Prospectus for public readers; you do the registration"), who also approved its reviews (`papyrus-shipped-google-only-unlinked-v1-2026-10-21`, `papyrus-shipped-site-v1-2026-10-21`).
+
 ## What a site may call
 
 Identity challenge, resolve and `/v1/identities/me`; account list, detail and authorize; and the account directory, which lists every product on each of the person's own accounts. Sites cannot create accounts or change memberships. Each site's own runtime role also needs `execute-api:Invoke` on these routes in its own account.

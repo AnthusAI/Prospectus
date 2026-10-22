@@ -103,7 +103,10 @@ test("each registration field failure names the field", () => {
     ],
     [
       "capability list empty",
-      (registration) => (registration.capabilities = []),
+      (registration) => {
+        registration.capabilities = [];
+        registration.accountDirectory = true;
+      },
       "A product needs at least one capability.",
     ],
     [
