@@ -19,13 +19,16 @@ export interface ConditionalControlStore {
 export class FileControlStore implements ConditionalControlStore {
   constructor(private directory: string) {}
   private path(key: string) {
-    if (!/^intake-(identities|receipts)\/[a-f0-9]{64}\.json$/.test(key))
+    if (!/^intake-(identities|receipts|newsletter)\/[a-f0-9]{64}\.json$/.test(key))
       throw new Error("Invalid intake control path.");
+    const [prefix, name] = key.split("/");
     return join(
       this.directory,
-      key.startsWith("intake-identities/")
-        ? key.slice("intake-identities/".length)
-        : `receipt-${key.slice("intake-receipts/".length)}`,
+      prefix === "intake-identities"
+        ? name
+        : prefix === "intake-receipts"
+          ? `receipt-${name}`
+          : `newsletter-${name}`,
     );
   }
   async getControl(key: string): Promise<ControlObject | null> {

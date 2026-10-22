@@ -13,7 +13,8 @@ Prospectus runs in AWS account `712236451410` (papyrus-production), region `us-e
 | Accounts BFF | `prospectus-accounts-directory-bff` Lambda, HTTP API route `/api/saas/{proxy+}` | Browser-facing account routes, JWT protected; signs central requests |
 | Anthus One accounts BFF | `prospectus-anthus-one-bff` Lambda behind its own HTTP API `anthus-one` (`infra/lib/accounts-plane.ts`, `infra/lib/prospectus-backend.ts`) | The portal's customer routes only, protected by a Google ID token (JWT authorizer with issuer `https://accounts.google.com` and the Anthus One client as audience); no Cognito pool |
 | Central accounts service | `prospectus-central-accounts` Lambda behind the IAM-protected `prospectus-accounts` REST API, stage `api` | Identity, accounts, memberships, entitlements, operator directory |
-| Inquiry intake | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` and one `POST /intake/waitlist/<formId>` route per enabled registry form | Public inquiry and app waitlist capture into the CRM |
+| Inquiry intake | `prospectus-intake-evaluation` Lambda behind its own HTTP API, route `POST /intake/demo` and one `POST /intake/<kind>/<formId>` route per enabled registry form, plus the newsletter confirm and unsubscribe pages | Public inquiry, app waitlist and contact capture into the CRM; newsletter signups with double opt-in |
+| Newsletter sending | SES identity `news.apyr.us` and configuration set `prospectus-newsletter` (`infra/lib/newsletter-mail.ts`), DNS in the existing `apyr.us` zone | Confirmation emails for newsletter signups; bounces and complaints suppressed by SES |
 | Accounts client SDK | `packages/accounts-client` | Browser, React and server clients for hosts |
 | Native bridge | `local-dependencies/intake-control` (Rust, `prospectus-identity-files`) | Conditional file writes through pinned Virtuus for identities, accounts and intake controls |
 
@@ -26,6 +27,7 @@ All canonical data lives in one private versioned S3 bucket, `prospectus-records
 | CRM records | `cyclotron/prospectus/` (the namespace name is retained data identity, not a second Cyclotron application) |
 | CRM control metadata | `_virtuus/cyclotron/prospectus/` |
 | Intake claims, receipts and inbox | `_virtuus/cyclotron/prospectus/intake-identities/` and `intake-receipts/` (inbox items are hashed objects under `intake-receipts/`, distinguished by `kind: "intake-inbox"`) |
+| Newsletter subscriptions and suppressions | `_virtuus/cyclotron/prospectus/intake-newsletter/` (hashed objects, `kind: "newsletter-subscription"` or `"newsletter-suppression"`) |
 | Identities | `prospectus-central/identities/` and `_virtuus/prospectus-central/identities/` |
 | Accounts | `prospectus-central/accounts/` and `_virtuus/prospectus-central/accounts/` |
 
@@ -157,13 +159,13 @@ If the inbox itself cannot be written, the handler still tries to file directly 
 
 The inbox object is the durable copy. The Lambda's local ledger remains a disposable per-invocation cache.
 
-Intake sends no email and creates no accounts, invitations, bookings, billing or permissions. Manual creation, import and email edits do not acquire intake claims, so uniqueness holds only among intake writers.
+Intake sends no email except the newsletter confirmation described in [Newsletter mailing lists](#newsletter-mailing-lists), and creates no accounts, invitations, bookings, billing or permissions. Manual creation, import and email edits do not acquire intake claims, so uniqueness holds only among intake writers.
 
 ## Integrating an app's waitlist
 
 Other Anthus apps send waitlist signups to Prospectus instead of running their own waitlist backend. A signup is intake: it creates or extends a lead (a `prospect`) and nothing else. It never creates an account, membership, entitlement, invitation, appointment or email, and it is not an Anthus One product access request.
 
-**Registry.** `intake-forms.json` lists the forms. Each entry names its app (`siteId`), `formId`, `kind` (`waitlist`, or `contact`, see [Integrating an app's contact form](#integrating-an-apps-contact-form)), the `origins` allowed to post it, its own `noticeVersion`, the `owner` queue, a `defaultPagePath`, the `attributes` it accepts (each an enum `values` list or a fully anchored `pattern` that starts with `^` and ends with `$`) and an optional `throttle`. Source identity is decided from the entry that the request path selects and whose `origins` include the request `Origin`; the body can never name a site, form, owner or status. The same file drives the gateway CORS origins, the per-form route and throttle, and the Lambda's origin check, so each origin is accepted only for its own form: a Babulus origin cannot post to `/intake/demo`, and an anth.us origin cannot post a Babulus signup. Origins must be unique across forms, except that one site may share an origin between its one waitlist and its one contact form, and may not be a demo origin. An entry with `"enabled": false` adds no route, origin or configuration. Enabling one needs a recorded `approval` string and the `real-contacts` runtime, and deploys on merge.
+**Registry.** `intake-forms.json` lists the forms. Each entry names its app (`siteId`), `formId`, `kind` (`waitlist`, or `contact`, see [Integrating an app's contact form](#integrating-an-apps-contact-form)), the `origins` allowed to post it, its own `noticeVersion`, the `owner` queue, a `defaultPagePath`, the `attributes` it accepts (each an enum `values` list or a fully anchored `pattern` that starts with `^` and ends with `$`) and an optional `throttle`. Source identity is decided from the entry that the request path selects and whose `origins` include the request `Origin`; the body can never name a site, form, owner or status. The same file drives the gateway CORS origins, the per-form route and throttle, and the Lambda's origin check, so each origin is accepted only for its own form: a Babulus origin cannot post to `/intake/demo`, and an anth.us origin cannot post a Babulus signup. Origins must be unique across forms, except that one site may share an origin between its one waitlist, its one contact form and its one newsletter, and may not be a demo origin. An entry with `"enabled": false` adds no route, origin or configuration. Enabling one needs a recorded `approval` string and the `real-contacts` runtime, and deploys on merge.
 
 **Request.** `POST /intake/waitlist/<formId>` on the intake API (the `IntakeWaitlistBaseUrl` deployment output plus `/<formId>`). Babulus (`babulus-waitlist-v1`) is enabled for `https://babulus.anth.us` only (Ryan's approval is recorded in the entry); other Babulus origins are added by a later reviewed change. Its URL goes live when the change deploys, and real-cloud acceptance is a labelled test signup after that deploy.
 
@@ -254,10 +256,74 @@ Content-Type: application/json
 
 **Inquiry kind.** The stored inquiry has `kind: "contact"`, not `demo`. Two reasons: the follow-up wording differs ("Respond to inquiry", because a contact message is not necessarily a demo request), and the kind lets the refile script route a pending item back to its registry form (a `demo` kind is always the anth.us form). Everything that treated a non-waitlist inquiry as a message (spam rules, the follow-up restore, Not spam) treats `contact` the same way as `demo`. The `source` (`site_id`, `form_id`, `page_path`) still identifies the form.
 
+## Newsletter mailing lists
+
+A site can run a newsletter through Prospectus instead of its own list tool. The registry `kind` is `newsletter`. A subscription is active only after the person confirms from the email we send (double opt-in), every list email can be left with one click, and an unsubscribe is honoured forever. The first list is the Papyrus newsletter, `papyrus-newsletter-v1`, for `https://p.apyr.us`.
+
+**Registry.** A newsletter entry has the keys of a contact entry (no `attributes`) plus a `list` block: `name` (shown in emails and pages, `Papyrus`), `siteUrl` and `privacyUrl` (linked from every email and page), and the sender as `senderLocalPart` (`papyrus`) and `senderDomain` (`news.apyr.us`, which must be one of the shipped mail domains in `NEWSLETTER_MAIL_DOMAINS`). Its form id may not be `confirm` or `unsubscribe`. One site may share one origin between one waitlist, one contact form and one newsletter; each route checks the origin. An entry with `"enabled": false` adds nothing: no route, origin, permission, mail domain, DNS record or secret.
+
+**Request.** `POST /intake/newsletter/<formId>` (the `IntakeNewsletterBaseUrl` deployment output plus `/<formId>`).
+
+```http
+POST /intake/newsletter/papyrus-newsletter-v1 HTTP/1.1
+Origin: https://p.apyr.us
+Content-Type: application/json
+
+{
+  "submission_id": "a client-generated UUID, one per form view",
+  "email": "casey@example.com",
+  "website": "",
+  "notice_version": "papyrus-newsletter-v1",
+  "page_path": "/",
+  "campaign": { "utm_campaign": "launch" },
+  "elapsed_ms": 5200
+}
+```
+
+`submission_id`, `email` and `notice_version` are required. `page_path` (default `/`), `campaign` (`utm_source`, `utm_medium`, `utm_campaign`) and `elapsed_ms` are optional; `website` is the honeypot. Any other field is a 400. Bodies are JSON, at most 16 KiB.
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| `202` | `{"receipt":"<submission_id>","message":"Check your inbox to confirm your subscription."}` | Accepted. Identical for a new address, one already pending, one already subscribed, one that unsubscribed, a filled honeypot and a likely-spam score, so the response never reveals whether an address is on the list |
+| `400` | `{"message":"..."}` | Validation only: `Enter a valid email address.`, `Reload the page to read the current privacy notice.`, `Invalid submission receipt.`, `Invalid page path.`, `Invalid campaign.`, `Unknown form field.`, size or JSON |
+| `403` | `{"message":"This form origin is not allowed."}` | The Origin is not in this list's `origins` |
+| `404` | `{"message":"Not found."}` | Unknown list or method |
+| `415` | `{"message":"A JSON submission is required."}` | Content type is not `application/json` |
+| `429` | `{"message":"Too Many Requests"}` | The list's route throttle (rate 1, burst 2) |
+| `503` | `{"message":"The signup could not be confirmed. Retry the same receipt."}` | Only when the subscription record could not be stored at all. Retry with the same `submission_id` |
+
+**After submit, the site shows** the 202 `message` ("Check your inbox to confirm your subscription.") and nothing that depends on the address. It shows a 400 `message` next to the field, asks the visitor to wait and retry on 429, and keeps the form and retries the same `submission_id` on 503 or a network failure.
+
+**Store first, then process.** The handler validates, scores the signup with the shared spam rules ([INTAKE_SPAM.md](INTAKE_SPAM.md)) and writes one subscription record per list and normalized email, `intake-newsletter/<sha256(workspace, "newsletter-subscription", listId, email)>.json`, with an absent-or-revision conditional write. The record holds `status` (`pending`, `active`, `unsubscribed`), the first and latest signup requests (at most 20: time, notice version, page path, campaign, form signals and spam result), the confirmation send count and time, and after confirmation a `consent` block: `notice_version`, `requested_at`, `confirmed_at` and the source (`site_id`, `form_id`, `page_path`, `campaign`). No IP address, user agent or other device data is stored. A replay of the same `submission_id` changes nothing. Only after that write does anything else happen, and nothing after it changes the response.
+
+**Double opt-in.** In the same conditional write that stores the request, the handler decides whether to send and reserves the send, so two concurrent signups send at most one email. It sends one confirmation email only when the subscription is not suppressed, not already active, not likely spam, and no confirmation went to this address for this list in the last 24 hours. The email comes from the mailbox `papyrus` on `news.apyr.us` (display name Papyrus) through the `prospectus-newsletter` configuration set, with a confirmation link that works for 7 days. If SES refuses the send, the reservation is released (the next signup may send at once), the request is marked `send_failed` and the visitor still sees 202.
+
+**Tokens.** Links carry `n1.<c|u>.<listId>.<subscription hash>.<expires>.<mac>`: the purpose (confirm or unsubscribe), the list, the 64-hex hash that names the subscription record, Unix expiry seconds (`0` for unsubscribe tokens, which never expire, so an unsubscribe link in an old email keeps working), and an unpadded base64url HMAC-SHA-256 over `prospectus-newsletter-token:v1` and the other fields. The address is never in a link. The key is the SSM SecureString `/prospectus/newsletter/token-signing/v1` (see [SECURITY.md](SECURITY.md#newsletter-token-key)).
+
+**Confirm and unsubscribe pages.** Minimal, accessible HTML served by the intake API, branded with the list name and linking to the site and its privacy page. They send `cache-control: no-store`, `referrer-policy: no-referrer`, `x-frame-options: DENY`, `x-robots-tag: noindex` and a CSP with no scripts.
+
+| Route | What it does |
+| --- | --- |
+| `GET /intake/newsletter/confirm?token=…` | Shows a "Confirm subscription" button and changes nothing (mail scanners fetch links, and a fetch must not subscribe anyone) |
+| `POST /intake/newsletter/confirm?token=…` | The button: a pending subscription becomes `active` with its consent record. Already active shows the same page. A suppressed or unsubscribed subscription stays unsubscribed. An expired, tampered or unknown-list token shows "This link is not valid" (400) |
+| `GET /intake/newsletter/unsubscribe?token=…` | Shows an "Unsubscribe" button and changes nothing |
+| `POST /intake/newsletter/unsubscribe?token=…` | The button, or a mail client's RFC 8058 one-click request (body `List-Unsubscribe=One-Click`, which is accepted and otherwise ignored): writes the permanent suppression and marks the subscription `unsubscribed`. Idempotent: repeating it shows the same page and writes nothing new. Honoured even for a list that is no longer enabled |
+
+Only the signed token authorizes these routes, so they need no Origin. They are throttled at rate 2, burst 4.
+
+**List email headers.** Every list email, the confirmation included, carries `List-Unsubscribe: <https://…/intake/newsletter/unsubscribe?token=…>`, `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) and `List-Id: Papyrus <papyrus-newsletter-v1.news.apyr.us>`, plus a visible unsubscribe link. The mailer (`server/newsletter-mailer.ts`) requires the unsubscribe URL, so no list email can be sent without them.
+
+**Suppression.** Per list, an unsubscribe writes `intake-newsletter/<sha256(workspace, "newsletter-suppression", listId, subscription hash)>.json`, which holds no address. It is never removed by the application, survives deletion of the subscription record, and blocks every later email to that address for that list, including a new confirmation (a person who unsubscribed and wants to come back asks us, and an operator lifts the suppression on that written request). Globally, hard bounces and complaints go on the SES account suppression list through the configuration set (`SuppressedReasons` `BOUNCE` and `COMPLAINT`), and SES never delivers to those addresses again from any list.
+
+**CRM visibility.** A subscriber is not a lead, so a signup never creates a prospect. When a prospect already exists for the address (found by its intake identity claim, or else by exactly one prospect with that `contact_email`), each state change (request, confirmation, unsubscribe) writes `custom.newsletters.<listId>` on it: `list`, `status`, `requested_at`, `confirmed_at`, `unsubscribed_at`, `notice_version`, `source_page`. The update is built from `GET /issues/<id>` with `If-Match` and retried on a revision conflict, and a failure only logs a reason code. The prospect panel shows a Newsletters section. A prospect created later shows the subscription at its next state change; the export below is the complete view.
+
+**Export and campaigns.** `scripts/export-newsletter-subscribers.ts` (see [OPERATIONS.md](OPERATIONS.md#newsletter-export)) prints counts per list and status, and with `--output` writes confirmed subscribers who are not suppressed. Campaign sending is not built. When it is, it must: send only to `active` subscriptions with no suppression record; go through the `prospectus-newsletter` configuration set from the list sender; put the unsubscribe headers and link on every email (`listHeaders` and `NewsletterService.unsubscribeUrl` already produce them); run as its own role with read access to `intake-newsletter/` only (never the inbox or identity prefixes); and respect the SES send rate (1 per second today).
+
 ## Infrastructure layout
 
 - `amplify/` is the Amplify Gen2 entry; `infra/` holds the CDK constructs and checks that Amplify synthesizes. `amplify/verify-scope.mjs` enforces the deployment scope. There is one Amplify app; the portal is part of its CDK deployment, not a second app.
 - `infra/lib/prospectus-backend.ts`: bucket, catalog table, Cognito, API, optional console client and the Accounts plane.
 - `infra/lib/accounts-plane.ts`: additive Accounts resources only; no CRM role, client, namespace or authorizer is changed. Regression tests compare every pre-existing CRM resource before and after enabling Accounts.
 - `infra/lib/evaluation-intake.ts`: the intake Lambda, role, API and throttling.
+- `infra/lib/newsletter-mail.ts`: for enabled newsletters only, the SES identity, configuration set, DNS records and the create-only token key.
 - `accounts/build-deployment.ts` and `scripts/build-accounts-linux.sh` package the Node 24 handlers and the Linux x86_64 native bridge.

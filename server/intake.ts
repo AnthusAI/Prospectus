@@ -144,10 +144,10 @@ function reasonCode(cause: unknown): string {
   return typeof name === "string" && /^[A-Za-z]{1,40}$/.test(name) ? `unconfirmed_${name}` : "unconfirmed";
 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const RECEIPT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const campaignKeys = ["utm_source", "utm_medium", "utm_campaign"];
 
-function readText(fields: Record<string, unknown>, key: string, max: number, required = false) {
+export function readText(fields: Record<string, unknown>, key: string, max: number, required = false) {
   const value = fields[key] ?? "";
   if (
     typeof value !== "string" ||
@@ -160,7 +160,7 @@ function readText(fields: Record<string, unknown>, key: string, max: number, req
   return cleaned;
 }
 
-function readCampaign(rawCampaign: unknown): Record<string, string> {
+export function readCampaign(rawCampaign: unknown): Record<string, string> {
   const campaign = rawCampaign ?? {};
   if (!campaign || typeof campaign !== "object" || Array.isArray(campaign))
     throw new IntakeError(400, "Invalid campaign.");
@@ -180,14 +180,14 @@ function readCampaign(rawCampaign: unknown): Record<string, string> {
 }
 
 /** Optional timing: an absent or invalid value is unknown, never a 400 and never a reason. */
-function readElapsed(fields: Record<string, unknown>): { elapsed_ms?: number } {
+export function readElapsed(fields: Record<string, unknown>): { elapsed_ms?: number } {
   const value = fields.elapsed_ms;
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_ELAPSED_MS
     ? { elapsed_ms: value }
     : {};
 }
 
-function readPagePath(fields: Record<string, unknown>, fallback: string) {
+export function readPagePath(fields: Record<string, unknown>, fallback: string) {
   const page_path = readText(fields, "page_path", 200) || fallback;
   if (!/^\/[a-z0-9/_-]*$/i.test(page_path)) throw new IntakeError(400, "Invalid page path.");
   return page_path;
@@ -217,7 +217,7 @@ export function validateSubmission(
     throw new IntakeError(400, "Unknown form field.");
   const text = (key: string, max: number, required = false) => readText(fields, key, max, required);
   const submission_id = text("submission_id", 36, true);
-  if (!uuid.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
+  if (!RECEIPT_UUID.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
   const email = text("email", 254, true).toLowerCase();
   if (!contactPolicy.emailPattern.test(email))
     throw new IntakeError(400, contactPolicy.emailRejectionMessage);
@@ -266,7 +266,7 @@ export function validateWaitlistSubmission(
     throw new IntakeError(400, "Unknown form field.");
   const text = (key: string, max: number, required = false) => readText(fields, key, max, required);
   const submission_id = text("submission_id", 36, true);
-  if (!uuid.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
+  if (!RECEIPT_UUID.test(submission_id)) throw new IntakeError(400, "Invalid submission receipt.");
   const email = text("email", 254, true).toLowerCase();
   if (!contactPolicy.emailPattern.test(email))
     throw new IntakeError(400, contactPolicy.emailRejectionMessage);
@@ -365,6 +365,8 @@ export class IntakeService {
         !options.contactPolicy)
     )
       throw new Error("Intake form source must come from its registry entry.");
+    if (options.form?.kind === "newsletter")
+      throw new Error("A newsletter is served by the newsletter service, never as a CRM inquiry.");
     await mkdir(options.directory, { recursive: true, mode: 0o700 });
     const lock = join(options.directory, "worker.lock");
     try {

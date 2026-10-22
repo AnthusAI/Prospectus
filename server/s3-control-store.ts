@@ -23,7 +23,8 @@ export class ControlTransportError extends Error {
     super(message);
   }
 }
-const validPath = (path: string) => /^intake-(identities|receipts)\/[a-f0-9]{64}\.json$/.test(path);
+const validPath = (path: string) =>
+  /^intake-(identities|receipts|newsletter)\/[a-f0-9]{64}\.json$/.test(path);
 const validWorkspace = (workspace: string) =>
   /^[a-z0-9][a-z0-9_.-]{0,127}\/[a-z0-9][a-z0-9_.-]{0,127}$/.test(workspace) &&
   !workspace.startsWith("_virtuus/");

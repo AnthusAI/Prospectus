@@ -14,6 +14,8 @@ The repository is public and MIT licensed; the deployed CRM and account service 
 | Inquiry intake (`POST /intake/demo`)                   | The public, from allowed origins                    | Origin and notice checks, throttling and a fixed intake actor; no read access                                                                                              |
 | App waitlist intake (`POST /intake/waitlist/<formId>`) | The public, from the origins declared for that form | Per-form origin binding, per-form notice version, strict attribute allowlist, a route-level throttle and a fixed intake actor; no read access, no accounts or entitlements |
 | App contact intake (`POST /intake/contact/<formId>`)   | The public, from the origins declared for that form | Same controls as the demo form on its own route: per-form origin binding (an anth.us origin cannot post it and a registry origin cannot post `/intake/demo`), per-form notice version, a route-level throttle, always-accept store-then-file, spam scoring and a fixed intake actor; no read access, no accounts or entitlements |
+| Newsletter signup (`POST /intake/newsletter/<formId>`) | The public, from the origins declared for that list | Per-list origin binding, per-list notice version, a route-level throttle, honeypot and spam scoring, one identical 202 for every accepted signup (no address enumeration), double opt-in, at most one confirmation per address and list per 24 hours; no read access |
+| Newsletter pages (`GET` and `POST /intake/newsletter/confirm` and `/unsubscribe`) | Anyone holding a link from a list email | A signed HMAC token bound to purpose, list and subscription (confirm tokens expire after 7 days); `GET` changes nothing; a route-level throttle |
 
 Signing in alone grants no CRM staff access, no account membership and no product entitlement.
 
@@ -126,11 +128,22 @@ unpadded, so it always matches `^ss1_[A-Za-z0-9_-]{43}$`. The product is the rea
 
 Error contract: `400` malformed input or raw authority fields, `401` invalid token, session or nonce or an expired challenge, `403` wrong caller, product, client or policy, `409` consumed challenge with changed proof or an identity mapping conflict, `429` capacity, `503` repository unavailable.
 
+## Newsletter token key
+
+Newsletter confirmation and unsubscribe links are signed with HMAC-SHA-256 under the SSM SecureString `/prospectus/newsletter/token-signing/v1` (`aws/ssm` key), 48 random bytes, base64. Format and claims are in [ARCHITECTURE.md](ARCHITECTURE.md#newsletter-mailing-lists).
+
+- **Created once, as code.** A create-only custom resource (`Custom::ProspectusNewsletterTokenKey`, Lambda `prospectus-newsletter-token-init`, the same initializer as the site subject secret with its own label) generates the value and calls `PutParameter` with `Overwrite: false`. The value is never in the template, never returned to CloudFormation (`NoEcho`, no data) and never logged; updates and stack deletion leave it untouched. Its role may only `ssm:PutParameter` on that one ARN, with an explicit deny when `ssm:Overwrite` is `true`. The intake runtime gets only `ssm:GetParameter` on it, and the runtime waits for the custom resource.
+- **What a token grants.** A confirm token can activate one pending subscription for 7 days; an unsubscribe token can only unsubscribe one subscription, forever. Neither reveals the address, which is never in a link. Pages served for a `GET` change nothing, so link scanners cannot subscribe or unsubscribe anyone.
+- **Fail closed.** A missing, short or unreadable key makes signing fail (the signup is still stored and answered 202, and no email is sent) and makes the pages answer 503 "try again" without changing anything. A loaded key is cached for the Lambda instance's life; failures are not cached.
+- **No silent rotation.** Unsubscribe tokens never expire, so replacing the v1 value would break the unsubscribe link in every email already sent. A future `v2` must keep verifying `v1` tokens.
+
+The SES sending identity `news.apyr.us` is separate from `apyr.us` and `p.apyr.us`, so list reputation and any DMARC failures stay on the subdomain. `ses:SendEmail` is limited to that identity and the `prospectus-newsletter` configuration set, and the `ses:FromAddress` condition pins the From address to the list sender.
+
 ## Data handling
 
 - The S3 bucket is private, versioned, TLS only and retained on stack deletion. Releases never rewrite or delete canonical paths.
 - The central accounts runtime role may `GetObject` and `PutObject` only under the four `prospectus-central/` scopes listed in [ARCHITECTURE.md](ARCHITECTURE.md#storage), plus bucket-level `s3:ListBucket` limited by a `StringLike s3:prefix` condition to those same four scopes. It has no delete, DynamoDB, Cognito management or deploy rights.
-- The intake runtime may invoke only `prospectus-api` and read and write only the intake identity and receipt prefixes. It has no listing, deletion, catalog, Cognito, Secrets Manager or IAM rights, and request bodies and contact data are not logged; an unconfirmed submission logs only an error class and transport outcome. Intake claims are created first with an absent-only conditional write and read only when they already exist, so no listing right is needed.
+- The intake runtime may invoke only `prospectus-api` and read and write only the intake identity and receipt prefixes, plus, while a newsletter is enabled, the `intake-newsletter/` prefix, `ssm:GetParameter` on the newsletter token key and `ses:SendEmail` on the newsletter identity and configuration set with `ses:FromAddress` pinned to the list senders. It has no listing, deletion, catalog, Cognito, Secrets Manager or IAM rights, and request bodies and contact data are not logged; an unconfirmed submission logs only an error class and transport outcome. Intake claims are created first with an absent-only conditional write and read only when they already exist, so no listing right is needed.
 - The Kanbus runtime role is limited to the CRM namespace prefixes and to catalog rows whose leading key is that namespace.
 - Public-reader sites receive only pairwise site subjects; see [Public-reader site subjects](#public-reader-site-subjects). Retired-subject records under `identities/retired-subjects/` hold the product, the retired and surviving subjects, the reason and the hour, and no Person ID. They are kept so a site that polls late can still catch up.
 - No persistent access keys exist. Runtime credentials come from Lambda roles.
@@ -147,6 +160,8 @@ Error contract: `400` malformed input or raw authority fields, `401` invalid tok
 - Identity enrollment is a recoverable multi-file protocol, not an atomic S3 transaction. Imports and edits to canonical identity files must be quiescent.
 - A profile with several identities needs an explicit linking flow that does not exist; directory-backed legacy linking is denied.
 - Intake uniqueness holds only among intake writers; manual creation and import do not take intake claims.
+- Newsletter subscription records hold the address, the signup requests and the consent record, kept until the person asks for deletion (notice `papyrus-newsletter-v1`). A deletion request removes the subscription record and the prospect's `custom.newsletters` entry; the hashed suppression record holds no address and stays, so the unsubscribe is still honoured. Suppression hashes are unsalted SHA-256 over the workspace, list and address, so someone with bucket read access could test a guessed address against them; bucket access is already limited to the runtimes and administrators.
+- SES bounce and complaint events are not stored in Prospectus: SES suppresses those addresses itself, and the operator export subtracts the SES suppression list. Subscription records therefore do not show a bounce or complaint.
 - Tests cover process crashes and restarts, not disk or power loss or real S3 failure modes.
 - Retired site subjects can still be correlated across colluding reader sites when a person enrolled on both and few retirements happen in the same hour. Listing reads every record path for the site (up to 5,000, then `503`); a high retirement volume needs time-sharded listing. Person deletion and merge themselves do not exist yet.
 

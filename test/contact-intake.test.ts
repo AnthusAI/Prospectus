@@ -177,6 +177,7 @@ test("the shipped registry enables both Papyrus forms with recorded approvals, t
   assert.deepEqual(Object.keys(byId).sort(), [
     "babulus-waitlist-v1",
     "papyrus-contact-v1",
+    "papyrus-newsletter-v1",
     "papyrus-waitlist-v1",
   ]);
   const waitlist = byId["papyrus-waitlist-v1"];
@@ -213,7 +214,10 @@ test("a contact entry takes no attributes and shares an origin only with its own
     () => parseIntakeForm({ ...contactEntry, attributes: { persona: { values: ["a"] } } }),
     /takes no attributes/,
   );
-  assert.throws(() => parseIntakeForm({ ...contactEntry, kind: "newsletter" }), /waitlist or contact/);
+  assert.throws(
+    () => parseIntakeForm({ ...contactEntry, kind: "survey" }),
+    /waitlist, contact or newsletter/,
+  );
   assert.throws(() => parseIntakeForm({ ...contactEntry, approval: undefined }), /recorded approval/);
   assert.doesNotThrow(() => parseIntakeFormRegistry({ forms: [waitlistEntry, contactEntry] }));
   for (const clash of [

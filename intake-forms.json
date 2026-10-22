@@ -60,6 +60,28 @@
         "rate": 1,
         "burst": 2
       }
+    },
+    {
+      "enabled": true,
+      "approval": "Ryan approved 2026-10-21 (relayed by the lead: 'it's approved, proceed; no sandbox testing, just deploy'): owner intake-queue; notice papyrus-newsletter-v1 = 'We'll email you Papyrus news, about once a month. We'll send a confirmation email first; nothing else arrives until you confirm. Unsubscribe any time with one click. We never sell your details, and we keep your subscription record until you ask us to delete it.' linking to https://p.apyr.us/privacy/; double opt-in with a 7-day signed confirmation link and at most one confirmation per address per 24 hours; one-click unsubscribe (RFC 8058) and permanent suppression; retention until deletion requested; abuse controls rate 1 burst 2, origin p.apyr.us only, honeypot, spam scoring (likely spam gets no email); SES sending from news.apyr.us with Easy DKIM, MAIL FROM bounce.news.apyr.us, DMARC p=none, configuration set prospectus-newsletter with SES bounce and complaint suppression; token key in SSM SecureString /prospectus/newsletter/token-signing/v1 created by a create-only custom resource; the listed resources, IAM and cost in PR kanbus-3a8050; acceptance by labelled test after deploy and SES production access.",
+      "siteId": "papyrus",
+      "formId": "papyrus-newsletter-v1",
+      "kind": "newsletter",
+      "origins": ["https://p.apyr.us"],
+      "noticeVersion": "papyrus-newsletter-v1",
+      "owner": "intake-queue",
+      "defaultPagePath": "/",
+      "throttle": {
+        "rate": 1,
+        "burst": 2
+      },
+      "list": {
+        "name": "Papyrus",
+        "siteUrl": "https://p.apyr.us/",
+        "privacyUrl": "https://p.apyr.us/privacy/",
+        "senderLocalPart": "papyrus",
+        "senderDomain": "news.apyr.us"
+      }
     }
   ]
 }

@@ -23,7 +23,20 @@ export interface InquiryDetails {
   attributes: Array<[string, string]>;
 }
 
+/** A newsletter subscription shown on a prospect (custom.newsletters, written by intake). */
+export interface NewsletterDetails {
+  key: string;
+  list: string;
+  status: string;
+  requestedAt: string;
+  confirmedAt: string;
+  unsubscribedAt: string;
+  noticeVersion: string;
+  sourcePage: string;
+}
+
 export interface SubmissionDetails {
+  newsletters: NewsletterDetails[];
   contactEmail: string;
   needsReview: boolean;
   reviewReason: string;
@@ -128,7 +141,29 @@ export function submissionDetails(issue: Issue): SubmissionDetails {
   const custom = record(issue.custom);
   const labels = (issue as { labels?: string[] }).labels ?? [];
   const reviewReason = text(custom.review_reason);
+  const timeLabel = (value: unknown) => (text(value) ? receivedTime(text(value)) : "");
+  const statusLabels: Record<string, string> = {
+    pending: "Awaiting confirmation",
+    active: "Subscribed",
+    unsubscribed: "Unsubscribed",
+  };
+  const newsletters = Object.entries(record(custom.newsletters))
+    .map(([key, value]): NewsletterDetails => {
+      const entry = record(value);
+      return {
+        key,
+        list: text(entry.list) || key,
+        status: statusLabels[text(entry.status)] ?? text(entry.status),
+        requestedAt: timeLabel(entry.requested_at),
+        confirmedAt: timeLabel(entry.confirmed_at),
+        unsubscribedAt: timeLabel(entry.unsubscribed_at),
+        noticeVersion: text(entry.notice_version),
+        sourcePage: text(entry.source_page),
+      };
+    })
+    .sort((left, right) => left.key.localeCompare(right.key));
   return {
+    newsletters,
     contactEmail: text(custom.contact_email) || text(custom.review_contact_email),
     needsReview: labels.includes("needs-review") || reviewReason !== "",
     reviewReason,

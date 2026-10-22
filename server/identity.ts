@@ -34,6 +34,11 @@ export class IdentityClaims {
       throw new Error("Identity claim needs private repair.");
     return claim;
   }
+  /** The prospect an intake claim already points to, if any. Reads only; never creates a claim. */
+  async findIssue(email: string): Promise<string | undefined> {
+    const object = await this.store.getControl(this.key(email));
+    return object ? this.decode(object, email).issueId : undefined;
+  }
   async claimReceipt(id: string, fingerprint: string, email: string): Promise<void> {
     const key = `intake-receipts/${createHash("sha256").update(`${this.workspace}\n${id}`).digest("hex")}.json`;
     const claimed = { version: 1, workspace: this.workspace, id, fingerprint, email };

@@ -265,9 +265,12 @@ test("each enabled form gets its own throttle so one app cannot spend another's 
   });
 });
 
-test("the shipped registry file enables Babulus and both Papyrus forms, each on its own route and origin", async () => {
+test("the shipped registry file enables Babulus and both Papyrus intake forms, each on its own route and origin", async () => {
   const { readFileSync } = await import("node:fs");
-  const shipped = parseIntakeFormRegistry(JSON.parse(readFileSync("../intake-forms.json", "utf8")));
+  // The newsletter adds its own resources; infra/test/newsletter.test.ts covers the whole file.
+  const shipped = parseIntakeFormRegistry(JSON.parse(readFileSync("../intake-forms.json", "utf8"))).filter(
+    (form) => form.kind !== "newsletter",
+  );
   const { template, intake } = synthesize(shipped, "real-contacts");
   assert.deepEqual(routeKeys(template), [
     "POST /intake/contact/papyrus-contact-v1",

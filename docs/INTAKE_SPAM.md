@@ -102,6 +102,14 @@ There is no new Lambda, queue, schedule, table or IAM statement. The added CPU i
 
 Waitlists use the same scorer. They have no message, so only the name, company, email, honeypot and timing rules apply. Waitlist signups already have no follow-up date; the label keeps likely spam out of any launch announcement drawn from waitlist opt-ins.
 
+### Newsletter signups
+
+Newsletter signups ([ARCHITECTURE.md](ARCHITECTURE.md#newsletter-mailing-lists)) use the same scorer with kind `newsletter`. They have only an email, so only the Gmail dot, honeypot and timing rules can fire. The result (`spam_verdict`, `spam_score`, `spam_reasons`, `spam_rules_version` and `form_signals`) is stored on the signup request in the subscription record, in the same write that stores the signup, and the visitor's 202 is identical whatever the result.
+
+A signup scored `likely_spam` is stored and gets **no confirmation email**, in both labelling modes. With the shipped thresholds an email-only signup can reach `likely_spam` only through the honeypot (the other two rules together score 0.36, below 0.70, and neither is strong), so in practice this is decision 4 applied to email: a filled honeypot never makes us send mail. This matters more than for the other forms, because a newsletter form that mails any address it is given can be used to send unwanted mail to someone else. The 24-hour resend limit and the route throttle cover the same abuse for signups that look clean. Nothing is labelled, because a subscription is not a prospect.
+
+A later signup for the same address that is not likely spam is treated normally (it gets a confirmation if the resend window allows), and a confirmation is honoured whatever earlier requests scored. Newsletter signups are not part of the shadow review, because nothing in the CRM changes for them.
+
 ### Shadow and label modes
 
 `evaluation-deployment.json` carries `"spamLabelling": "shadow"`, passed to the intake Lambda as `PROSPECTUS_INTAKE_SPAM_LABELLING`. An absent value means `shadow`; any value other than `shadow` or `label` fails the deployment.
