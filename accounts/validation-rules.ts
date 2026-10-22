@@ -50,6 +50,8 @@ export const hasExactlyKeys = (value: object, expectedSortedKeys: string) =>
 
 export const matchesStringPattern = (value: unknown, pattern: RegExp): value is string =>
   typeof value === "string" && pattern.test(value);
+/** The name every Papyrus site product carries, shared by site synthesis, the registry and the lab verifier. */
+export const PAPYRUS_SITE_PRODUCT_PATTERN = /^papyrus-[a-z0-9][a-z0-9-]{0,31}$/;
 export const PRODUCT_NAME_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
 export const isProductName = (value: unknown): value is string =>
   matchesStringPattern(value, PRODUCT_NAME_PATTERN);

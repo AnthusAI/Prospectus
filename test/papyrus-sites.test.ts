@@ -105,3 +105,50 @@ test("only the public-reader audience is accepted, and empty capabilities need t
   assert.throws(() => registrations([{ ...reader, accountDirectory: true }]));
   assert.throws(() => registrations([{ ...reader, googleFederation: undefined }]));
 });
+
+test("only a Papyrus public-reader may hold no capabilities, and each refusal names its rule", () => {
+  const [reader] = papyrusSiteRegistrations([{ ...syntheticSite(1), audience: "public-reader" }]);
+  assert.equal(reader.audience, "public-reader");
+  const delegation = {
+    roleArn: "arn:aws:iam::111111111111:role/SyntheticExecution",
+    enrollmentRoleArn: reader.roleArn,
+    issuer: reader.issuer,
+    clientId: reader.clientIds[0],
+    enrollmentPolicyRevision: reader.googleFederation!.reviewedPolicyId,
+    reviewedPolicyId: "synthetic-delegation-review",
+  };
+  assert.throws(
+    () => registrations([{ ...reader, executionDelegation: delegation }]),
+    /A public-reader product cannot hold an execution delegation/,
+  );
+  // Falsy values are not "absent": the check is an explicit undefined test.
+  assert.throws(
+    () => registrations([{ ...reader, executionDelegation: null as never }]),
+    /cannot hold an execution delegation/,
+  );
+  for (const accountDirectory of [true, false, "yes"])
+    assert.throws(
+      () => registrations([{ ...reader, accountDirectory: accountDirectory as never }]),
+      /A public-reader product cannot hold an account directory/,
+    );
+  // A non-Papyrus product with no capabilities is refused, as is one with no reader audience.
+  for (const product of ["other-reader", "cyclotron"])
+    assert.throws(() => registrations([{ ...reader, product }]), /A product needs at least one capability/);
+  const { audience: _omitted, ...unmarked } = reader;
+  assert.throws(() => registrations([unmarked]), /A product needs at least one capability/);
+  assert.throws(
+    () => registrations([{ ...reader, audience: "editor" as never }]),
+    /A product needs at least one capability/,
+  );
+  assert.throws(
+    () => registrations([{ ...reader, capabilities: ["console:read"] }]),
+    /A public-reader product holds no capabilities/,
+  );
+  // Outside readers, a non-boolean directory flag keeps its own specific message.
+  const [editor] = papyrusSiteRegistrations([syntheticSite(2)]);
+  assert.throws(
+    () => registrations([{ ...editor, accountDirectory: "yes" as never }]),
+    /Directory registration must be explicitly true or absent/,
+  );
+  assert.equal(registrations([reader, editor]).length, 2);
+});

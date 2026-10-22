@@ -3,6 +3,7 @@ import type { Operation } from "./model";
 import {
   CLIENT_ID_PATTERN,
   COGNITO_ISSUER_PATTERN,
+  PAPYRUS_SITE_PRODUCT_PATTERN,
   REVIEW_IDENTIFIER_PATTERN,
   hasOnlyKeys,
   matchesStringPattern,
@@ -38,7 +39,6 @@ export const papyrusSiteRoutes: readonly string[] = [
   "GET/v1/account-directory/*",
 ];
 const siteRolePattern = /^arn:aws:iam::\d{12}:role\/(?:[A-Za-z0-9+=,.@_-]+\/)*[A-Za-z0-9+=,.@_-]+$/;
-const PAPYRUS_PRODUCT_PATTERN = /^papyrus-[a-z0-9][a-z0-9-]{0,31}$/;
 const MAXIMUM_PAPYRUS_SITES = 40;
 const siteEntryKeys = [
   "audience",
@@ -64,7 +64,7 @@ const siteEntryRules: ValidationRule<PapyrusSiteEntry>[] = [
   ),
   rule((site) => isString(site.product), "A Papyrus site product must be a string."),
   rule(
-    (site) => matchesStringPattern(site.product, PAPYRUS_PRODUCT_PATTERN),
+    (site) => matchesStringPattern(site.product, PAPYRUS_SITE_PRODUCT_PATTERN),
     "A Papyrus site product must be named papyrus-<site> in lowercase letters, digits and hyphens.",
   ),
   rule((site) => isString(site.roleArn), "A Papyrus site runtime role ARN must be a string."),
@@ -120,7 +120,7 @@ export function papyrusSiteRegistrations(value: unknown): ProductRegistration[] 
       clientIds: [site.clientId],
       capabilities: reader ? [] : [...papyrusSiteCapabilities],
       enabled: true,
-      ...(reader ? {} : { accountDirectory: true as const }),
+      ...(reader ? { audience: "public-reader" as const } : { accountDirectory: true as const }),
       googleFederation: {
         policy: "google-only-unlinked-v1" as const,
         reviewedPolicyId: site.federationReviewId,
