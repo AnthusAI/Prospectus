@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-bd277068-a780-4046-96c4-f44dfdf599af",
+  "title": "Register papyrus-threat-intelligence and papyrus-anth-us as Papyrus editor sites (R1)",
+  "description": "Ryan decided (2026-10-21, relayed by the Cyclotron session) that the central Cyclotron lab is the single classifier per publication, and editors on each Papyrus site add references through the lab via Prospectus-verified curation. That needs the threat-intelligence and anth.us Papyrus sites registered as editor sites, like papyrus-p-apyr-us and papyrus-pilobol-us.\n\nScope: add papyrus-threat-intelligence and papyrus-anth-us to accounts/papyrus-sites.json with each site's Cognito issuer and client ID, its Amplify compute role ARN, and its federation and site review IDs. Each site's role then gets the 8 site routes in the central API resource policy, so check the 8,192-character budget (4,824 used at last check, about 198 per site). Hand the site sessions (S2/S3) the value they need: the central API stage ARN for cms.prospectusAccountsApiStageArn in each site.json. Anth.us-web has no aws block yet.\n\nAcceptance: both sites validate at startup; an editor signs in once at each site and enrollment resolves to the same Person; the Cyclotron lab verifier accepts their tokens. Deploy only with Ryan's approval of the exact resource-policy diff.",
+  "type": "task",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": null,
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-22T01:54:49.427739Z",
+  "updated_at": "2026-10-22T01:54:49.427783Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude-code",
+    "model": "claude-opus-5-5",
+    "name": "prospectus-implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
