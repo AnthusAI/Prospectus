@@ -96,7 +96,7 @@ class SummaryCatalogApi {
 const input = (changes: Record<string, unknown> = {}) => ({
   submission_id: randomUUID(),
   name: "Info Anthus",
-  email: "info@anth.us",
+  email: "repeat-contact@example.com",
   company: "Anthus",
   message: "Hello from the engage page",
   website: "",
@@ -209,10 +209,10 @@ test("canonical API 409, 500 and timeout failures still accept the visitor and k
       const [item] = setup.controls.inbox();
       assert.equal(item.status, "pending");
       assert.equal(item.inquiry.message, "Do not lose this note");
-      assert.equal(item.inquiry.email, "info@anth.us");
+      assert.equal(item.inquiry.email, "repeat-contact@example.com");
       // Logs carry reason codes only.
       assert.ok(setup.logs.length > 0);
-      assert.ok(setup.logs.every((entry) => !JSON.stringify(entry).includes("info@anth.us")));
+      assert.ok(setup.logs.every((entry) => !JSON.stringify(entry).includes("repeat-contact@example.com")));
       assert.ok(setup.logs.every((entry) => !JSON.stringify(entry).includes("Do not lose")));
       // Recovery: the same receipt retried after the outage files it exactly once.
       setup.api.fail = undefined;
@@ -234,7 +234,7 @@ test("duplicate catalog matches are accepted and filed as a needs-review prospec
           id,
           type: "prospect",
           status: "new",
-          custom: { contact_email: "info@anth.us", inquiries: [] },
+          custom: { contact_email: "repeat-contact@example.com", inquiries: [] },
         },
         revision: "1",
       } as unknown as IssueRecord);
