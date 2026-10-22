@@ -16,7 +16,7 @@ const configuration = {
   logoutUri: "https://prospectus.example.invalid/",
 };
 
-function browser(context: TestContext, search = "") {
+function browser(context: TestContext, search = "", pathname = "/") {
   const values = new Map<string, string>();
   let destination = "";
   let cleaned = "";
@@ -38,6 +38,7 @@ function browser(context: TestContext, search = "") {
     configurable: true,
     value: {
       location: {
+        pathname,
         search,
         assign: (url: URL) => {
           destination = String(url);
@@ -405,3 +406,40 @@ test("an ordinary sign-in stores the session before Accounts confirmation and st
     assert.equal(environment.cleaned(), "/");
   }
 });
+
+test("sign-in remembers the shared item address and the callback returns to it", async (context) => {
+  const starting = browser(context, "", "/pipeline/prsp-2241529c");
+  await signIn(configuration);
+  const login = JSON.parse(starting.values.get("prospectus.login")!);
+  assert.equal(login.returnTo, "/pipeline/prsp-2241529c");
+  assert.equal(new URL(starting.destination()).searchParams.get("redirect_uri"), configuration.redirectUri);
+
+  const returning = browser(context, `?code=authorization-code&state=${login.state}`, "/auth/callback");
+  returning.values.set("prospectus.login", JSON.stringify(login));
+  context.mock.method(globalThis, "fetch", async () =>
+    Response.json({ access_token: "api-access-token", expires_in: 3600 }),
+  );
+  assert.equal(await finishSignIn(configuration), true);
+  assert.equal(returning.cleaned(), "/pipeline/prsp-2241529c");
+});
+
+for (const returnTo of [
+  "https://evil.example.com/pipeline/prsp-1",
+  "//evil.example.com",
+  "/\\evil.example.com",
+  "/auth/callback",
+  "javascript:alert(1)",
+]) {
+  test(`a saved return target of ${returnTo} lands on the home page`, async (context) => {
+    const environment = browser(context, "?code=authorization-code&state=expected-state", "/auth/callback");
+    environment.values.set(
+      "prospectus.login",
+      JSON.stringify({ state: "expected-state", verifier: "saved-verifier", returnTo }),
+    );
+    context.mock.method(globalThis, "fetch", async () =>
+      Response.json({ access_token: "api-access-token", expires_in: 3600 }),
+    );
+    assert.equal(await finishSignIn(configuration), true);
+    assert.equal(environment.cleaned(), "/");
+  });
+}

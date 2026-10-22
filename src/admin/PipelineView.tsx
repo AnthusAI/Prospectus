@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { IssueCollection, IssueDetailPanel, type KanbanIssue } from "@kanbus/ui";
 import { ANTHUS_APPS } from "../apps";
+import { issueUrl } from "../deep-links";
 import type { Configuration, IssueRecord, KanbusClient, Query } from "../client";
 import {
   addDays,
@@ -13,6 +14,8 @@ import {
   websiteInquiries,
 } from "../prospect";
 import { Eyebrow } from "../shared/ui";
+import { SubmissionDetails } from "./SubmissionDetails";
+import { mailtoHref, submissionDetails } from "./submissions";
 
 export type Write = (action: () => Promise<IssueRecord>) => Promise<boolean>;
 
@@ -28,6 +31,7 @@ export function PipelineView({
   busy,
   write,
   onError,
+  onOpenIssue,
   focusNextAction,
 }: {
   api: KanbusClient;
@@ -41,6 +45,7 @@ export function PipelineView({
   busy: boolean;
   write: Write;
   onError: (message: string) => void;
+  onOpenIssue: (issueId: string) => void;
   focusNextAction: boolean;
 }) {
   const [records, setRecords] = useState<IssueRecord[]>([]);
@@ -185,6 +190,7 @@ export function PipelineView({
             api={api}
             onError={onError}
             onClose={() => onSelect(null)}
+            onOpenIssue={onOpenIssue}
             focusNextAction={focusNextAction}
           />
         )}
@@ -394,6 +400,7 @@ function ProspectDrawer({
   api,
   onError,
   onClose,
+  onOpenIssue,
   focusNextAction,
 }: {
   record: IssueRecord;
@@ -404,9 +411,12 @@ function ProspectDrawer({
   api: KanbusClient;
   onError: (message: string) => void;
   onClose: () => void;
+  onOpenIssue: (issueId: string) => void;
   focusNextAction: boolean;
 }) {
   const issue = record.issue;
+  const submission = submissionDetails(issue);
+  const [linkCopied, setLinkCopied] = useState(false);
   const custom = issue.custom ?? {};
   const nextAction = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -436,6 +446,16 @@ function ProspectDrawer({
     : "Added in Prospectus";
   const company = String(custom.company ?? "");
   const email = String(custom.contact_email ?? "");
+  const shownEmail = submission.contactEmail;
+  const shownEmailHref = mailtoHref(shownEmail);
+
+  function copyLink() {
+    const link = issueUrl(issue.id, window.location.origin);
+    navigator.clipboard.writeText(link).then(
+      () => setLinkCopied(true),
+      () => onError(`Copy this link: ${link}`),
+    );
+  }
 
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -486,13 +506,22 @@ function ProspectDrawer({
             <span className="one-muted one-mono">{source}</span>
             <br />
             {issue.title}
-            {email && (
+            {shownEmail && (
               <>
                 {" · "}
-                <a href={`mailto:${email}`}>{email}</a>
+                {shownEmailHref ? <a href={shownEmailHref}>{shownEmail}</a> : shownEmail}
               </>
             )}
           </p>
+          <div className="one-linkbar">
+            <button type="button" className="one-button small" onClick={copyLink}>
+              Copy link
+            </button>
+            <span role="status" className="one-muted">
+              {linkCopied ? "Link copied" : ""}
+            </span>
+          </div>
+          <SubmissionDetails details={submission} onOpenIssue={onOpenIssue} />
           <form id={`prospect-${issue.id}`} onSubmit={save}>
             <fieldset disabled={busy}>
               <fieldset className="one-stagebar-wrap">

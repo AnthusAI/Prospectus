@@ -121,7 +121,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
     .locator(".one-row", { hasText: title })
     .getByRole("checkbox")
     .click();
-  await expect(page).toHaveURL(/view=pipeline/);
+  await expect(page).toHaveURL(/\/pipeline\/prsp-/);
   await expect(page.getByLabel("Next action", { exact: true })).toBeFocused();
   await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
   for (const stage of ["Contacted", "Qualified", "Proposal", "Customer success"]) {

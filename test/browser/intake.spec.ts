@@ -71,7 +71,7 @@ test("synthetic CTA inquiry persists through private follow-up and customer hand
     .getByRole("button", { name: "List" })
     .click();
   await page.getByRole("searchbox", { name: "Search" }).fill(name);
-  await page.getByText(name, { exact: true }).click();
+  await page.getByRole("heading", { name, exact: true }).click();
   await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
   await page.getByText("Contact details", { exact: true }).click();
   await expect(page.getByLabel("Email", { exact: true })).toHaveValue("corrected-review@example.invalid");

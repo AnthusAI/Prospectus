@@ -263,7 +263,13 @@ test("hosting SPA rewrite handles dotted application paths while preserving stat
   assert.ok(rule.source.startsWith("</"));
   assert.ok(rule.source.endsWith("/>"));
   const route = new RegExp(rule.source.slice(2, -2));
-  for (const path of ["/auth/callback", "/prospects/acme.example", "/sales/report.csv"])
+  for (const path of [
+    "/auth/callback",
+    "/pipeline/prsp-2241529c",
+    "/pipeline/kanbus-8f3a1c2d",
+    "/prospects/acme.example",
+    "/sales/report.csv",
+  ])
     assert.ok(route.test(path), path);
   for (const path of [
     "/assets/app.js",
