@@ -11,7 +11,7 @@ import { DurableAccountsService } from "./durable-accounts";
 import { googlePersonDirectory } from "./person-directory";
 import { registrations } from "./registration";
 import { context, type ProductRegistration, type RestEvent } from "./auth";
-import { papyrusSiteRegistrations } from "./papyrus-sites";
+import { editorSiteRegistrations, papyrusSiteRegistrations } from "./papyrus-sites";
 import { labVerifier } from "./lab-verifier";
 
 // Synthetic only: one throwaway RSA key signs every token, and every ARN, pool and client is invented.
@@ -33,6 +33,7 @@ const siteEntry = (letter: string) => ({
 });
 const sites = papyrusSiteRegistrations([siteEntry("a"), siteEntry("b")]);
 const [siteA, siteB] = sites;
+const [reader] = papyrusSiteRegistrations([{ ...siteEntry("r"), audience: "public-reader" }]);
 const cyclotron: ProductRegistration = {
   product: "cyclotron",
   roleArn: "arn:aws:iam::111111111111:role/SynthCyclotronBff",
@@ -68,7 +69,7 @@ const registry = (extra: ProductRegistration[] = [], withVerifier = true) =>
     [cyclotron, crm, ...sites, ...extra],
     withVerifier ? { labVerifier: verifierConfiguration([...sites, ...extra]) } : {},
   );
-const knownPools = [cyclotron, crm, ...sites].map((product) => product.issuer).concat(pool("SiteC"));
+const knownPools = [cyclotron, crm, ...sites, reader].map((product) => product.issuer).concat(pool("SiteC"));
 const keys = async (issuer: string, kid: string): Promise<JsonWebKey> => {
   if (!knownPools.includes(issuer) || kid !== "synthetic") throw new Error("Unknown synthetic key");
   return publicKey;
@@ -538,4 +539,110 @@ test("the verifier is unregistered when disabled and cannot weaken the existing 
   const staticRole = event(VERIFIER_ROLE, "/v1/identities/me", "GET", {}, env.people.alice.site.tokens);
   staticRole.requestContext!.identity!.userArn = VERIFIER_ROLE;
   assert.equal((await env.run(staticRole)).status, 403);
+});
+
+test("a public-reader site is a real caller that signs in and sees nothing: no accounts, no authority, no directory, no writes", async (testContext) => {
+  const env = await fixture();
+  // Registered the way the Lambda does it: the verifier is built from the editor sites only.
+  const withReader = registrations([cyclotron, crm, ...sites, reader], {
+    labVerifier: verifierConfiguration(editorSiteRegistrations([...sites, reader])),
+  });
+  const target = env.make(withReader);
+  // Alice owns real accounts; the same Person signs in at the reader site.
+  const challenge = (await env.run(event(reader.roleArn, "/v1/identities/google/challenge"), target)).body;
+  const tokens = mint(reader, "r-alice", "google-alice", challenge.nonce);
+  const resolved = await env.run(
+    event(
+      reader.roleArn,
+      "/v1/identities/google/resolve",
+      "POST",
+      { challengeId: challenge.challengeId },
+      tokens,
+    ),
+    target,
+  );
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.person.id, env.people.alice.site.person.id);
+  const asReader = (path: string, method = "GET", body: unknown = {}) =>
+    env.run(event(reader.roleArn, path, method, body, tokens), target);
+  const before = await env.accounts.get(`accounts/${env.labAccount}.json`);
+
+  const me = await asReader("/v1/identities/me");
+  assert.equal(me.status, 200);
+  assert.equal(me.body.person.id, env.people.alice.site.person.id);
+
+  const list = await asReader("/v1/accounts");
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.body.accounts, []);
+
+  const forbidden: Array<[string, string, string, unknown]> = [
+    [
+      "authorize on an account she owns",
+      `/v1/accounts/${env.labAccount}/authorize`,
+      "POST",
+      { operation: "console:read" },
+    ],
+    [
+      "authorize on an unknown account",
+      `/v1/accounts/${randomUUID()}/authorize`,
+      "POST",
+      { operation: "console:read" },
+    ],
+    ["create an account", "/v1/accounts", "POST", { name: "Reader account" }],
+    [
+      "change a membership",
+      `/v1/accounts/${env.labAccount}/memberships`,
+      "POST",
+      { personId: env.people.bob.site.person.id, role: "owner", status: "active" },
+    ],
+    ["the directory list", "/v1/account-directory", "GET", {}],
+    ["the directory detail of an existing account", `/v1/account-directory/${env.labAccount}`, "GET", {}],
+    ["the directory detail of an invented account", `/v1/account-directory/${randomUUID()}`, "GET", {}],
+    ["the account detail of an existing account", `/v1/accounts/${env.labAccount}`, "GET", {}],
+    ["the account detail of an invented account", `/v1/accounts/${randomUUID()}`, "GET", {}],
+  ];
+  const answers: Record<string, { status: number; body: any }> = {};
+  for (const [name, path, method, body] of forbidden)
+    await testContext.test(name, async () => {
+      const request = event(reader.roleArn, path, method, body, tokens);
+      if (method === "POST") request.headers!["idempotency-key"] = randomUUID();
+      const result = await env.run(request, target);
+      assert.equal(result.status, 403);
+      answers[name] = result;
+    });
+  // Existence is not observable: the same refusal whether or not the account exists.
+  assert.deepEqual(
+    answers["the directory detail of an existing account"],
+    answers["the directory detail of an invented account"],
+  );
+  assert.deepEqual(
+    answers["the account detail of an existing account"],
+    answers["the account detail of an invented account"],
+  );
+  assert.deepEqual(answers["authorize on an account she owns"], answers["authorize on an unknown account"]);
+  // Nothing was written by any of it.
+  assert.deepEqual(await env.accounts.get(`accounts/${env.labAccount}.json`), before);
+});
+
+test("the lab verifier does not accept a reader site's token and refuses to be built with a reader", async () => {
+  const env = await fixture();
+  const readerTokens = mint(reader, "r-alice", "google-alice");
+  const verifier = verifierConfiguration(editorSiteRegistrations([...sites, reader]));
+  assert.deepEqual(
+    verifier.sites.map((site) => site.product),
+    sites.map((site) => site.product),
+  );
+  const target = env.make(registrations([cyclotron, crm, ...sites, reader], { labVerifier: verifier }));
+  const refused = await env.me(readerTokens, target);
+  assert.equal(refused.status, 401);
+  assert.deepEqual(
+    refused,
+    await env.me(mint(siteA, "forged", "google-x", "unused", { client_id: "nope" }), target),
+  );
+  assert.throws(() => verifierConfiguration([...sites, reader]), /never trusts a public-reader/);
+  assert.throws(() => verifierConfiguration([reader]), /never trusts a public-reader/);
+  assert.throws(
+    () => verifierConfiguration([{ ...siteA, capabilities: [] }]),
+    /never trusts a public-reader/,
+  );
 });
