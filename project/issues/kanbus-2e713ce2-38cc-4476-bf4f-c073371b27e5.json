@@ -13,9 +13,17 @@
     "spam"
   ],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "89289453-ccb9-4375-907d-d9f595ee02a4",
+      "author": "home",
+      "text": "2026-10-23 throttle stop. Still in shadow mode (spamLabelling shadow): scores are stored, nothing is labelled. Left: review the shadow results on real inbound (the Papyrus traffic spike gives a sample), then with Ryan's approval switch the flag to label. Next step: pull the spam_check verdicts for inquiries since 2026-10-21 and compare them with human judgement.",
+      "created_at": "2026-10-23T13:24:49.602289Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-21T22:29:47.983080Z",
-  "updated_at": "2026-10-21T22:51:19.696898Z",
+  "updated_at": "2026-10-23T13:24:49.602320Z",
   "closed_at": null,
   "agent": {
     "platform": "claude-code",

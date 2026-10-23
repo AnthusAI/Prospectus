@@ -10,9 +10,17 @@
   "parent": null,
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "81af22d3-1d11-4444-80e7-5490214ed6bb",
+      "author": "home",
+      "text": "2026-10-23 throttle stop. Done: #85 merged and deployed (1c964a4, Amplify job 82). SES identity news.apyr.us verified (DKIM and MAIL FROM), config set prospectus-newsletter, signed-token double opt-in, confirm and unsubscribe pages, RFC 8058 one-click. p.apyr.us footer Subscribe is live but disabled and labelled Coming soon (Papyrus-web #42). Hidden noindex test page https://p.apyr.us/newsletter-test/ posts the live papyrus-newsletter-v1 contract (Papyrus-web #43). Found: the SES account already has production access (ProductionAccessEnabled=true), so the Coming soon label and the unlinked test page are the only gating, not the SES sandbox. Separate: Shipped's own newsletter emails (not Prospectus) were rebranded in Papyrus #584 and Shipped-web #57. Left: Ryan's end-to-end test on /newsletter-test/ (confirm, active, one-click unsubscribe), then on Ryan's go-ahead the Papyrus marketing session removes the test page and enables the footer form. Next step: Ryan runs that test with his own test address.",
+      "created_at": "2026-10-23T13:24:49.526523Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-22T01:51:20.181457Z",
-  "updated_at": "2026-10-22T02:47:07.072841Z",
+  "updated_at": "2026-10-23T13:25:11.289642Z",
   "closed_at": null,
   "agent": {
     "platform": "claude-code",
