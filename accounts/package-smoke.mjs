@@ -95,7 +95,7 @@ try {
       process.execPath,
       [
         "-e",
-        "require(process.argv[1]).handler(JSON.parse(process.argv[2])).then(value=>process.stdout.write(\"\\n\"+JSON.stringify(value)))",
+        'require(process.argv[1]).handler(JSON.parse(process.argv[2])).then(value=>process.stdout.write("\\n"+JSON.stringify(value)))',
         path,
         JSON.stringify(event),
       ],
