@@ -95,7 +95,7 @@ try {
       process.execPath,
       [
         "-e",
-        "require(process.argv[1]).handler(JSON.parse(process.argv[2])).then(value=>process.stdout.write(JSON.stringify(value)))",
+        'require(process.argv[1]).handler(JSON.parse(process.argv[2])).then(value=>process.stdout.write("\\n"+JSON.stringify(value)))',
         path,
         JSON.stringify(event),
       ],
@@ -108,7 +108,8 @@ try {
     );
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr);
-    return JSON.parse(result.stdout);
+    // Handler log lines share stdout; the result is the last line.
+    return JSON.parse(result.stdout.trimEnd().split("\n").at(-1));
   }
   const denied = bundle(
     "central",

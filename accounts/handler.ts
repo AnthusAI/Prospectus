@@ -13,6 +13,7 @@ import {
 import { context, type KeyResolver, type RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
+import { logRefusal } from "./refusal-log";
 
 const ACCOUNT_REQUEST_MAXIMUM_BODY_BYTES = 12000;
 
@@ -90,6 +91,7 @@ export function accountHandler(
       }
       fail(404, "route", "Account route not found.");
     } catch (error) {
+      logRefusal(event, error);
       if (error instanceof AccountsError)
         return jsonResponse(error.status, { error: error.code, message: error.message });
       return jsonResponse(503, {

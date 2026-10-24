@@ -209,6 +209,7 @@ fn path_belongs_to_project(kind: &str, project: &str) -> bool {
             "people",
             "logins",
             "sessions",
+            "session-lookups",
             "retired-subjects",
         ]
         .contains(&kind),

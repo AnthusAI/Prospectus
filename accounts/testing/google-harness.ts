@@ -11,6 +11,8 @@ import { DurableGoogleIdentities } from "../durable-google-identities";
 import { VirtuusIdentityFiles, VirtuusAccountFiles } from "../identity-files";
 import { MemoryGoogleIdentities } from "./memory-google-identities";
 
+// Stdout carries only the JSON-lines protocol; service diagnostics such as refusal logs go to stderr.
+console.info = (...values: unknown[]) => console.error(...values);
 let handler: ReturnType<typeof googleIdentityHandler> | undefined;
 let now = 0;
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });

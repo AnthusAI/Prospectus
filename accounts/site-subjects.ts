@@ -3,6 +3,7 @@ import { caller, type ProductRegistration, type RestEvent } from "./auth";
 import { AccountsError, UUID_PATTERN } from "./model";
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse } from "./request";
+import { logRefusal } from "./refusal-log";
 import { hmacSha256 } from "./challenge-signer";
 import { isPlainRecord, isProductName, matchesStringPattern } from "./validation-rules";
 
@@ -175,23 +176,34 @@ export function publicReaderHandler(
       registration = undefined;
     }
     if (!isPublicReader(registration)) {
-      if (event.path === RETIRED_SITE_SUBJECTS_PATH)
-        return jsonResponse(403, {
-          error: "reader_route_forbidden",
-          message: "Only public-reader sites list retired site subjects.",
-        });
+      if (event.path === RETIRED_SITE_SUBJECTS_PATH) {
+        const refusal = new AccountsError(
+          403,
+          "reader_route_forbidden",
+          "Only public-reader sites list retired site subjects.",
+        );
+        logRefusal(event, refusal);
+        return jsonResponse(refusal.status, { error: refusal.code, message: refusal.message });
+      }
       return inner(event);
     }
     const product = registration!.product;
     try {
-      if (!secret) return unavailable();
+      if (!secret) {
+        logRefusal(event, { name: "SiteSubjectSecretUnconfigured" });
+        return unavailable();
+      }
       await secret.ready();
       if (event.path === RETIRED_SITE_SUBJECTS_PATH) {
-        if (!retirements) return unavailable();
+        if (!retirements) {
+          logRefusal(event, { name: "RetiredSiteSubjectsUnconfigured" });
+          return unavailable();
+        }
         return await retirements.respond(event, product, nowSeconds());
       }
       return await readerResponse(await inner(event), event, product, secret);
     } catch (error) {
+      logRefusal(event, error);
       if (error instanceof AccountsError)
         return jsonResponse(error.status, { error: error.code, message: error.message });
       return unavailable();

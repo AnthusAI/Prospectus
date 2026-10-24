@@ -2,6 +2,7 @@ import { context, type KeyResolver, type RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { isGoogleDirect } from "./google-direct";
 import { jsonResponse } from "./request";
+import { logRefusal } from "./refusal-log";
 import { AccountsError, fail, roleOperations } from "./model";
 import { DurableAccountsService, type AccountDocument } from "./durable-accounts";
 import { canReadOperatorDirectory, hasOperatorPermission, type OperatorGrant } from "./operator-policy";
@@ -168,6 +169,7 @@ export function accountDirectoryHandler(
       };
       return jsonResponse(200, { account: detail });
     } catch (error) {
+      logRefusal(event, error);
       if (error instanceof AccountsError)
         return jsonResponse(error.status, { error: error.code, message: error.message });
       return jsonResponse(503, {

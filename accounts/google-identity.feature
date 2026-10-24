@@ -146,3 +146,42 @@ Feature: Verified Google identities across independently branded pools
     When the previous key is still configured for verification
     Then the token verifies but new tokens are signed with the current key ID
     And a token naming an unknown key ID is rejected without reading any secret
+
+  Scenario: A session lookup reads a constant number of files however many sessions a person has
+    Given an enrolled Cognito alias with many committed sign-ins
+    And each commit also wrote an immutable session lookup file keyed by a digest of its binding, login time and lineage
+    When the product requests the current person with an access token from one of those sign-ins
+    Then the lookup reads the session lookup file and verifies the full committed chain
+    And it reads at most six files regardless of the number of sessions
+    And the answer is identical to a full scan of every stored session
+
+  Scenario: Sessions committed before session lookup files existed still resolve
+    Given a committed sign-in with no session lookup file
+    When the product requests the current person with an access token from that sign-in
+    Then the lookup falls back to scanning stored sessions
+    And it stops at the first committed session that matches the access token
+
+  Scenario Outline: A hinted lookup refuses exactly as a full scan does
+    Given an enrolled Cognito alias
+    When the product requests the current person with <evidence>
+    Then the response is <outcome> exactly as before session lookup files existed
+    Examples:
+      | evidence                                                    | outcome                        |
+      | an access token from an enrolled sign-in                    | the enrolled Person            |
+      | an access token whose sign-in was never enrolled            | 401 reenrollment_required      |
+      | an access token for a binding the alias never enrolled under | 403 reenrollment_required      |
+      | an access token for an alias that was never enrolled        | a null Person                  |
+
+  Scenario: A Google-direct lookup stops at the first enrollment under its binding
+    Given a Google-direct product presents a fresh Google ID token on every request
+    When it requests the current person
+    Then the lookup stops at the first committed session enrolled under the product binding
+    And a Google subject never enrolled under that binding still resolves to a null Person
+
+  Scenario: Concurrent identical resolutions converge instead of failing
+    Given several requests resolve the same challenge with identical evidence at the same time
+    When one request finds that another execution owns the same identity write
+    Then it retries that same operation-keyed write at most three times with a short jittered backoff
+    And every request returns the same Person
+    But a write conflict, a replay with different evidence or a conflicting identity mapping is never retried
+    And a write that is still unavailable after three attempts returns 503 identity_unavailable

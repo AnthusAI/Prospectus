@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
+import { logRefusal } from "./refusal-log";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
 import { siteForToken } from "./lab-verifier";
 import { issueChallengeToken, verifyChallengeToken } from "./challenge-token";
@@ -68,13 +69,19 @@ export interface IdentitySession {
   authTime: number;
   lineageHash: string;
 }
+/** What the caller will check for: one enrolled sign-in (a full session), or any enrollment under a binding. A
+ * repository may stop looking once it holds a match, so callers may only ask whether some session or provenance
+ * matches the lookup they passed. */
+export type IdentityLookup =
+  | IdentitySession
+  | { binding: IdentityBinding; authTime?: never; lineageHash?: never };
 export interface GoogleIdentityRepository {
   issue(challenge: LoginChallenge): Promise<void>;
   associate(proof: GoogleAssociation): Promise<Person>;
   find(
     issuer: string,
     subject: string,
-    session?: IdentitySession,
+    lookup?: IdentityLookup,
   ): Promise<{ person: Person; alias: GoogleAlias } | null>;
   getPerson(id: string): Promise<Person | null>;
 }
@@ -429,7 +436,7 @@ export function googleIdentityHandler(
             keys,
             now,
           );
-          const known = await repository.find(scope.issuer, claims.sub);
+          const known = await repository.find(scope.issuer, claims.sub, { binding: scope });
           return jsonResponse(200, {
             person: known?.alias.provenance.some((prior) => sameBinding(prior, scope)) ? known.person : null,
           });
@@ -447,6 +454,7 @@ export function googleIdentityHandler(
       }
       fail(404, "route", "Identity route not found.");
     } catch (error) {
+      logRefusal(event, error);
       if (error instanceof AccountsError)
         return jsonResponse(error.status, { error: error.code, message: error.message });
       return jsonResponse(503, {
