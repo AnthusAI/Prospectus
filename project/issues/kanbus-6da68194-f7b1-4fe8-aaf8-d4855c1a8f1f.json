@@ -10,9 +10,17 @@
   "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "32f3c9b2-47d3-4762-8b8c-e707a5c81f2e",
+      "author": "home",
+      "text": "PR #89 (https://github.com/AnthusAI/Prospectus/pull/89) open for review, not merged. Lint, typecheck and npm test pass. Accounts suite: 304 of 305 pass; the one failure is a durable-accounts owner-demotion test that already fails on main under parallel load.",
+      "created_at": "2026-10-24T19:48:48.936050Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-24T19:27:50.964500Z",
-  "updated_at": "2026-10-24T19:27:54.169444Z",
+  "updated_at": "2026-10-24T19:48:48.936073Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
