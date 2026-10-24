@@ -40,17 +40,19 @@ export function googlePersonDirectory(
             );
       if (!product?.googleFederation || !session) return null;
       const binding = enrollmentBinding(product, verifier ? product.roleArn : context.principal);
+      // A Google-direct caller presents a fresh Google ID token on every request, so there is no single enrolled
+      // login to match. Enrollment under this exact product binding is the evidence instead.
+      if (isGoogleDirect(product)) {
+        const enrolled = await repository.find(context.human.issuer, context.human.subject, { binding });
+        return enrolled?.alias.provenance.some((prior) => sameBinding(prior, binding))
+          ? enrolled.person
+          : null;
+      }
       const identity = await repository.find(context.human.issuer, context.human.subject, {
         binding,
         authTime: session.authTime,
         lineageHash: session.lineageHash,
       });
-      // A Google-direct caller presents a fresh Google ID token on every request, so there is no single enrolled
-      // login to match. Enrollment under this exact product binding is the evidence instead.
-      if (isGoogleDirect(product))
-        return identity?.alias.provenance.some((prior) => sameBinding(prior, binding))
-          ? identity.person
-          : null;
       if (
         !identity?.alias.sessions.some(
           (known) =>

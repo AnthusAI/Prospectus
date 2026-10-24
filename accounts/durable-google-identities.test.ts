@@ -172,20 +172,25 @@ for (const phase of ["issue", "prepare", "google", "alias", "person", "session",
 test("lost journal response is recovered after restart without replacing the winning Person", async () => {
   const environment = await fixture();
   await environment.repository().issue(environment.challenge);
-  let lost = false;
+  // Every response for the Google file is lost, so the request gives up after its bounded retries.
+  let googleCommitAttempts = 0;
   const uncertain: IdentityFiles = {
     get: environment.files.get.bind(environment.files),
     list: environment.files.list.bind(environment.files),
     commit: async (...args) => {
       const value = await environment.files.commit(...args);
-      if (!lost && args[0].startsWith("google/")) {
-        lost = true;
+      if (args[0].startsWith("google/")) {
+        googleCommitAttempts++;
         throw new IdentityFileError("uncertain");
       }
       return value;
     },
   };
-  await assert.rejects(new DurableGoogleIdentities(uncertain).associate(environment.proof));
+  await assert.rejects(
+    new DurableGoogleIdentities(uncertain).associate(environment.proof),
+    (error) => (error as any).code === "uncertain",
+  );
+  assert.equal(googleCommitAttempts, 3);
   assert.equal(
     await environment.repository().find(environment.proof.binding.issuer, environment.proof.cognitoSubject),
     null,
@@ -332,16 +337,15 @@ test("interrupted native publication recovers from surviving Virtuus operation m
     path: `google/${googleIdentityKey(environment.proof.googleSubject)}.json`,
     point: "after_publication",
   });
-  await assert.rejects(
-    new DurableGoogleIdentities(files).associate(environment.proof),
-    (error) => (error as any).code === "uncertain",
-  );
+  // The bridge exits after publishing, so the response is lost; the retried identical operation finds its receipt.
+  const person = await new DurableGoogleIdentities(files).associate(environment.proof);
+  assert.ok(person.id);
   assert.equal(
-    await environment.repository().find(environment.proof.binding.issuer, environment.proof.cognitoSubject),
-    null,
+    (await environment.repository().find(environment.proof.binding.issuer, environment.proof.cognitoSubject))
+      ?.person.id,
+    person.id,
   );
-  const person = await environment.repository().recover(environment.challenge.challengeId);
-  assert.ok(person?.id);
+  assert.deepEqual(await environment.repository().recover(environment.challenge.challengeId), person);
   assert.deepEqual(await environment.repository().associate(environment.proof), person);
 });
 test("a crashed pre-publication execution claim stays fail-closed without unsafe automatic reset", async () => {

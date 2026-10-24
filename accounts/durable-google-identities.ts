@@ -8,6 +8,7 @@ import {
   type GoogleAlias,
   type GoogleAssociation,
   type GoogleIdentityRepository,
+  type IdentityLookup,
   type IdentitySession,
   type LoginChallenge,
 } from "./google-identity";
@@ -20,6 +21,32 @@ export const cognitoAliasKey = (issuer: string, subject: string) => hash(["cogni
 export type EnrollmentPhase = "issue" | "prepare" | "google" | "alias" | "person" | "session" | "complete";
 export type EnrollmentHook = (phase: EnrollmentPhase, point: "before" | "after") => void | Promise<void>;
 const SESSION_POINTER_READ_BATCH_SIZE = 4;
+const IDENTITY_WRITE_ATTEMPTS = 3;
+// An owning execution publishes in about eight conditional storage calls, so the waits (50-150 ms, then
+// 100-300 ms) span one publication without holding a request for long.
+const IDENTITY_WRITE_RETRY_BASE_MILLISECONDS = 100;
+/** Another execution owns the same Virtuus operation, or publication is contended. Repeating the identical
+ * operation-keyed write is safe: Virtuus returns the recorded receipt for the same operation ID and request hash.
+ * A conflict or operation mismatch is a decision about different evidence and is never retried. */
+const transientIdentityWriteCodes = ["uncertain", "unavailable"];
+const pauseBeforeIdentityWriteRetry = (attempt: number) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, IDENTITY_WRITE_RETRY_BASE_MILLISECONDS * attempt * (0.5 + Math.random())),
+  );
+/** One committed sign-in under one alias, keyed by everything a session continuation must match. */
+export const sessionLookupKey = (session: IdentitySession) =>
+  hash([
+    "session-lookup-v1",
+    session.binding.product,
+    session.binding.principal,
+    session.binding.issuer,
+    session.binding.clientId,
+    session.binding.policyRevision,
+    session.authTime,
+    session.lineageHash,
+  ]);
+export const sessionLookupPath = (aliasKey: string, session: IdentitySession) =>
+  `session-lookups/${aliasKey}/${sessionLookupKey(session)}.json`;
 const loginStates = ["pending", "prepared", "committed", "conflicted"];
 const inconsistentIdentity = (summary: string) => failWith(503, "identity_inconsistent", summary);
 interface GoogleRecord {
@@ -50,6 +77,17 @@ interface LoginRecord {
 interface SessionPointer {
   version: 1;
   kind: "session";
+  challengeId: string;
+  googleKey: string;
+  aliasKey: string;
+  personId: string;
+}
+
+/** Immutable lookup from one committed sign-in to its challenge. It never authorizes by itself: a hinted lookup
+ * verifies the full committed chain from the session pointer it names. */
+interface SessionLookup {
+  version: 1;
+  kind: "session-lookup";
   challengeId: string;
   googleKey: string;
   aliasKey: string;
@@ -217,6 +255,44 @@ const personPointerRules: ValidationRule<{
   ),
 ];
 
+const sessionLookupRules: ValidationRule<{
+  lookup: SessionLookup;
+  google: GoogleRecord;
+  aliasKey: string;
+}>[] = [
+  rule(({ lookup }) => lookup?.version === 1, "A session lookup must be version 1."),
+  rule(({ lookup }) => lookup.kind === "session-lookup", "A session lookup must have kind session-lookup."),
+  rule(
+    ({ lookup }) => matchesStringPattern(lookup.challengeId, UUID_PATTERN),
+    "A session lookup must name a challenge UUID.",
+  ),
+  rule(({ lookup, aliasKey }) => lookup.aliasKey === aliasKey, "A session lookup must name its alias."),
+  rule(
+    ({ lookup, google }) => lookup.googleKey === googleIdentityKey(google.subject),
+    "A session lookup must name the Google identity.",
+  ),
+  rule(
+    ({ lookup, google }) => lookup.personId === google.person.id,
+    "A session lookup must name the Person.",
+  ),
+];
+
+const committedSessionMatchesLookupRules: ValidationRule<{ login: LoginRecord; session: IdentitySession }>[] =
+  [
+    rule(
+      ({ login, session }) => sameBinding(login.proof!.binding, session.binding),
+      "The session lookup names a sign-in under another binding.",
+    ),
+    rule(
+      ({ login, session }) => login.proof!.authTime === session.authTime,
+      "The session lookup names a sign-in with another login time.",
+    ),
+    rule(
+      ({ login, session }) => login.proof!.lineageHash === session.lineageHash,
+      "The session lookup names a sign-in from another login family.",
+    ),
+  ];
+
 const googleRecordMatches = (value: GoogleRecord | undefined, googleSubject: string) =>
   value?.kind === "google" && value.issuer === GOOGLE_ISSUER && value.subject === googleSubject;
 
@@ -248,6 +324,28 @@ const sessionPointerMatches = (
   value.aliasKey === expected.aliasKey &&
   value.personId === expected.personId;
 
+/** Any committed sign-in with the same session satisfies a lookup, so a second challenge for the same sign-in keeps
+ * the first lookup file instead of conflicting with it. */
+const sessionLookupMatches = (
+  value: SessionLookup | undefined,
+  expected: Omit<SessionLookup, "version" | "kind" | "challengeId">,
+) =>
+  value?.version === 1 &&
+  value.kind === "session-lookup" &&
+  matchesStringPattern(value.challengeId, UUID_PATTERN) &&
+  value.googleKey === expected.googleKey &&
+  value.aliasKey === expected.aliasKey &&
+  value.personId === expected.personId;
+
+const isFullSession = (lookup: IdentityLookup | undefined): lookup is IdentitySession =>
+  lookup?.authTime !== undefined && lookup.lineageHash !== undefined;
+
+/** A full session lookup needs that exact sign-in; a binding-only lookup needs any sign-in under the binding. */
+const committedLoginSatisfies = (login: LoginRecord, lookup: IdentityLookup) =>
+  sameBinding(login.proof!.binding, lookup.binding) &&
+  (!isFullSession(lookup) ||
+    (login.proof!.authTime === lookup.authTime && login.proof!.lineageHash === lookup.lineageHash));
+
 const sessionPointerBelongsToGoogleIdentity = (
   pointer: SessionPointer,
   google: GoogleRecord,
@@ -274,14 +372,26 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
     await this.hook(phase, "after");
     return result;
   }
-  private write<T>(
+  private async write<T>(
     path: string,
     operationId: string,
     value: T,
     revision: string | null,
     logical: unknown = value,
   ) {
-    return this.files.commit(path, operationId, hash(["identity-v1", path, logical]), value, revision);
+    const requestHash = hash(["identity-v1", path, logical]);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.files.commit(path, operationId, requestHash, value, revision);
+      } catch (error) {
+        if (
+          !(error instanceof IdentityFileError && transientIdentityWriteCodes.includes(error.code)) ||
+          attempt >= IDENTITY_WRITE_ATTEMPTS
+        )
+          throw error;
+        await pauseBeforeIdentityWriteRetry(attempt);
+      }
+    }
   }
   async issue(challenge: LoginChallenge) {
     await this.step("issue", () =>
@@ -486,8 +596,8 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
         (value) => personRecordMatches(value, googleKey, google.person),
       ),
     );
-    await this.step("session", () =>
-      this.ensure<SessionPointer>(
+    await this.step("session", async () => {
+      await this.ensure<SessionPointer>(
         `sessions/${googleKey}/${aliasKey}/${id}.json`,
         `identity:${id}:session`,
         { version: 1, kind: "session", challengeId: id, googleKey, aliasKey, personId: google.person.id },
@@ -498,8 +608,22 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
             aliasKey,
             personId: google.person.id,
           }),
-      ),
-    );
+      );
+      // Written after the pointer it names, so a lookup file never names a missing pointer.
+      await this.ensure<SessionLookup>(
+        sessionLookupPath(aliasKey, proof),
+        `identity:${id}:session-lookup`,
+        {
+          version: 1,
+          kind: "session-lookup",
+          challengeId: id,
+          googleKey,
+          aliasKey,
+          personId: google.person.id,
+        },
+        (value) => sessionLookupMatches(value, { googleKey, aliasKey, personId: google.person.id }),
+      );
+    });
     if (record.state !== "committed")
       await this.step("complete", () =>
         this.write(
@@ -551,7 +675,39 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
       return pendingRead;
     };
   }
-  async find(issuer: string, subject: string, _session?: IdentitySession) {
+  /** The committed sign-in a session lookup file names, verified exactly as a scan would verify it. Null when the
+   * file, its pointer or a committed login is absent, so the caller falls back to the scan. */
+  private async committedFromSessionLookup(
+    session: IdentitySession,
+    google: GoogleRecord,
+    aliasKey: string,
+    read: IdentityFiles["get"],
+  ): Promise<LoginRecord | null> {
+    const lookup = (await read<SessionLookup>(sessionLookupPath(aliasKey, session)))?.value;
+    if (!lookup) return null;
+    requireRules(
+      { lookup, google, aliasKey },
+      sessionLookupRules,
+      inconsistentIdentity("Invalid session lookup"),
+    );
+    const pointer = (
+      await read<SessionPointer>(`sessions/${lookup.googleKey}/${aliasKey}/${lookup.challengeId}.json`)
+    )?.value;
+    if (!pointer) return null;
+    const login = await this.committed(pointer, google, aliasKey, read);
+    if (!login) return null;
+    requireRules(
+      { login, session },
+      committedSessionMatchesLookupRules,
+      inconsistentIdentity("Session lookup is inconsistent"),
+    );
+    return login;
+  }
+  /** With a full session, its lookup file answers directly; sessions committed before lookup files existed fall back
+   * to the scan. With any lookup, the scan stops at the first committed session that satisfies it. Callers only ask
+   * whether some session or provenance matches, so a partial list holding a match answers them exactly as the full
+   * list does, and a miss still scans every session. */
+  async find(issuer: string, subject: string, lookup?: IdentityLookup) {
     // Immutable identity links are shared only within this lookup. Every later
     // request rereads canonical authority; no mutable account permissions cache.
     const read = this.memoizedReadsForOneLookup();
@@ -571,8 +727,11 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
       aliasGoogleAgreementRules,
       inconsistentIdentity("Canonical alias conflicts"),
     );
-    const logins: LoginRecord[] = [];
-    const paths = await this.files.list(`sessions/${alias.googleKey}/${aliasKey}/`);
+    const hinted = isFullSession(lookup)
+      ? await this.committedFromSessionLookup(lookup, google, aliasKey, read)
+      : null;
+    const logins: LoginRecord[] = hinted ? [hinted] : [];
+    const paths = hinted ? [] : await this.files.list(`sessions/${alias.googleKey}/${aliasKey}/`);
     for (let offset = 0; offset < paths.length; offset += 4) {
       const batch = await Promise.all(
         paths.slice(offset, offset + 4).map(async (path) => {
@@ -581,6 +740,7 @@ export class DurableGoogleIdentities implements GoogleIdentityRepository {
         }),
       );
       for (const login of batch) if (login) logins.push(login);
+      if (lookup && logins.some((login) => committedLoginSatisfies(login, lookup))) break;
     }
     if (!logins.length) return null;
     return {
