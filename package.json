@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build && vite build --config vite.portal.config.ts",
     "verify:bundles": "node scripts/verify-bundles.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts accounts/google-identity.test.ts accounts/google-direct.test.ts accounts/site-subjects.test.ts",
+    "test": "node --import tsx --test test/*.test.ts accounts/google-identity.test.ts accounts/google-direct.test.ts accounts/site-subjects.test.ts accounts/refusal-log.test.ts",
     "intake:local": "node --import tsx server/local.ts",
     "test:all": "npm test && npm run test:accounts:durable && npm run test:accounts:ui && npm run test:intake:integration && npm run test:control-binding",
     "test:intake": "node --import tsx --test test/intake*.test.ts",

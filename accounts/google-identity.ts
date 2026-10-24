@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { caller, cognitoClaims, type KeyResolver, type ProductRegistration, type RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { jsonResponse, parseJsonRequest } from "./request";
+import { logRefusal } from "./refusal-log";
 import { AccountsError, fail, UUID_PATTERN, type Person } from "./model";
 import { siteForToken } from "./lab-verifier";
 import { issueChallengeToken, verifyChallengeToken } from "./challenge-token";
@@ -447,6 +448,7 @@ export function googleIdentityHandler(
       }
       fail(404, "route", "Identity route not found.");
     } catch (error) {
+      logRefusal(event, error);
       if (error instanceof AccountsError)
         return jsonResponse(error.status, { error: error.code, message: error.message });
       return jsonResponse(503, {

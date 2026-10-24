@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-6da68194-f7b1-4fe8-aaf8-d4855c1a8f1f",
+  "title": "Accounts: log refusal reasons, hinted session lookup for identities/me, retry transient identity writes",
+  "description": "Ryan-approved hardening of the central accounts service (accounts/).\n\n1. Refusal logging: one structured JSON log line per refused request — {event:accounts.refusal, route, status, code, message} for AccountsError and {event:accounts.unavailable, route, errorName, errorCode?} for unexpected errors. No tokens, subjects, emails, names or raw paths; account IDs become {account}. Motivating incident: a Shipped reader sign-in refused with 401 challenge_invalid that was invisible in logs.\n\n2. Hinted session lookup: GET /v1/identities/me and the person-directory lookup stop scanning every stored session. Enrollment additionally writes an immutable session-lookups/<aliasKey>/<digest>.json keyed by (binding, authTime, lineageHash); a hinted find reads it and verifies the full committed chain. Older sessions fall back to the scan, which now stops at the first matching session. Google-direct lookups pass only the binding and stop at the first committed session with it. Caller answers (provenance/sessions/reenrollment_required) stay identical.\n\n3. Transient identity write retry: concurrent identical requests surface Virtuus 'uncertain'/'unavailable' (another execution owns the operation) as 503. Operation-keyed identity writes now retry a bounded 3 attempts with jittered backoff; conflict, operation_mismatch, challenge_replay and identity_conflict are never retried.\n\nAcceptance: specs in accounts/*.feature, tests in accounts/*.test.ts, full accounts suite + lint + typecheck green; one PR to main, not merged.",
+  "type": "story",
+  "status": "in_progress",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-24T19:27:50.964500Z",
+  "updated_at": "2026-10-24T19:27:54.169444Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Claude Code"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
