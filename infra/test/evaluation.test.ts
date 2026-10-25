@@ -29,7 +29,8 @@ test("synthetic evaluation adds only a fixed submit route and narrowly named run
   template.resourceCountIs("AWS::S3::Bucket", 0);
   template.resourceCountIs("AWS::DynamoDB::Table", 0);
   template.resourceCountIs("AWS::Lambda::Function", 1);
-  template.resourceCountIs("AWS::Logs::LogGroup", 0);
+  // The only log group is the API access log.
+  template.resourceCountIs("AWS::Logs::LogGroup", 1);
   template.hasResourceProperties("AWS::Lambda::Function", {
     FunctionName: "prospectus-intake-evaluation",
     Runtime: "nodejs24.x",
@@ -519,4 +520,34 @@ test("intake spam labelling defaults to shadow, is passed only as environment an
     Object.keys(shadow.toJSON().Resources).sort(),
   );
   assert.throws(() => build("off" as never), /Unknown spam labelling/);
+});
+
+test("the intake API access log records route and status only, never addresses, agents, paths or bodies", () => {
+  const stack = new cdk.Stack(new cdk.App(), "EvaluationReview", {
+    env: { account: "712236451410", region: "us-east-1" },
+  });
+  new EvaluationIntake(
+    stack,
+    "Intake",
+    lambda.Code.fromInline("exports.handler=async()=>({statusCode:503})"),
+  );
+  const template = Template.fromStack(stack);
+  template.hasResourceProperties("AWS::Logs::LogGroup", {
+    LogGroupName: "/aws/apigateway/prospectus-intake-evaluation",
+    RetentionInDays: 30,
+  });
+  const stage = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"))[0] as any;
+  const format = JSON.parse(stage.Properties.AccessLogSettings.Format);
+  assert.deepEqual(Object.keys(format).sort(), [
+    "error",
+    "integrationStatus",
+    "method",
+    "requestId",
+    "requestTime",
+    "route",
+    "status",
+  ]);
+  const variables = stage.Properties.AccessLogSettings.Format as string;
+  for (const forbidden of ["sourceIp", "userAgent", "path", "identity", "authorizer"])
+    assert.ok(!variables.includes(forbidden), `the access log must not record ${forbidden}`);
 });
