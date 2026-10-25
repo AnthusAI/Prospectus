@@ -166,6 +166,24 @@ export class EvaluationIntake extends Construct {
     }
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 2, throttlingRateLimit: 1 };
+    // Route and status only, so refusals can be told apart; no addresses, agents, paths or bodies.
+    const accessLog = new logs.LogGroup(this, "AccessLog", {
+      logGroupName: "/aws/apigateway/prospectus-intake-evaluation",
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    stage.accessLogSettings = {
+      destinationArn: accessLog.logGroupArn,
+      format: JSON.stringify({
+        requestId: "$context.requestId",
+        requestTime: "$context.requestTime",
+        method: "$context.httpMethod",
+        route: "$context.routeKey",
+        status: "$context.status",
+        integrationStatus: "$context.integrationStatus",
+        error: "$context.error.message",
+      }),
+    };
     if (formRoutes.length)
       throttleRoutes(api.defaultStage!, [
         ...formRoutes.map(({ form, route }) => ({
