@@ -17,10 +17,17 @@
       "text": "2026-10-30 Pages implemented behind infra/cli-sign-in.json (disabled) in draft PR #93: cli/src/prospectus_cli/pages.py with 26 specs against an in-process broker. Open: the /cli rewrite on prospectus.anth.us (infra/hosting-settings.json is not applied by the pipeline).",
       "created_at": "2026-10-30T19:16:21.181617Z",
       "comment_type": "default"
+    },
+    {
+      "id": "680c4987-4fd6-464b-bbd3-d431905b6e30",
+      "author": "home",
+      "text": "Ryan chose to apply the /cli rewrite from CDK. PR #93 commit 4a45ec3: custom resource prospectus-cli-rewrite keeps one 200 proxy rule /cli/<*> -> CRM API /cli/<*> ahead of the SPA rule on app d15sc1sptohtqb, leaving other rules untouched. New role prospectus-cli-rewrite: amplify:GetApp/UpdateApp on that app only, plus its logs. Created only when cli-sign-in is enabled; not deployed.",
+      "created_at": "2026-10-30T20:52:47.746791Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-30T19:01:13.433658Z",
-  "updated_at": "2026-10-30T19:16:21.182466Z",
+  "updated_at": "2026-10-30T20:52:47.747053Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
