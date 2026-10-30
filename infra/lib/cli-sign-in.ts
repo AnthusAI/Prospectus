@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import * as cdk from "aws-cdk-lib";
 import * as apigw from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
@@ -7,6 +8,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import type { CliSignInBroker } from "./cli-sign-in-deployment";
+import { AMPLIFY_APP_ID, TARGET_ACCOUNT, TARGET_REGION } from "./scope";
 import { throttleRoutes } from "./throttle-routes";
 
 export interface CliSignInOptions {
@@ -21,6 +23,9 @@ const PAGES: [apigw.HttpMethod, string][] = [
   [apigw.HttpMethod.POST, "/cli/approve"],
   [apigw.HttpMethod.GET, "/cli/callback"],
 ];
+
+/** The one rule this stack owns on the CRM's Amplify app; it must precede the single-page-app rewrite. */
+export const CLI_REWRITE_SOURCE = "/cli/<*>";
 
 /**
  * cli-login's approval pages for prospectus.anth.us. They invoke the broker's private operations directly and hold
@@ -98,5 +103,53 @@ export class CliSignIn extends Construct {
       return { routeKey: `${method} ${path}`, route, burstLimit: 10, rateLimit: 5 };
     });
     throttleRoutes(api.defaultStage!, throttles);
+    this.rewrite(api);
+  }
+
+  /**
+   * Proxies prospectus.anth.us/cli/* to the pages on the CRM API. The Amplify app is not CDK-managed
+   * (kanbus-e72209), so a helper adds or removes only this rule and keeps every other rule as it is.
+   */
+  private rewrite(api: apigw.HttpApi) {
+    const logGroup = new logs.LogGroup(this, "RewriteLogs", {
+      logGroupName: "/aws/lambda/prospectus-cli-rewrite",
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const role = new iam.Role(this, "RewriteRole", {
+      roleName: "prospectus-cli-rewrite",
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+    });
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
+        resources: [logGroup.logGroupArn],
+      }),
+    );
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["amplify:GetApp", "amplify:UpdateApp"],
+        resources: [`arn:aws:amplify:${TARGET_REGION}:${TARGET_ACCOUNT}:apps/${AMPLIFY_APP_ID}`],
+      }),
+    );
+    const helper = new lambda.Function(this, "RewriteHelper", {
+      functionName: "prospectus-cli-rewrite",
+      description: "Keeps the /cli/<*> proxy rewrite on the CRM Amplify app; changes no other rule.",
+      runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64,
+      handler: "index.handler",
+      code: lambda.Code.fromInline(readFileSync(new URL("./cli-rewrite/index.py", import.meta.url), "utf8")),
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(30),
+      logGroup,
+      role,
+    });
+    const rule = new cdk.CustomResource(this, "Rewrite", {
+      serviceToken: helper.functionArn,
+      resourceType: "Custom::AmplifyRewrite",
+      properties: { AppId: AMPLIFY_APP_ID, Source: CLI_REWRITE_SOURCE, Target: `${api.apiEndpoint}/cli/<*>` },
+    });
+    // The policy must exist before CloudFormation invokes the helper, and on removal it must outlive the rule.
+    rule.node.addDependency(role);
   }
 }

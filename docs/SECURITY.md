@@ -129,6 +129,10 @@ unpadded, so it always matches `^ss1_[A-Za-z0-9_-]{43}$`. The product is the rea
 
 Error contract: `400` malformed input or raw authority fields, `401` invalid token, session or nonce or an expired challenge, `403` wrong caller, product, client or policy, `409` consumed challenge with changed proof or an identity mapping conflict, `429` capacity, `503` repository unavailable.
 
+## Amplify rewrite helper
+
+The remote CLI sign-in pages are served on prospectus.anth.us through one proxy rewrite that the backend owns (see [ARCHITECTURE.md](ARCHITECTURE.md#remote-cli-sign-in-cli-login)). Its custom resource Lambda `prospectus-cli-rewrite` runs only during CloudFormation changes. Its role `prospectus-cli-rewrite` may `amplify:GetApp` and `amplify:UpdateApp` on `arn:aws:amplify:us-east-1:712236451410:apps/d15sc1sptohtqb` and write its own log group, nothing else: no `iam:PassRole`, no branch, domain or other app. `UpdateApp` on that app could change any app setting, so the code is reviewed like a policy: it changes only `customRules`, and only the rule whose source is `/cli/<*>`.
+
 ## Newsletter token key
 
 Newsletter confirmation and unsubscribe links are signed with HMAC-SHA-256 under the SSM SecureString `/prospectus/newsletter/token-signing/v1` (`aws/ssm` key), 48 random bytes, base64. Format and claims are in [ARCHITECTURE.md](ARCHITECTURE.md#newsletter-mailing-lists).

@@ -51,3 +51,15 @@ Feature: Remote CLI sign-in through cli-login
     When the pages function's role is synthesized
     Then it may invoke only the configured broker function and write its own logs
     And it has no access to the accounts service, the canonical bucket or the catalog
+
+  Scenario: prospectus.anth.us serves the pages through one rewrite owned by the backend
+    When the backend with remote CLI sign-in is deployed
+    Then the Amplify app d15sc1sptohtqb has a 200 proxy rewrite from /cli/<*> to the CRM API's /cli/<*>
+    And that rule comes before the single-page-app rewrite
+    And every other rule on the app is left exactly as it was
+    And removing remote CLI sign-in removes only that rule
+
+  Scenario: The rewrite helper can change only the CRM's Amplify app
+    When the rewrite helper's role is synthesized
+    Then it may read and update only the Amplify app d15sc1sptohtqb and write its own logs
+    And it cannot pass a role, touch a branch or reach any other app

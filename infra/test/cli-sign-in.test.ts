@@ -195,3 +195,55 @@ test("the pages bundle is built before pipeline-deploy and handed to the backend
   const backend = readFileSync(new URL("../../amplify/backend.ts", import.meta.url), "utf8");
   assert.match(backend, /cliSignIn \? \{ \.\.\.cliSignIn, code: Code\.fromAsset\(cliPages\) \} : undefined/);
 });
+
+const rewrite = (t: Template) => Object.values(t.findResources("Custom::AmplifyRewrite")) as any[];
+
+test("prospectus.anth.us proxies /cli/<*> to the CRM API through one owned rewrite", () => {
+  assert.equal(rewrite(template(undefined)).length, 0, "no rewrite while disabled");
+  const t = template({ broker: null });
+  const [rule] = rewrite(t);
+  assert.ok(rule, "the rewrite exists before the broker so routing can be proven on 503");
+  assert.equal(rule.Properties.AppId, "d15sc1sptohtqb");
+  assert.equal(rule.Properties.Source, "/cli/<*>");
+  const [api] = Object.keys(t.findResources("AWS::ApiGatewayV2::Api"));
+  assert.deepEqual(rule.Properties.Target, {
+    "Fn::Join": ["", [{ "Fn::GetAtt": [api, "ApiEndpoint"] }, "/cli/<*>"]],
+  });
+  const [helper] = Object.values(
+    t.findResources("AWS::Lambda::Function", { Properties: { FunctionName: "prospectus-cli-rewrite" } }),
+  ) as any[];
+  assert.equal(helper.Properties.Runtime, "python3.12");
+  assert.equal(
+    helper.Properties.Code.ZipFile,
+    readFileSync(new URL("../lib/cli-rewrite/index.py", import.meta.url), "utf8"),
+  );
+  assert.ok(Buffer.byteLength(helper.Properties.Code.ZipFile) < 4096, "inline code limit");
+  assert.ok(
+    rule.DependsOn?.some((id: string) => id.includes("RewriteRole")),
+    "policy precedes the rule",
+  );
+});
+
+test("the rewrite helper may read and update only the CRM's Amplify app", () => {
+  const t = template({ broker: { functionArn: BROKER_ARN, endpoint: BROKER_URL } });
+  const [role] = Object.entries(
+    t.findResources("AWS::IAM::Role", { Properties: { RoleName: "prospectus-cli-rewrite" } }),
+  );
+  assert.ok(role);
+  assert.equal((role[1] as any).Properties.ManagedPolicyArns, undefined);
+  const statements = Object.values(t.findResources("AWS::IAM::Policy"))
+    .filter((policy: any) => policy.Properties.Roles.some((ref: any) => ref.Ref === role[0]))
+    .flatMap((policy: any) => policy.Properties.PolicyDocument.Statement);
+  const amplify = statements.filter((statement: any) =>
+    JSON.stringify(statement.Action).includes("amplify:"),
+  );
+  assert.deepEqual(amplify, [
+    {
+      Action: ["amplify:GetApp", "amplify:UpdateApp"],
+      Effect: "Allow",
+      Resource: "arn:aws:amplify:us-east-1:712236451410:apps/d15sc1sptohtqb",
+    },
+  ]);
+  for (const action of statements.map((statement: any) => statement.Action).flat())
+    assert.match(action, /^(logs:CreateLogStream|logs:PutLogEvents|amplify:GetApp|amplify:UpdateApp)$/);
+});

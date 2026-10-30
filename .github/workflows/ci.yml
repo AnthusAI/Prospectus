@@ -44,6 +44,7 @@ jobs:
           python -m pip install --no-deps -e cli
           python -m pip install pytest
           python -m pytest cli
+          python -m pytest infra/lib/cli-rewrite
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
