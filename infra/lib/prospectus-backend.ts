@@ -267,7 +267,9 @@ export class ProspectusBackend extends Construct {
           oAuth: {
             flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false },
             scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-            callbackUrls: ["https://lab.cyclotron.anth.us/auth/callback"],
+            // The second is remote CLI sign-in: an approval page on the lab hands the code to the lab's
+            // cli-login broker, and only the waiting CLI, holding the PKCE verifier, can redeem it.
+            callbackUrls: ["https://lab.cyclotron.anth.us/auth/callback", "https://lab.cyclotron.anth.us/cli/callback"],
             logoutUrls: ["https://lab.cyclotron.anth.us/"],
           },
           accessTokenValidity: cdk.Duration.hours(1),

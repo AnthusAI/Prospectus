@@ -171,7 +171,10 @@ test("approved console client stage adds only a dedicated public Google client a
   assert.deepEqual(client.SupportedIdentityProviders, ["Google"]);
   assert.deepEqual(client.AllowedOAuthFlows, ["code"]);
   assert.deepEqual(client.AllowedOAuthScopes, ["openid", "email", "profile"]);
-  assert.deepEqual(client.CallbackURLs, ["https://lab.cyclotron.anth.us/auth/callback"]);
+  assert.deepEqual(client.CallbackURLs, [
+    "https://lab.cyclotron.anth.us/auth/callback",
+    "https://lab.cyclotron.anth.us/cli/callback",
+  ]);
   assert.deepEqual(client.LogoutURLs, ["https://lab.cyclotron.anth.us/"]);
   assert.equal(client.EnableTokenRevocation, true);
   assert.ok(
