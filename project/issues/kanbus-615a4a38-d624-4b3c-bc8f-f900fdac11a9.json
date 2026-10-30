@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-615a4a38-d624-4b3c-bc8f-f900fdac11a9",
+  "title": "Serve the cli-login approval pages on prospectus.anth.us",
+  "description": "Serve `/cli/discovery`, `/cli/approve` and `/cli/callback` on prospectus.anth.us using `cli_login.broker.pages.ApprovalPages`. Do not hand-write these pages; they carry the CSRF cookie, the code-matches confirmation and the state check.\n\nDiscovery returns:\n- issuer, client_id, oauth_domain and token_endpoint;\n- api_endpoint;\n- remote_login_endpoint (the broker URL);\n- remote_callback_uri;\n- enrollment_endpoint.\n\nThe pages invoke the broker's private operations by direct IAM invoke. Grant lambda:InvokeFunction on the broker function to the pages' role only.\n\nProbable shape: a Python Lambda behind an HTTP API route `/cli/{proxy+}`, packaged with a pinned cli-login. Confirm with Ryan before building it.\n\nSpecs use fake broker invokers; follow `cli_login_routes_test.py` in Decision-Flywheel. No network in specs.\n\nDone when: the approve page shows the code and Approve/Deny, and approving runs the Google sign-in. Done also requires that the callback completes the transaction in the broker.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fb083702-0e02-46f1-9a2c-1eb13e60903d",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-30T19:01:13.433658Z",
+  "updated_at": "2026-10-30T19:01:18.304430Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Cyclotron implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
