@@ -3,7 +3,7 @@
   "title": "Deploy the cli-login broker for prospectus.anth.us",
   "description": "Deploy cli-login's broker (`infra/broker.yaml`, at the same cli-login version the pages use) for prospectus.anth.us.\n\nParameters:\n- Targets: `[\"https://prospectus.anth.us\"]`.\n- ApprovalUrl: `https://prospectus.anth.us/cli/approve`.\n- CallbackUri: `https://prospectus.anth.us/cli/callback`.\n- ClientId: the CRM browser client.\n- InvokerRoleArn: the role that serves the pages.\n\nBuild the code with cli-login's `scripts/build_broker.py`, which is deterministic and prints the S3 key.\n\nThis stack adds IAM resources and a public function URL. Show Ryan the change set and get his concrete approval before executing it (AGENTS.md).\n\nAdd the CRM client callback `https://prospectus.anth.us/cli/callback` in `infra/lib/prospectus-backend.ts` with a spec, the way #91 added the Cyclotron lab's.\n\nDone when: the stack is deployed, `POST /start` on the function URL answers a transaction, and the private operations refuse a public caller.",
   "type": "story",
-  "status": "open",
+  "status": "in_progress",
   "priority": 2,
   "assignee": null,
   "creator": null,
@@ -12,7 +12,7 @@
   "dependencies": [],
   "comments": [],
   "created_at": "2026-10-30T19:01:13.408859Z",
-  "updated_at": "2026-10-30T19:01:18.291574Z",
+  "updated_at": "2026-10-30T19:07:18.685992Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
