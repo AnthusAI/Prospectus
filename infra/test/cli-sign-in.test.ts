@@ -65,10 +65,10 @@ const pagesPolicy = (t: Template) => {
   };
 };
 
-test("the committed configuration keeps remote CLI sign-in off", () => {
+test("the committed configuration is rollout step 1: the pages deploy without a broker", () => {
   const committed = JSON.parse(readFileSync(new URL("../cli-sign-in.json", import.meta.url), "utf8"));
-  assert.deepEqual(committed, { enabled: false, broker: null });
-  assert.equal(parseCliSignIn(committed), null);
+  assert.deepEqual(committed, { enabled: true, broker: null });
+  assert.deepEqual(parseCliSignIn(committed), { broker: null });
 });
 
 test("while disabled there is no pages function, role or route", () => {
