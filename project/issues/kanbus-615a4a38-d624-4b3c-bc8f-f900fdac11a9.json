@@ -24,10 +24,17 @@
       "text": "Ryan chose to apply the /cli rewrite from CDK. PR #93 commit 4a45ec3: custom resource prospectus-cli-rewrite keeps one 200 proxy rule /cli/<*> -> CRM API /cli/<*> ahead of the SPA rule on app d15sc1sptohtqb, leaving other rules untouched. New role prospectus-cli-rewrite: amplify:GetApp/UpdateApp on that app only, plus its logs. Created only when cli-sign-in is enabled; not deployed.",
       "created_at": "2026-10-30T20:52:47.746791Z",
       "comment_type": "default"
+    },
+    {
+      "id": "0bcb69ef-f8ba-493e-b0d1-5592580db59f",
+      "author": "home",
+      "text": "Ryan approved the prospectus-cli-rewrite role as written (2026-10-30): amplify:GetApp and amplify:UpdateApp on arn:aws:amplify:us-east-1:712236451410:apps/d15sc1sptohtqb, plus its own log group.",
+      "created_at": "2026-10-30T21:23:31.845833Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-30T19:01:13.433658Z",
-  "updated_at": "2026-10-30T20:52:47.747053Z",
+  "updated_at": "2026-10-30T21:23:31.846079Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
