@@ -140,7 +140,9 @@ export class ProspectusBackend extends Construct {
       oAuth: {
         flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: APP_ORIGINS.map((origin) => `${origin}/auth/callback`),
+        // The last is remote CLI sign-in: an approval page hands the code to the cli-login broker, and only the
+        // waiting CLI, holding the PKCE verifier, can redeem it. Production only; no localhost CLI callback.
+        callbackUrls: [...APP_ORIGINS.map((origin) => `${origin}/auth/callback`), `${appUrl}/cli/callback`],
         logoutUrls: APP_ORIGINS.map((origin) => `${origin}/`),
       },
       accessTokenValidity: cdk.Duration.hours(1),
