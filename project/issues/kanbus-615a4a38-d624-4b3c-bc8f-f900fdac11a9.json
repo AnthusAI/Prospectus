@@ -10,9 +10,17 @@
   "parent": "kanbus-fb083702-0e02-46f1-9a2c-1eb13e60903d",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "254f8bbe-14fb-4b11-9359-8bd574a6d819",
+      "author": "home",
+      "text": "2026-10-30 Pages implemented behind infra/cli-sign-in.json (disabled) in draft PR #93: cli/src/prospectus_cli/pages.py with 26 specs against an in-process broker. Open: the /cli rewrite on prospectus.anth.us (infra/hosting-settings.json is not applied by the pipeline).",
+      "created_at": "2026-10-30T19:16:21.181617Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-30T19:01:13.433658Z",
-  "updated_at": "2026-10-30T19:07:18.698433Z",
+  "updated_at": "2026-10-30T19:16:21.182466Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

@@ -10,9 +10,17 @@
   "parent": "kanbus-fb083702-0e02-46f1-9a2c-1eb13e60903d",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "e266c3db-eddb-4b8e-beae-a45ef87de6e7",
+      "author": "home",
+      "text": "2026-10-30 CRM client callback https://prospectus.anth.us/cli/callback added with a spec in draft PR #93 (deploys on merge). Broker stack not deployed: rollout is pages role first (enabled, broker null), then the prospectus-cli-broker change set for Ryan's approval.",
+      "created_at": "2026-10-30T19:16:21.205062Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-30T19:01:13.408859Z",
-  "updated_at": "2026-10-30T19:07:18.685992Z",
+  "updated_at": "2026-10-30T19:16:21.205283Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
