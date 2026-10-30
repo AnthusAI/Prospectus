@@ -5,6 +5,7 @@ import { accountsDeployment } from "../accounts/deployment";
 import { parseIntakeFormRegistry } from "../server/intake-forms";
 import { spamLabellingForMode } from "../server/intake-spam-mode";
 import { portalHostingDeployment } from "../infra/lib/portal-deployment";
+import { cliSignInDeployment } from "../infra/lib/cli-sign-in-deployment";
 import { createProspectusBackend } from "./create-backend";
 const evaluation = JSON.parse(readFileSync(resolve("evaluation-deployment.json"), "utf8"));
 const intakeContactMode = evaluation.mode === "real-contacts" ? "real-contacts" : "synthetic-only";
@@ -36,6 +37,12 @@ if (portal && !existsSync(resolve(portal.assetDirectory, "index.html")))
   throw new Error(
     "Build the Anthus One portal (infra/scripts/build-portal-if-enabled.mjs) before enabling hosting",
   );
+const cliSignIn = cliSignInDeployment();
+const cliPages = resolve(".artifacts/cli-pages");
+if (cliSignIn && !existsSync(resolve(cliPages, "prospectus_cli/pages.py")))
+  throw new Error(
+    "Build the remote CLI sign-in pages (infra/scripts/build-cli-pages-if-enabled.mjs) before enabling them",
+  );
 createProspectusBackend(
   () => Code.fromAsset(artifact),
   evaluation.enabled ? () => Code.fromAsset(intakeArtifact) : undefined,
@@ -50,4 +57,5 @@ createProspectusBackend(
   evaluation.enabled ? intakeForms : [],
   portal ?? undefined,
   intakeSpamLabelling,
+  cliSignIn ? { ...cliSignIn, code: Code.fromAsset(cliPages) } : undefined,
 );

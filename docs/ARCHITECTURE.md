@@ -136,6 +136,20 @@ Session: there is no portal-issued session. The Google ID token (about one hour)
 
 The CRM browser client and the Cyclotron console client (`cyclotron-console-public`, callback `https://lab.cyclotron.anth.us/auth/callback`) are separate Google-only Cognito clients on the same pool.
 
+### Remote CLI sign-in (cli-login)
+
+The `prospectus` CLI signs in with [cli-login](https://github.com/AnthusAI/cli-login)'s remote flow (kanbus-fb0837): an agent on a machine with no browser runs `prospectus login --remote`, and a person approves on any device. The CRM browser client is the sign-in client; its only addition is the production callback `https://prospectus.anth.us/cli/callback`.
+
+- **Broker.** cli-login's own stack (`infra/broker.yaml`, stack `prospectus-cli-broker`), at the same cli-login version as the pages. The CLI calls its function URL (`/start`, `/poll`); the pages invoke its private operations directly.
+- **Pages.** The Lambda `prospectus-cli-pages` (Python, `cli/src/prospectus_cli/pages.py`, bundle built by `cli/build_pages.py` from the hash-pinned cli-login wheel) serves exactly `GET /cli/discovery`, `GET` and `POST /cli/approve` and `GET /cli/callback` on the CRM HTTP API, with no authorizer and a route throttle (5 per second, burst 10). It mounts cli-login's `ApprovalPages` unchanged. Its role may write its logs and invoke the broker function, nothing else. `infra/cli-sign-in.json` activates it, committed disabled; enabled with `broker: null` it deploys unconfigured (every route answers `503`) so the broker stack can name its role.
+- **Enrollment decision.** The browser binds a login challenge to `sha256hex(state)`. The CLI's OAuth state is `T.N`, but the CLI never learns N (it lives in the approving browser's cookie) and the central `loginState` pattern refuses the dot. The binding is therefore the transaction T itself, which both the pages and the polling CLI know:
+  1. On Approve, the pages call the BFF's public `POST /api/saas/identity/login-challenge` with `loginStateDigest = sha256hex(T)` (as the CRM origin). The challenge nonce becomes the Google sign-in's OpenID nonce; the signed `challengeToken` is the opaque `enrollment` string the broker binds to T and hands only to the poll that knows P.
+  2. After its code exchange the CLI posts to the BFF's `POST /api/saas/identity/resolve` with its access token as bearer, `{challengeToken, idToken, loginState: T}` and `Origin: https://prospectus.anth.us`. Central checks the MAC, nonce, the 300-second login window, the CRM binding and `sha256(T)`, exactly as for a browser, and the CLI stores nothing unless this succeeds.
+  3. A tampered string fails the MAC (`401 challenge_invalid`); one presented with another transaction fails `401 login_state`; a replay with the same tokens returns the same Person and with other tokens `409 challenge_replay`.
+
+  The login challenge, not the authenticated challenge, fits: at Approve time no CLI token exists yet, and the authenticated challenge refuses any state. No new secret, central route or principal is involved, and the session is bound like a browser login, so it resolves to the same Person and survives refresh (a refreshed Cognito token keeps `auth_time` and `origin_jti`).
+- **API calls.** The CLI sends the Cognito access token as `Authorization: Bearer`. The Kanbus API's JWT authorizer requires the `openid` scope, which only access tokens carry, and the Lambda then requires the board's `kanbus:<tenant>/<project>` group; signing in grants no CRM access.
+
 ## Inquiry intake
 
 `POST /intake/demo` accepts inquiries from allowed browser origins. The handler validates the origin and notice version, normalizes the email, claims it and a receipt through the immutable control objects, and creates or appends to a Kanbus issue through the `prospectus-api` function with a fixed intake actor and the owner `intake-queue`. Visitors cannot choose a workspace, owner, status, actor or issue ID. Repeated deliveries recover the original operation; distinct inquiries append without replacing notes, owner or stage.

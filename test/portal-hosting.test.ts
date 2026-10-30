@@ -42,7 +42,10 @@ test("the portal bundle is built and published inside the same pipeline-deploy",
   assert.ok(build < deploy, "built before CDK synthesizes the BucketDeployment sources");
   assert.equal(lines.filter((line) => line.includes("ampx pipeline-deploy")).length, 1);
   assert.match(readFileSync("amplify/backend.ts", "utf8"), /portalHostingDeployment\(\)/);
-  assert.match(readFileSync("amplify/create-backend.ts", "utf8"), /portal,\n\s*intakeSpamLabelling,\n\s*\);/);
+  assert.match(
+    readFileSync("amplify/create-backend.ts", "utf8"),
+    /portal,\n\s*intakeSpamLabelling,\n\s*cliSignIn,\n\s*\);/,
+  );
 });
 
 test("hosting is enabled for one.anth.us and the flag file holds only the flag", () => {

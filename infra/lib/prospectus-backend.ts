@@ -10,6 +10,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { AccountsPlane, type AccountsPlaneOptions } from "./accounts-plane";
+import { CliSignIn, type CliSignInOptions } from "./cli-sign-in";
 
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 import { Construct } from "constructs";
@@ -42,6 +43,7 @@ export class ProspectusBackend extends Construct {
     intakeForms: readonly IntakeFormConfig[] = [],
     portal?: { assetDirectory: string },
     intakeSpamLabelling: SpamLabelling = "shadow",
+    cliSignIn?: CliSignInOptions,
   ) {
     super(scope, id);
     cdk.Tags.of(this).add("anthus:project", "Prospectus");
@@ -304,6 +306,11 @@ export class ProspectusBackend extends Construct {
       throttleRoutes(api.defaultStage!, [
         { routeKey: `POST ${LOGIN_CHALLENGE_PATH}`, route: loginChallengeRoute, burstLimit: 2, rateLimit: 1 },
       ]);
+    }
+    if (cliSignIn) {
+      // Each CLI login is enrolled through the accounts BFF's login challenge and resolve, like a browser sign-in.
+      if (!accountsPlane) throw new Error("Remote CLI sign-in requires the accounts plane for enrollment");
+      new CliSignIn(this, "CliSignIn", api, pool, client, domain, appUrl, cliSignIn);
     }
     // Anthus One: its own HTTP API in front of the customer BFF. API Gateway verifies the Google ID token (issuer and
     // audience) before the Lambda does again; there is no Cognito pool and no Google client secret anywhere.
