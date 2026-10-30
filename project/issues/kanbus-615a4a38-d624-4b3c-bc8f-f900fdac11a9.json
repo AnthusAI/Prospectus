@@ -31,10 +31,17 @@
       "text": "Ryan approved the prospectus-cli-rewrite role as written (2026-10-30): amplify:GetApp and amplify:UpdateApp on arn:aws:amplify:us-east-1:712236451410:apps/d15sc1sptohtqb, plus its own log group.",
       "created_at": "2026-10-30T21:23:31.845833Z",
       "comment_type": "default"
+    },
+    {
+      "id": "4726c341-edc2-49d1-9691-d2462a3bb5e1",
+      "author": "home",
+      "text": "Rollout step 1 PR opened: https://github.com/AnthusAI/Prospectus/pull/94 (1ba0cd7), cli-sign-in enabled with broker null. Pages build verified inside the pinned Amplify build image (Python 3.11.2). Not merged; awaiting Ryan's direction.",
+      "created_at": "2026-10-30T21:40:17.633383Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-30T19:01:13.433658Z",
-  "updated_at": "2026-10-30T21:23:31.846079Z",
+  "updated_at": "2026-10-30T21:40:17.633930Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
