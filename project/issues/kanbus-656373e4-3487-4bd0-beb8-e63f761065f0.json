@@ -17,10 +17,17 @@
       "text": "2026-10-30 CRM client callback https://prospectus.anth.us/cli/callback added with a spec in draft PR #93 (deploys on merge). Broker stack not deployed: rollout is pages role first (enabled, broker null), then the prospectus-cli-broker change set for Ryan's approval.",
       "created_at": "2026-10-30T19:16:21.205062Z",
       "comment_type": "default"
+    },
+    {
+      "id": "615ffc65-e01e-4834-96d3-d6ac9435b92d",
+      "author": "home",
+      "text": "PR #93 merged to main (cb84727) with Ryan's direction and approval of the CRM client callback https://prospectus.anth.us/cli/callback. Remote CLI sign-in stays disabled (infra/cli-sign-in.json enabled false), so only the callback deploys. Amplify build not observed: AWS session expired.",
+      "created_at": "2026-10-30T21:25:02.384176Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-30T19:01:13.408859Z",
-  "updated_at": "2026-10-30T19:16:21.205283Z",
+  "updated_at": "2026-10-30T21:25:02.384779Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
