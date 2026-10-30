@@ -24,10 +24,17 @@
       "text": "PR #93 merged to main (cb84727) with Ryan's direction and approval of the CRM client callback https://prospectus.anth.us/cli/callback. Remote CLI sign-in stays disabled (infra/cli-sign-in.json enabled false), so only the callback deploys. Amplify build not observed: AWS session expired.",
       "created_at": "2026-10-30T21:25:02.384176Z",
       "comment_type": "default"
+    },
+    {
+      "id": "1a43c7e3-b688-4101-9f0d-eac6a191468a",
+      "author": "home",
+      "text": "Verified 2026-10-30: Amplify job 90 (cb84727) SUCCEED. CRM browser client callbacks are localhost:5417/auth/callback, prospectus.anth.us/auth/callback and prospectus.anth.us/cli/callback (modified 17:30:31 EDT). The app still has its single SPA rule; prospectus.anth.us answers 200.",
+      "created_at": "2026-10-30T21:33:32.342220Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-30T19:01:13.408859Z",
-  "updated_at": "2026-10-30T21:25:02.384779Z",
+  "updated_at": "2026-10-30T21:33:32.342811Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
