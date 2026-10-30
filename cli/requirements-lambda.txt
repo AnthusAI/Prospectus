@@ -1,0 +1,2 @@
+# The pages Lambda bundle. Same cli-login version as the broker stack (infra/cli-broker.json).
+cli-login==0.3.0 --hash=sha256:b7c2967602e9b165803d415e60333236adb7baf522c759dfe07cc4421924cfbc

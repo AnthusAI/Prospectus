@@ -4,6 +4,7 @@ import { CfnRole, CfnPolicy } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Stack, Token, RemovalPolicy } from "aws-cdk-lib";
 import type { AccountsPlaneOptions } from "../infra/lib/accounts-plane";
+import type { CliSignInOptions } from "../infra/lib/cli-sign-in";
 import type { IntakeContactMode } from "../infra/lib/evaluation-intake";
 import type { IntakeFormConfig } from "../server/intake-forms";
 import type { SpamLabelling } from "../server/intake-spam-mode";
@@ -25,6 +26,7 @@ export function createProspectusBackend(
   intakeForms: readonly IntakeFormConfig[] = [],
   portal?: { assetDirectory: string },
   intakeSpamLabelling: SpamLabelling = "shadow",
+  cliSignIn?: CliSignInOptions,
 ) {
   const context = JSON.parse(process.env.CDK_CONTEXT_JSON ?? "{}");
   if (
@@ -123,6 +125,7 @@ export function createProspectusBackend(
     intakeForms,
     portal,
     intakeSpamLabelling,
+    cliSignIn,
   );
   backend.addOutput({ custom: resources.outputs });
 

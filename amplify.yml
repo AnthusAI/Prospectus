@@ -15,6 +15,7 @@ backend:
         - node infra/scripts/build-evaluation-if-enabled.mjs
         - node --import tsx accounts/build-deployment.ts
         - node infra/scripts/build-portal-if-enabled.mjs
+        - node infra/scripts/build-cli-pages-if-enabled.mjs
         - npm ci --prefix infra
         - npm exec --prefix amplify -- ampx pipeline-deploy --branch "$AWS_BRANCH" --app-id "$AWS_APP_ID"
 frontend:

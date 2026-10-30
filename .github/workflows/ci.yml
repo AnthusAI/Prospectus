@@ -35,6 +35,16 @@ jobs:
       - run: npm run build --prefix .build/kanbus-ui/packages/ui
       - run: npm ci
       - run: npm ci --prefix packages/accounts-client
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: CLI and remote sign-in pages specs
+        run: |
+          python -m pip install --require-hashes -r cli/requirements-lambda.txt
+          python -m pip install --no-deps -e cli
+          python -m pip install pytest
+          python -m pytest cli
+          python -m pytest infra/lib/cli-rewrite
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

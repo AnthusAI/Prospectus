@@ -103,7 +103,12 @@ test("Google-first identity creation has no pre-enrollment gate and CRM roles ar
     AllowedOAuthFlows: ["code"],
     SupportedIdentityProviders: ["Google"],
     ExplicitAuthFlows: ["ALLOW_REFRESH_TOKEN_AUTH"],
-    CallbackURLs: [`https://${SITE_DOMAIN}/auth/callback`, `${LOCAL_DEV_ORIGIN}/auth/callback`],
+    // Remote CLI sign-in returns only to production: no localhost origin can complete a CLI approval.
+    CallbackURLs: [
+      `https://${SITE_DOMAIN}/auth/callback`,
+      `${LOCAL_DEV_ORIGIN}/auth/callback`,
+      `https://${SITE_DOMAIN}/cli/callback`,
+    ],
     LogoutURLs: [`https://${SITE_DOMAIN}/`, `${LOCAL_DEV_ORIGIN}/`],
   });
   template.resourceCountIs("AWS::Cognito::UserPoolUser", 0);
