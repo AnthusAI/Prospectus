@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-8ef49640-1423-42f3-9a92-67eeee3fd995",
+  "title": "Plan catalog and a billing line per site deployment (account by product)",
+  "description": "As an operator, I attach a plan to one site deployment on a client account, so that each deployment is billed on its own.\n\nFeature: Billing lines\n  Scenario: Reviewed plan catalog\n    Given accounts/billing-plans.json lists plan id, display name, product family (papyrus-site, cyclotron-lab), interval and a Stripe price id per Stripe mode (test, live)\n    When the service starts\n    Then an unknown field, duplicate plan id or price id shared by two plans stops it before serving\n  Scenario: Create a line\n    Given an account with an active entitlement for papyrus-example-invalid and a billing profile\n    When an operator creates a line with plan papyrus-site-monthly\n    Then billing/lines/<account>/papyrus-example-invalid.json exists with status pending (direct mode, until a Stripe subscription is active) or active (invoiced mode), and the journal records it\n  Scenario: Two sites, two lines\n    Given one account entitled to two Papyrus site products\n    When lines are created for both\n    Then each line has its own status, plan and period, and ending one does not touch the other\n  Scenario: Line without entitlement\n    Given a product the account is not entitled to\n    When an operator creates a line for it\n    Then it is refused with a message naming the missing entitlement; billing never grants access\n  Scenario: End a line\n    Given an active line\n    When the operator ends it with an end date\n    Then the line is ended, the entitlement is unchanged, and a follow-up note says whether the product should be disabled through the entitlement route\n\nDone looks like: `billing/plans.ts` (catalog validation at synth and runtime, like `accounts/papyrus-sites.ts`), `billing/lines.ts`, operator routes under `/v1/account-directory/operator/accounts/{id}/billing-lines[/{product}]`, listing for the CRM and the portal.\n\nData touched: `accounts/billing-plans.json` (new reviewed file, test-mode price ids only until live keys exist), `prospectus-central/billing/lines/`.\n\nSpecs: `features/billing-lines.feature`; `billing/plans.test.ts`, `billing/lines.test.ts`; an infra test that a malformed catalog fails synthesis.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.626742Z",
+  "updated_at": "2026-10-31T12:33:32.626762Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

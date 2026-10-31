@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-058c7d69-ca25-4604-8296-4e43d9d8e1dc",
+  "title": "Record the billing model in docs/BILLING.md and the billing feature files",
+  "description": "Specs first. Before any billing code, the model in the epic becomes a reviewed document and a set of feature files that later stories implement against.\n\nDone looks like: `docs/BILLING.md` describing profiles, plan catalog, billing lines, the two modes, the invoice ledger (invoices, payments, allocations, journal), the Stripe boundary and the operator permission, with a section listing the open questions and their status; README and ARCHITECTURE link it; SECURITY.md gains a \"Billing\" section (no card data, billing contact data retention, who may write, Stripe parameters). Feature files: `features/billing-profile.feature`, `features/billing-lines.feature`, `features/billing-ledger.feature`, `features/billing-stripe.feature`, `features/billing-operator-ui.feature`, `features/billing-portal.feature`, each with the scenarios named in the corresponding story. Scenarios use made-up names and `.invalid` addresses only.\n\nData touched: documentation and feature files only. No runtime, IAM or Stripe change.\n\nSpecs: the feature files are the deliverable; `npm run lint` and the docs link check pass.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:18.314088Z",
+  "updated_at": "2026-10-31T12:33:18.314111Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

@@ -40,10 +40,22 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "90e570b3-6a63-414a-8485-0ea881902bfa",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): the concrete policy questions this story asks for are now enumerated as the open questions in epic kanbus-a78bcdbc. Answering them there satisfies this gate; no financial effect is enabled before that.",
+      "created_at": "2026-10-31T12:34:22.098513Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.777333Z",
-  "updated_at": "2026-10-17T06:22:48.128470Z",
+  "updated_at": "2026-10-31T12:34:22.098730Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",

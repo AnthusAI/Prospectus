@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-e8bde447-6b95-4f12-96a2-0f1800eed413",
+  "title": "Direct mode: Stripe customer, one subscription per billing line, Checkout from the portal and the webhook mirror",
+  "description": "As an account owner on a direct-mode account, I set up a payment method once and each of my site deployments is billed as its own subscription.\n\nFeature: Direct billing through Stripe\n  Scenario: Stripe customer on first need\n    Given a direct-mode profile with no Stripe customer\n    When the first billing line is created or the owner starts Checkout\n    Then one Stripe customer is created with the account UUID in metadata and its id stored on the profile; a retry reuses it\n  Scenario: Checkout for a line\n    Given a pending line and an owner signed in to the portal\n    When they choose Set up billing\n    Then the portal BFF creates a Checkout session in subscription mode for that line's price with success and cancel URLs on one.anth.us, and the browser is sent to Stripe; no card data touches Prospectus\n  Scenario: Subscription activated\n    When Stripe sends checkout.session.completed and customer.subscription.updated with status active\n    Then the line becomes active with the subscription id and period, and the journal records both events once each\n  Scenario: Subscription invoice mirrored\n    When invoice.finalized then invoice.paid arrive for that subscription\n    Then a ledger invoice with issuedVia stripe mirrors Stripe's lines, number and total, and a payment with method stripe_card or stripe_bank is recorded and allocated to it by the webhook actor\n  Scenario: Payment failed\n    When invoice.payment_failed arrives\n    Then the invoice is marked past due in the ledger, a billing follow-up is created for operators, and the entitlement is unchanged\n  Scenario: Manage payment method\n    When the owner chooses Manage billing\n    Then a Stripe customer portal session is created and the browser is sent there\n  Scenario: Cancel a deployment\n    When an operator ends the line\n    Then its subscription alone is cancelled at period end; the account's other subscriptions continue\n\nDone looks like: routes on the Anthus One BFF `POST /accounts/{id}/billing/checkout`, `POST /accounts/{id}/billing/portal-session` (owners only, origin-checked, throttled with the account-creation routes); a webhook Lambda or route `POST /billing/stripe/webhook` (no authorizer, signature-verified, route throttle, body limit) that writes journal events then applies them; `billing/mirror.ts`.\n\nData touched: profiles (customer id), lines (subscription id, period, status), invoices, payments, allocations, journal.\n\nSpecs: `features/billing-stripe.feature`; webhook handler tests with signed fixtures from the fake, out-of-order and duplicate deliveries, and an event for an unknown account (refused, logged with a reason code only).\n\nNeeds Ryan's concrete approval: the new unauthenticated webhook route and its Lambda role (`ssm:GetParameter` on the two Stripe parameters, billing prefix S3 access, nothing else), and the Stripe account task done. Blocked for deployment, not for building, on that task.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.702556Z",
+  "updated_at": "2026-10-31T12:33:32.702578Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

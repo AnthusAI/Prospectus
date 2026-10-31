@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-a376b7f5-bc4e-4e61-9bad-2e9a584124df",
+  "title": "Operator billing pages in the CRM: profile, deployments, invoices, record a payment, allocate",
+  "description": "As an operator, I handle a client's billing from the account's page in the CRM admin workspace, where \"Usage and billing\" under Serve is a placeholder today (features/admin-workspace.feature).\n\nFeature: Operator billing in the CRM\n  Scenario: Account billing overview\n    Given an operator with accounts:admin:read and accounts:admin:billing opening an account\n    Then they see the billing profile, each site deployment's line with plan, status and period, open invoices with balances, recent payments, and the journal timeline\n  Scenario: Read-only operator\n    Given an operator with accounts:admin:read only\n    Then the same view is shown and every action is disabled with the reason\n  Scenario: Raise an invoice\n    When the operator adds lines, picks a due date and issues the invoice via Stripe or manually\n    Then the invoice appears with its number and balance and the chosen issue method\n  Scenario: Record and allocate a payment\n    When the operator records a check and allocates it across two invoices\n    Then both balances update and the payment shows no remainder; an over-allocation is blocked in the form before the request\n  Scenario: Reverse\n    When the operator reverses a payment with a reason\n    Then the reversal shows in the timeline with the actor\n  Scenario: No customer data leaks\n    Then billing contact fields are shown masked until revealed, and nothing billing-related is logged in the browser console\n\nDone looks like: `src/admin/` views using the shared Kanbus/Virtuus UI components, Lucide icons (receipt, credit-card, landmark, banknote, history), buttons not dropdowns for actions, forms with integer-safe money inputs; staff BFF routes forwarding to the operator billing routes.\n\nData touched: read and write through the operator routes from the earlier stories; no new storage.\n\nSpecs: `features/billing-operator-ui.feature`; `test/billing-admin-ui.test.ts` and a Playwright flow in `test/browser/` against the fake processor.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.717592Z",
+  "updated_at": "2026-10-31T12:33:32.717610Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

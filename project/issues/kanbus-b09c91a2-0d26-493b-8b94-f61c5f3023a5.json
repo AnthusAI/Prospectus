@@ -1,7 +1,7 @@
 {
   "id": "kanbus-b09c91a2-0d26-493b-8b94-f61c5f3023a5",
   "title": "Self-service organization creation from the portal",
-  "description": "Customer BFF route over create(name, requestKey); new accounts start with no products.",
+  "description": "As a person signed in to one.anth.us with no workspace, I create one so that I own an empty account and can ask Anthus for products.\n\nSurveyed 2026-10-31: the backend half exists. The customer-surface BFF already serves POST /accounts (accounts/bff.ts, createAccountRequestRules: name 2 to 80 characters and a UUID requestKey; the creator becomes owner; errors identity_enrollment_required, account_limit, 409 replay) and the route is throttled with enrollment. The central cap is 3 accounts per Person per product (accountCreationLimits). The CRM's src/AccountsView.tsx has a working create form against the same client.create that kanbus-4b7ade removes once the portal has parity. The portal UI still shows creating a workspace as not yet available and links Request access (src/portal/RequestAccess.tsx, features/anthus-one-portal.feature \"A person with no workspace\").\n\nDone looks like: a Create workspace form in the portal for a confirmed person (name field, one request key per distinct submission as AccountsView does, the three error messages above), the new workspace selected on success, and the \"not yet available\" note replaced; the Request access link stays for people who want Anthus to set things up (operator path: the new story under kanbus-d6b6dc). New accounts start with no products; owners never self-grant (Ryan 2026-10-17 and ANTHUS_ONE_PORTAL.md decision 5, recommendation: anyone may create an empty account).\n\nData touched: none new; the existing central create.\n\nSpecs: features/anthus-one-portal.feature scenario \"A person with no workspace\" rewritten to create, plus \"Creating a workspace twice with the same name reuses the request key\" and \"Account limit reached\"; test/portal-ui.test.ts. No backend change expected.",
   "type": "story",
   "status": "open",
   "priority": 2,
@@ -12,11 +12,15 @@
   "dependencies": [],
   "comments": [],
   "created_at": "2026-10-18T19:47:29.545716Z",
-  "updated_at": "2026-10-18T19:47:29.545976Z",
+  "updated_at": "2026-10-31T12:34:22.073750Z",
   "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
   "right_now_summary": null,
   "right_now_updated_at": null,
   "custom": {},
-  "agent": null,
   "agent_assignment": null
 }

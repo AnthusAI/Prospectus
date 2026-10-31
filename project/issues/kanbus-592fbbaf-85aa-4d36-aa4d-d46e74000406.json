@@ -36,10 +36,22 @@
         "model": "claude-sonnet-5-5",
         "name": "status-handoff-2026-10-19"
       }
+    },
+    {
+      "id": "78b6e953-5538-4000-8e1e-9b2c5cf74ed2",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): billing (kanbus-a78bcdbc) depends on this route being reachable: a billing line requires an existing entitlement and billing never grants one itself. The new operator account-setup story under kanbus-d6b6dc needs the same API Gateway policy change.",
+      "created_at": "2026-10-31T12:34:22.111435Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
     }
   ],
   "created_at": "2026-10-17T07:14:48.964167426Z",
-  "updated_at": "2026-10-19T16:45:21.772253311Z",
+  "updated_at": "2026-10-31T12:34:22.111658Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

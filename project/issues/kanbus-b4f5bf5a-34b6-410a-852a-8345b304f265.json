@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-b4f5bf5a-34b6-410a-852a-8345b304f265",
+  "title": "Payment processor interface with a fake Stripe so billing is built and specified before an account exists",
+  "description": "Stripe work starts now, with no Stripe account. Everything that talks to Stripe goes through one interface, and every spec runs against an in-memory fake that mirrors Stripe's documented object shapes and webhook events.\n\nFeature: Payment processor boundary\n  Scenario: No network in specs\n    Given the test suite\n    When billing specs run\n    Then no HTTPS call leaves the process and no Stripe key is read\n  Scenario: Fake mirrors Stripe shapes\n    Given the fake processor\n    When a customer, subscription, invoice and payment intent are created\n    Then ids use Stripe prefixes (cus_, sub_, in_, pi_, evt_), amounts are integer minor units, and statuses follow Stripe's lifecycle (subscription incomplete, active, past_due, canceled; invoice draft, open, paid, void, uncollectible)\n  Scenario: Webhook signature\n    Given a signing secret generated in the test\n    When a payload is signed with Stripe's v1 scheme and a tolerance of 300 seconds\n    Then a valid signature is accepted once, a replayed event id is a no-op, a tampered payload and a stale timestamp are refused with 400 and nothing is written\n  Scenario: Switching to real Stripe\n    Given STRIPE mode test and parameters present\n    When the processor is constructed\n    Then the Stripe implementation is used with the restricted key, and a missing or short parameter fails closed with 503 billing_unavailable\n\nDone looks like: `billing/processor.ts` (interface), `billing/stripe-processor.ts` (real, thin, no secret logging), `billing/testing/fake-stripe.ts`, `billing/webhook-signature.ts`; a `billing/deployment.json` flag (`stripe: { enabled: false, mode: \"test\" }`, committed disabled) in the style of `accounts/anthus-one-deployment.json`. The Stripe SDK dependency is pinned; the fake does not import it.\n\nData touched: none persistent; parameters named but not created: `/prospectus/billing/stripe/secret-key/v1`, `/prospectus/billing/stripe/webhook-secret/v1` (SSM SecureString, created by Ryan in the Stripe account task, never by CDK or the repository).\n\nSpecs: `features/billing-stripe.feature`; `billing/webhook-signature.test.ts`, `billing/fake-stripe.test.ts`; a test that scans captured console output for key material.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.641762Z",
+  "updated_at": "2026-10-31T12:33:32.641782Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

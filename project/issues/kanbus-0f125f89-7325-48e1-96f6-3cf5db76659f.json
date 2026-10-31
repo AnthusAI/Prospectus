@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-0f125f89-7325-48e1-96f6-3cf5db76659f",
+  "title": "Payments and allocations: record external payments and apply partial payments to invoices",
+  "description": "As an operator, I record a payment that arrived by bank transfer or check and apply it to one or more invoices, so that balances are right even when a client pays an invoice in several pieces or several invoices at once.\n\nFeature: Payments and allocations\n  Scenario: Record an external payment\n    Given an issued invoice with balance 120000 (minor units)\n    When an operator records a bank transfer of 50000 with reference and received date\n    Then billing/payments/<uuid>.json exists with unallocated 50000, recorded by the operator's grant id, and the journal records it\n  Scenario: Partial payment\n    When the operator allocates 50000 of that payment to the invoice\n    Then an allocation record exists, the invoice balance is 70000 and its status partially_paid, the payment's unallocated amount is zero\n  Scenario: Several payments pay one invoice\n    Given two further payments of 30000 and 40000 allocated to the same invoice\n    Then the balance is zero, status paid, paid date set, and the three allocations are listed on the invoice\n  Scenario: One payment pays several invoices\n    Given a check for 90000 and three invoices of 30000\n    When it is allocated 30000 to each\n    Then all three are paid and the payment has no remainder\n  Scenario: Over-allocation refused\n    When an allocation exceeds the invoice balance or the payment's unallocated amount\n    Then it is refused and nothing is written\n  Scenario: Currency mismatch refused\n    Given a payment in a currency different from the invoice\n    Then allocation is refused\n  Scenario: Reversal\n    Given a bounced check\n    When the operator reverses the payment\n    Then a reversing payment and reversing allocations are written (reversal_of), the invoice returns to its previous balance and status, and the originals are untouched\n  Scenario: Stripe payments arrive only by webhook\n    Given a payment with method stripe_card\n    When an operator tries to record it by hand\n    Then it is refused; Stripe-collected money enters the ledger through the mirror only\n\nDone looks like: `billing/payments.ts`, `billing/allocations.ts`, a `billing/balances.ts` that derives invoice balance and status from allocations (never stored without being recomputed on write), operator routes for `payments`, `payments/{id}/allocations`, `payments/{id}/reverse`.\n\nData touched: `prospectus-central/billing/payments/`, `billing/allocations/`, invoice documents (balance and status by revision compare-and-set), `billing/journal/`.\n\nSpecs: `features/billing-ledger.feature` (payment scenarios); `billing/payments.test.ts`, `billing/allocations.test.ts`; a concurrency test with two operators allocating the same payment at once.\n\nOpen question for Ryan before this is enabled: who may record and allocate external payments (epic question 4), and whether large amounts need a second operator.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.687291Z",
+  "updated_at": "2026-10-31T12:33:32.687313Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

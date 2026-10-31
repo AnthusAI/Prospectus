@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-4c99c603-e820-48f5-869f-7d13ba3457bc",
+  "title": "Operators create a client account, grant its products and invite the owner from the CRM",
+  "description": "What exists today (surveyed 2026-10-31): the customer BFF serves POST /accounts (accounts/bff.ts, CREATE_ACCOUNT_PATH) and the CRM's src/AccountsView.tsx has a working self-service create form that kanbus-4b7ade will remove; the portal UI still says creating a workspace is not yet available (src/portal/RequestAccess.tsx; story kanbus-b09c91). Every existing path makes the signed-in caller the owner and entitles only the calling product. Nothing lets an operator create an account for a client, so a sales-led account (the invoiced-billing case in kanbus-a78bcdbc) has no path at all, and the open gaps stand: no operator can grant a product (kanbus-592fbb route exists, API Gateway policy held), sites cannot invite members (kanbus-b2ddb4, kanbus-031445).\n\nAs an operator, I set up a client's account from the CRM so that a client who never visits the portal can have an account, the right site products and an invited owner.\n\nFeature: Operator account setup\n  Scenario: Create a client account\n    Given an operator holding a new reviewed permission accounts:admin:write\n    When they create an account with a name and an operation key\n    Then the account document is created with no memberships yet, a creation fingerprint naming the operator grant as creator, and an audit entry; a retry with the same key returns the same account\n  Scenario: Grant products\n    When the operator grants papyrus-<site> products and optionally cyclotron\n    Then each entitlement is set through the existing setEntitlement route (kanbus-592fbb) with audit, and billing is untouched\n  Scenario: Invite the owner\n    When the operator invites an owner by email\n    Then an invitation record is created (design shared with kanbus-b2ddb4) and accepting it with the invited Google identity creates the owner membership; until then the account has no member and no one can sign in to it\n  Scenario: Last-owner rule preserved\n    Then an account created this way may hold zero owners only while the first invitation is pending; membership rules are otherwise unchanged\n  Scenario: Non-operator\n    Given a signed-in account owner or a read-only operator\n    Then creation is refused with 403 and nothing is written\n\nDone looks like: central route POST /v1/account-directory/operator/accounts gated by accounts:admin:write; the account creation code path accepts an operator creator (durable-accounts.ts creation fingerprint gains an actor kind); staff BFF route; a CRM admin page under Serve > Accounts with Create account, Grant product (buttons, not dropdowns) and Invite owner, Lucide icons (building-2, key-round, user-plus).\n\nData touched: account documents (new creator kind), accounts/operator-grants.json (new permission), invitation records (shared with kanbus-b2ddb4).\n\nSpecs: features/operator-account-setup.feature; accounts/operator-create.test.ts; directory tests that the route is invisible to google-direct registrations.\n\nNeeds Ryan's concrete approval before deployment: the new permission and its first grant, and the API Gateway resource policy change that also unblocks kanbus-592fbb. Relates to kanbus-59284c (provisioning API), which this story partly covers from the operator side.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-d6b6dce6-5b29-4030-b66c-171d4af1d938",
+  "labels": [
+    "account-creation"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:34:22.060282Z",
+  "updated_at": "2026-10-31T12:34:22.060311Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

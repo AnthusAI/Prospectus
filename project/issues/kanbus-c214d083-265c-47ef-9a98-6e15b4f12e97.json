@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-c214d083-265c-47ef-9a98-6e15b4f12e97",
+  "title": "Customer billing page in the Anthus One portal: deployments, invoices, balances, pay and manage",
+  "description": "As an account owner, I see what each of my site deployments costs, my invoices and what I still owe, and I can pay or update my card, from Plan and billing in the portal (shown as unbuilt today, features/anthus-one-portal.feature).\n\nFeature: Customer billing in the portal\n  Scenario: Direct-mode account\n    Given an owner of a direct-mode account with two active lines\n    Then Plan and billing lists both deployments with plan and next charge, invoices with status and balance, and buttons Set up billing (pending line), Manage billing (Stripe customer portal) and Pay now on an open Stripe-issued invoice (Stripe hosted invoice page)\n  Scenario: Invoiced account\n    Given an owner of an invoiced-mode account\n    Then the page lists invoices and balances, shows payment instructions supplied by the operator (bank details text set in the profile), and Pay now only for invoices issued via Stripe\n  Scenario: Member or viewer\n    Given a member or viewer\n    Then they see that billing is managed by the account's owners and no amounts\n  Scenario: No profile\n    Given an account with no billing profile\n    Then the page says billing is not set up for this workspace and how to ask Anthus\n  Scenario: Never card data\n    Then the portal collects no card or bank details; every payment action leaves to Stripe and returns to one.anth.us\n\nDone looks like: `src/portal/` billing page using existing portal components and Lucide icons; customer BFF routes `GET /accounts/{id}/billing`, `GET /accounts/{id}/billing/invoices`, plus the checkout and portal-session routes from the direct-mode story; CSP for one.anth.us extended only for the redirect to Stripe (no Stripe script in the page).\n\nData touched: reads of profile, lines, invoices; no customer writes to the ledger.\n\nSpecs: `features/billing-portal.feature`; `test/portal-billing.test.ts`; phone and desktop in both color schemes (existing scenario outline).",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.732421Z",
+  "updated_at": "2026-10-31T12:33:32.732441Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

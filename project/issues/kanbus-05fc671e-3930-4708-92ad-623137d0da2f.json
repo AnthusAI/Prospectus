@@ -25,10 +25,22 @@
           "reasoning_effort": "medium"
         }
       }
+    },
+    {
+      "id": "0cf6c636-90e1-48b7-b186-2e390986f959",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): billing implementation now has its own epic, kanbus-a78bcdbc (Stripe direct mode, invoiced mode, invoice ledger with partial payments and external payments). This epic keeps the quota, expense and credit boundaries. Ryan's billing requirements of 2026-10-31 and the open questions (tax, currency, net terms, who records external payments, write-offs, automatic suspension) are listed in that epic's description.",
+      "created_at": "2026-10-31T12:34:22.085675Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
     }
   ],
   "created_at": "2026-10-16T20:46:53.696975Z",
-  "updated_at": "2026-10-17T06:22:48.085862Z",
+  "updated_at": "2026-10-31T12:34:22.085881Z",
   "closed_at": null,
   "agent": {
     "platform": "codex",

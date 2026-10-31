@@ -1,0 +1,27 @@
+{
+  "id": "kanbus-8e317447-604f-431d-847c-9f5d5126cb78",
+  "title": "Billing events, operator follow-ups and reconciliation; no automatic access changes",
+  "description": "Billing produces events and follow-ups that operators act on. It never flips an entitlement in this MVP (epic decision 7, open question 6).\n\nFeature: Billing events and reconciliation\n  Scenario: Follow-up on failed payment\n    When an invoice becomes past due (Stripe payment_failed, or a manual invoice passes its due date at the daily check)\n    Then a billing follow-up appears in the CRM Serve queue for that account with the invoice, balance and days overdue, and no entitlement changes\n  Scenario: Follow-up on cancellation\n    When a subscription is cancelled or a line ended\n    Then a follow-up asks the operator whether to disable the product through the entitlement route\n  Scenario: Reconcile against Stripe\n    Given the processor enabled in test mode\n    When an operator runs scripts/reconcile-billing.ts (dry run by default) with their own credentials\n    Then it lists ledger invoices and payments whose Stripe counterpart differs in amount or status, Stripe objects with no ledger record, payments with unallocated remainders, and prints counts and ids only\n  Scenario: Journal is complete\n    Given any billing mutation\n    Then exactly one journal event exists for it, with actor, operation id, record kind and revisions, and the journal can rebuild every balance\n\nDone looks like: `billing/events.ts` producing follow-ups through the existing CRM API path (fixed billing actor, like intake), `scripts/reconcile-billing.ts`, a daily due-date check (scheduled rule) only if Ryan approves the new schedule and role; otherwise the check runs inside the reconcile script.\n\nData touched: CRM prospects or Serve queue items for follow-ups (made from the account id and invoice number, no contact data), `billing/journal/`.\n\nSpecs: `features/billing-ledger.feature` (events and reconciliation scenarios); `billing/events.test.ts`; `scripts/reconcile-billing.test.ts` against the fake.\n\nNeeds Ryan's approval for any scheduled rule or new role; building the script needs none.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a78bcdbc-244b-40ce-a5c5-375d2e3f41f0",
+  "labels": [
+    "billing"
+  ],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:33:32.747757Z",
+  "updated_at": "2026-10-31T12:33:32.747780Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-fable-5-1",
+    "name": "Billing planner"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
