@@ -22,6 +22,8 @@ export interface PapyrusSiteEntry {
   siteReviewId: string;
   /** Absent: an editor site that reads its people's accounts. "public-reader": sign-in and profile only. */
   audience?: "public-reader";
+  /** Where the portal opens the site when its host is not the product name (papyrus-p-apyr-us is p.apyr.us). */
+  siteUrl?: string;
 }
 export const papyrusSiteCapabilities: readonly Operation[] = [
   "console:read",
@@ -48,8 +50,11 @@ const siteEntryKeys = [
   "product",
   "roleArn",
   "siteReviewId",
+  "siteUrl",
 ];
-const requiredSiteKeys = siteEntryKeys.filter((key) => key !== "audience");
+const optionalSiteKeys = ["audience", "siteUrl"];
+const requiredSiteKeys = siteEntryKeys.filter((key) => !optionalSiteKeys.includes(key));
+const siteUrlPattern = /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 const isString = (value: unknown): value is string => typeof value === "string";
 
 const siteEntryRules: ValidationRule<PapyrusSiteEntry>[] = [
@@ -61,6 +66,10 @@ const siteEntryRules: ValidationRule<PapyrusSiteEntry>[] = [
   rule(
     (site) => site.audience === undefined || site.audience === "public-reader",
     "A Papyrus site audience must be absent or public-reader.",
+  ),
+  rule(
+    (site) => site.siteUrl === undefined || (isString(site.siteUrl) && siteUrlPattern.test(site.siteUrl)),
+    "A Papyrus site URL must be absent or an https origin with no path.",
   ),
   rule((site) => isString(site.product), "A Papyrus site product must be a string."),
   rule(

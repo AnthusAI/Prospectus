@@ -48,11 +48,17 @@ export const ANTHUS_APPS: readonly AnthusApp[] = [
   { id: "services", name: "Professional services", swatch: "var(--accent)" },
 ];
 
+/** Papyrus sites whose host is not their product name: the `siteUrl` entries of accounts/papyrus-sites.json. */
+export const PAPYRUS_SITE_URLS: Readonly<Record<string, string>> = {
+  "papyrus-dataparade": "https://dataparade.anth.us",
+};
+
 /**
- * Where a workspace opens a product. Papyrus products are per site (`papyrus-p-apyr-us` is p.apyr.us);
- * other products open their app's public address.
+ * Where a workspace opens a product. Papyrus products are per site (`papyrus-p-apyr-us` is p.apyr.us, unless
+ * PAPYRUS_SITE_URLS names the site); other products open their app's public address.
  */
 export function productUrl(product: string): string | undefined {
+  if (Object.hasOwn(PAPYRUS_SITE_URLS, product)) return PAPYRUS_SITE_URLS[product];
   const site = /^papyrus-([a-z0-9-]+)$/.exec(product)?.[1];
   if (site) return `https://${site.replace(/-/g, ".")}`;
   return appForProduct(product).url;

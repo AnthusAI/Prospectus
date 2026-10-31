@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { productUrl } from "../src/apps";
+import { PAPYRUS_SITE_URLS, productUrl } from "../src/apps";
 
 const IMPORT_PATTERNS = [
   /\b(?:import|export)\b[^"';]*?\bfrom\s*["']([^"']+)["']/g,
@@ -85,6 +85,18 @@ test("the portal is a separate application that never reaches staff console code
 test("workspace products open their own sites", () => {
   assert.equal(productUrl("papyrus-p-apyr-us"), "https://p.apyr.us");
   assert.equal(productUrl("papyrus-pilobol-us"), "https://pilobol.us");
+  assert.equal(productUrl("papyrus-dataparade"), "https://dataparade.anth.us");
   assert.equal(productUrl("cyclotron"), "https://lab.cyclotron.anth.us");
   assert.equal(productUrl("unknown-product"), undefined);
+});
+
+test("the portal's Papyrus site URLs are exactly the registry's siteUrl entries", () => {
+  const sites = JSON.parse(readFileSync("accounts/papyrus-sites.json", "utf8")) as {
+    product: string;
+    siteUrl?: string;
+  }[];
+  assert.deepEqual(
+    PAPYRUS_SITE_URLS,
+    Object.fromEntries(sites.filter((site) => site.siteUrl).map((site) => [site.product, site.siteUrl])),
+  );
 });
