@@ -42,10 +42,12 @@ test("trusted intake over the Lambda event shape keeps same-length contacts on s
   const services: IntakeService[] = [];
   try {
     const origin = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 10000);
+      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 30000);
       child.once("exit", () => reject(new Error("Real Kanbus API exited before readiness")));
+      let readiness = "";
       child.stderr.on("data", (data: Buffer) => {
-        const match = data.toString().match(/http:\/\/127\.0\.0\.1:\d+/);
+        readiness += data.toString();
+        const match = readiness.match(/http:\/\/127\.0\.0\.1:\d+/);
         if (match) {
           clearTimeout(timeout);
           resolve(match[0]);

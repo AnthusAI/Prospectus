@@ -39,11 +39,13 @@ test("real Kanbus persistence: spam results, likely-spam filing, honeypot captur
   const services: IntakeService[] = [];
   try {
     const api = await new Promise<string>((resolveApi, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 10000);
+      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 30000);
       child.once("error", reject);
       child.once("exit", () => reject(new Error("Real Kanbus API exited before readiness")));
+      let readiness = "";
       child.stderr.on("data", (data: Buffer) => {
-        const match = data.toString().match(/http:\/\/127\.0\.0\.1:(\d+)/);
+        readiness += data.toString();
+        const match = readiness.match(/http:\/\/127\.0\.0\.1:(\d+)/);
         if (match) {
           clearTimeout(timeout);
           resolveApi(`${match[0]}/test/prospectus/api`);
