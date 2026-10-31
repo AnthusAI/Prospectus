@@ -281,7 +281,8 @@ export class ProspectusBackend extends Construct {
           },
           accessTokenValidity: cdk.Duration.hours(1),
           idTokenValidity: cdk.Duration.hours(1),
-          refreshTokenValidity: cdk.Duration.days(30),
+          // cli-login's default app client (Ryan, 2026-10-31): agents stay signed in for a week.
+          refreshTokenValidity: cdk.Duration.days(7),
           enableTokenRevocation: true,
         })
       : undefined;
