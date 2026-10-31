@@ -30,6 +30,7 @@ All canonical data lives in one private versioned S3 bucket, `prospectus-records
 | Newsletter subscriptions and suppressions | `_virtuus/cyclotron/prospectus/intake-newsletter/` (hashed objects, `kind: "newsletter-subscription"` or `"newsletter-suppression"`) |
 | Identities | `prospectus-central/identities/` and `_virtuus/prospectus-central/identities/` |
 | Accounts | `prospectus-central/accounts/` and `_virtuus/prospectus-central/accounts/` |
+| Billing (planned, not built) | `prospectus-central/billing/` and `_virtuus/prospectus-central/billing/`, never inside the account document; see [BILLING.md](BILLING.md) |
 
 DynamoDB (`CatalogTableName` output) is a supplemental query catalog for the CRM only. It can be rebuilt from the files; nothing consults it for authorization.
 

@@ -15,6 +15,7 @@ Canonical records are ordinary Kanbus and JSON files in a private S3 bucket. Dyn
 | --- | --- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data model, the account model decision, identity and account APIs, storage, intake |
 | [docs/SECURITY.md](docs/SECURITY.md) | Authentication and authorization rules, the Google sign-in secret, operator grants, data handling, known limits |
+| [docs/BILLING.md](docs/BILLING.md) | The planned billing model: profiles, plans, billing lines, the two modes, the invoice ledger, Stripe, open questions |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Deployment, activation flags, verification, rollback, tracking, dated proof history |
 | [docs/accounts/PAPYRUS_SITES.md](docs/accounts/PAPYRUS_SITES.md) | Registering a Papyrus site with the account service |
 | [packages/accounts-client/README.md](packages/accounts-client/README.md) | The browser, React and server SDK for hosts |
