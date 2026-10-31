@@ -290,7 +290,7 @@ export interface S3IdentityConfiguration {
   region: "us-east-1";
   expectedOwner: string;
   tenant: string;
-  project: "identities" | "accounts";
+  project: "identities" | "accounts" | "billing";
 }
 /** Server-selected configuration only. Never accept a browser bucket, scope or endpoint. */
 export class VirtuusS3IdentityFiles extends StdioIdentityFiles {
@@ -306,7 +306,7 @@ export class VirtuusS3IdentityFiles extends StdioIdentityFiles {
       !matchesStringPattern(config.expectedOwner, /^[0-9]{12}$/) ||
       !matchesStringPattern(config.bucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/) ||
       !matchesStringPattern(config.tenant, /^[a-z0-9][a-z0-9_-]{0,127}$/) ||
-      !["identities", "accounts"].includes(config.project)
+      !["identities", "accounts", "billing"].includes(config.project)
     )
       throw new Error("Explicit fixed S3 identity configuration required.");
     // Existing runtime temporary credentials/profile only; no creation or persistence.
@@ -371,5 +371,37 @@ export class VirtuusS3AccountFiles extends VirtuusS3IdentityFiles {
     timing?: (value: NativeTiming) => void,
   ) {
     super({ ...config, project: "accounts" }, executable, invocationScoped, timing);
+  }
+}
+
+/** Billing records use their own fixed Virtuus project beside accounts, so files land under
+ * <tenant>/billing/ (prospectus-central/billing/ in the central deployment). */
+export class VirtuusBillingFiles extends StdioIdentityFiles {
+  constructor(
+    root: string,
+    executable = resolve(".build/intake-control-target/debug/prospectus-identity-files"),
+    localFault?: { path: string; point: "before_publication" | "after_publication" },
+  ) {
+    if (!root.startsWith("/")) throw new Error("Fixed absolute local root required.");
+    super(
+      {
+        PATH: process.env.PATH,
+        PROSPECTUS_IDENTITY_FILES_ROOT: root,
+        PROSPECTUS_IDENTITY_PROJECT: "billing",
+      },
+      executable,
+      localFault,
+    );
+  }
+}
+
+export class VirtuusS3BillingFiles extends VirtuusS3IdentityFiles {
+  constructor(
+    config: Omit<S3IdentityConfiguration, "project">,
+    executable?: string,
+    invocationScoped = false,
+    timing?: (value: NativeTiming) => void,
+  ) {
+    super({ ...config, project: "billing" }, executable, invocationScoped, timing);
   }
 }
