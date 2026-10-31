@@ -98,7 +98,7 @@ Prospectus is the system of record. Admins raise invoices.
 
 - Status is one of `draft`, `issued`, `partially_paid`, `paid`, `void` or `uncollectible`.
 - An issued invoice is immutable. Its lines cannot be edited; corrections are a new invoice or a credit that references it.
-- Invoice numbers are sequential from a configurable starting value, from one counter file (`billing/sequences/invoice-number.json`) advanced by conditional write. A number is assigned at issue and never reused, including after a void.
+- Invoice numbers follow `YYYYMM-NNN`: the year and month of the issue date, then a three-digit counter that starts at `001` each month (`202610-001`, `202610-002`, `202611-001`). Numbers come from one counter file per month (`billing/sequences/invoice-number-<YYYYMM>.json`) advanced by conditional write. A number is assigned at issue and never reused, including after a void. More than 999 invoices in a month is refused. The first invoice, to Data Parade in October 2026, was issued outside Prospectus as `202610-001` and is entered as a manual invoice once the ledger exists.
 - Only an issued invoice with no allocations can be voided. Its balance becomes zero.
 - Only admins may write off an invoice by marking it `uncollectible`. The invoice and its journal entries stay on record. Whether a written-off balance still counts toward what the client owes is open.
 - An invoice whose due date has passed with a balance above zero is past due. Past due is derived from the due date and balance, not stored as a status.
@@ -205,7 +205,7 @@ Ryan's decisions were recorded on 2026-10-31 on kanbus-a78bcd.
 | 4   | Who records and allocates      | Decided | Admins only (`accounts:admin:billing`), no second-operator confirmation; the CLI supports it for agents                                                |
 | 5   | Write-offs                     | Partly  | Admins only mark `uncollectible`; the invoice and journal stay on record. **Open:** whether a written-off balance counts toward what is owed           |
 | 6   | Automatic suspension           | Decided | Never automatic; operators only. Billing events create follow-ups                                                                                      |
-| 7   | Numbering and documents        | Partly  | Sequential numbers from any starting value; every invoice has a PDF, manual ones included. **Open:** legal entity name and address on invoices         |
+| 7   | Numbering and documents        | Partly  | Numbers are `YYYYMM-NNN`, sequential within each month (Ryan, 2026-10-31); every invoice has a PDF, manual ones included. **Open:** legal entity name and address on invoices         |
 | 8   | One invoice per site or client | Decided | One combined invoice per client per period across all products; each line is its own line item. Direct: one subscription per client, one item per line |
 | 9   | Pricing and plans              | Decided | Out of scope; catalog structure with test-mode placeholder prices                                                                                      |
 | 10  | Trials and free tiers          | Open    | Is a product granted without a billing line ever client-facing, or always internal?                                                                    |

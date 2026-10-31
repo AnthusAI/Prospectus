@@ -54,10 +54,12 @@ Feature: Invoice ledger with partial payments
     Given an issued manual invoice and an issued Stripe invoice
     Then each can be downloaded as a PDF rendered from its ledger record
 
-  Scenario: Invoice numbers are sequential and never reused
-    Given the sequence starts at a configured value
-    When two invoices are issued at the same moment
-    Then they receive consecutive numbers with no duplicate
+  Scenario: Invoice numbers are sequential within each month and never reused
+    Given no invoice has been issued in October 2026
+    When two invoices are issued at the same moment on 2026-10-31
+    Then they are numbered 202610-001 and 202610-002, with no duplicate
+    When the next invoice is issued on 2026-11-02
+    Then it is numbered 202611-001
     When an issued invoice with no allocations is voided
     Then its status is void, its balance is zero and its number is not reused
 
