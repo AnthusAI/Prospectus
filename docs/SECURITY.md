@@ -144,6 +144,17 @@ Newsletter confirmation and unsubscribe links are signed with HMAC-SHA-256 under
 
 The SES sending identity `news.apyr.us` is separate from `apyr.us` and `p.apyr.us`, so list reputation and any DMARC failures stay on the subdomain. `ses:SendEmail` is limited to that identity and the `prospectus-newsletter` configuration set, and the `ses:FromAddress` condition pins the From address to the list sender.
 
+## Billing
+
+Billing is planned, not built; the model is [BILLING.md](BILLING.md). These rules apply from the first billing change.
+
+- **No card data.** Prospectus never collects, receives or stores card or bank account numbers. Payment methods are collected by Stripe Checkout and managed in the Stripe customer portal; the portal only redirects to Stripe and loads no Stripe script. This keeps Prospectus within PCI SAQ A.
+- **Billing contact data.** A billing profile holds the contact name, email, postal address and tax id the client supplied. It is billing data, not identity: it is never used to find, match or authorize a Person, and it is never logged. The CRM shows it masked until revealed, and the portal returns it masked. Billing follow-ups carry the account id and invoice number only. Billing contact data and invoices are financial records. Their retention period and deletion request procedure are open (kanbus-d7ec0e) and must be recorded here before any live mode.
+- **Who may write.** Only holders of the reviewed operator permission `accounts:admin:billing` in `accounts/operator-grants.json` may set profiles, change lines, raise, issue and void invoices, record external payments, allocate, reverse and write off. There is no second-operator confirmation. `accounts:admin:read` sees billing read-only. Customers may only read their own account's billing, start Stripe Checkout and open the Stripe customer portal. The server enforces this on every route, for the CRM and the CLI alike. Billing never changes an entitlement; suspension is an operator action through the entitlement route.
+- **Stripe parameters.** The restricted Stripe API key and the webhook signing secret are SSM SecureString parameters `/prospectus/billing/stripe/secret-key/v1` and `/prospectus/billing/stripe/webhook-secret/v1` (`aws/ssm` key), created by Ryan by hand and never by CDK, the repository, a pipeline variable, an issue or a log. Only the billing runtime role may `ssm:GetParameter` them. A missing or short parameter fails closed with `503 billing_unavailable`.
+- **Webhook.** `POST /billing/stripe/webhook` is unauthenticated, so it trusts only Stripe's v1 signature, checked against the signing secret with a 300-second tolerance. Unsigned, tampered, stale, oversized and unknown events are refused with `400` and write nothing. Each event is journaled by its Stripe event id with an absent-only write, so a redelivery is a no-op, and events apply idempotently in any order. The route is throttled.
+- **Least privilege.** The billing runtime role may read and write only `prospectus-central/billing/` and its control files and cannot read identities, accounts or intake prefixes. The accounts runtime cannot write billing. Every new billing role, route, parameter grant and operator grant needs Ryan's concrete approval before it is deployed.
+
 ## Data handling
 
 - The S3 bucket is private, versioned, TLS only and retained on stack deletion. Releases never rewrite or delete canonical paths.
