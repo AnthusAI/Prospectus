@@ -28,6 +28,7 @@
     "vite.portal.config.ts",
     "playwright.config.ts",
     "accounts",
+    "billing",
     "packages/accounts-client/src"
   ]
 }
