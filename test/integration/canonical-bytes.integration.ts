@@ -73,7 +73,7 @@ test("reads leave canonical issue bytes untouched and edits change only the targ
   try {
     let output = "";
     const origin = await new Promise<string>((resolveOrigin, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 10000);
+      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 30000);
       child.once("error", reject);
       child.once("exit", () => reject(new Error("Real Kanbus API exited before readiness")));
       child.stderr.on("data", (data: Buffer) => {

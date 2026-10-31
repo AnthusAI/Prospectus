@@ -86,7 +86,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: AnthusAI/Papyrus/.github/workflows/amplify-deploy.yml@14b03d4d738acee7555e4c445502e73d52d59564 # pinned: never deploy from a moving branch
+    uses: AnthusAI/Papyrus/.github/workflows/amplify-deploy.yml@41d1b7eff5070e012a0dd1cf9a366ea212537ab6 # pinned: never deploy from a moving branch
     with:
       app-id: d15sc1sptohtqb
       role-to-assume: arn:aws:iam::712236451410:role/prospectus-github-deploy

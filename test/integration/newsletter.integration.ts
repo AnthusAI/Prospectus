@@ -39,11 +39,13 @@ test("real Kanbus persistence: a subscription shows on the existing prospect thr
   let demo: IntakeService | undefined;
   try {
     const api = await new Promise<string>((resolveApi, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 10000);
+      const timeout = setTimeout(() => reject(new Error("Real Kanbus API did not start")), 30000);
       child.once("error", reject);
       child.once("exit", () => reject(new Error("Real Kanbus API exited before readiness")));
+      let readiness = "";
       child.stderr.on("data", (data: Buffer) => {
-        const match = data.toString().match(/http:\/\/127\.0\.0\.1:(\d+)/);
+        readiness += data.toString();
+        const match = readiness.match(/http:\/\/127\.0\.0\.1:(\d+)/);
         if (match) {
           clearTimeout(timeout);
           resolveApi(`${match[0]}/test/prospectus/api`);
