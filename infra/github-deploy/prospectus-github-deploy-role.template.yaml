@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Prospectus merge-to-main deploy role. Assumable only by GitHub Actions on main of AnthusAI/Prospectus; may only start and read jobs on the main branch of the Prospectus Amplify app.
+Parameters:
+  AmplifyAppId:
+    Type: String
+    Default: d15sc1sptohtqb
+  RepositoryOwnerId:
+    Type: String
+  RepositoryId:
+    Type: String
+Resources:
+  GithubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: prospectus-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub:
+                  - repo:AnthusAI/Prospectus:ref:refs/heads/main
+                  - !Sub repo:AnthusAI@${RepositoryOwnerId}/Prospectus@${RepositoryId}:ref:refs/heads/main
+      Policies:
+        - PolicyName: StartAndReadProductionJobs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: StartAndReadProductionJobs
+                Effect: Allow
+                Action: [amplify:StartJob, amplify:GetJob]
+                Resource: !Sub arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${AmplifyAppId}/branches/main/jobs/*
+Outputs:
+  RoleArn:
+    Value: !GetAtt GithubDeployRole.Arn
