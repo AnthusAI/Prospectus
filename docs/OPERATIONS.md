@@ -111,7 +111,7 @@ Only a person holding a reviewed `accounts:admin:entitlements` grant in `account
 
 ### Delivery
 
-this repository is public, so CI runs on GitHub Actions (`.github/workflows/ci.yml`, on pull requests and pushes to `main`) and CD runs in AWS. Merging to `main` starts an Amplify build of the branch (`enableAutoBuild` in `infra/branch-settings.json`, `enableBranchAutoBuild` in `infra/hosting-settings.json`), which runs `amplify.yml`. Nobody starts builds by hand. The settings were `false` since the initial `papyrus-proof` source (b57ad68) with no recorded reason, so a proof app would not deploy on push.
+this repository is public, so CI runs on GitHub Actions (`.github/workflows/ci.yml`, on pull requests and pushes to `main`) and CD runs in AWS. Since 2026-10-31 (Ryan: Amplify builds only deploy, CI runs in GitHub Actions) merging to `main` deploys once, after green CI: the `deploy` job in `ci.yml` assumes the `prospectus-github-deploy` role through GitHub OIDC (`infra/github-deploy/prospectus-github-deploy-role.template.yaml`, which may only `amplify:StartJob` and `amplify:GetJob` on this app's `main` jobs) and starts one Amplify release job for that commit, which runs `amplify.yml`. Amplify's own auto-build on `main` is off (`enableAutoBuild: false` in `infra/branch-settings.json`), so nothing builds twice and a red CI run deploys nothing. The shared deploy workflow is pinned to a reviewed Papyrus commit. Nobody starts builds by hand. The settings were `false` since the initial `papyrus-proof` source (b57ad68) with no recorded reason, so a proof app would not deploy on push.
 
 
 ### Login challenge signing secret
