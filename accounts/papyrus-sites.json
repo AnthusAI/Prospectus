@@ -23,5 +23,13 @@
     "product": "papyrus-shipped",
     "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-shipped-AmplifyComputeRoleD988057-XMW5ARboawnW",
     "siteReviewId": "papyrus-shipped-site-v1-2026-10-21"
+  },
+  {
+    "clientId": "2d81ql2qo3qkkjiubeft26pslv",
+    "federationReviewId": "papyrus-dataparade-anth-us-google-only-unlinked-v1-2026-10-31",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_ewYJ5H4M2",
+    "product": "papyrus-dataparade-anth-us",
+    "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-datapar-AmplifyComputeRoleD988057-nr3WivMurIWW",
+    "siteReviewId": "papyrus-dataparade-anth-us-site-v1-2026-10-31"
   }
 ]
