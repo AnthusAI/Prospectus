@@ -177,6 +177,15 @@ test("approved console client stage adds only a dedicated public Google client a
   ]);
   assert.deepEqual(client.LogoutURLs, ["https://lab.cyclotron.anth.us/"]);
   assert.equal(client.EnableTokenRevocation, true);
+  // cli-login's default app client: 7-day refresh (Ryan, 2026-10-31), one-hour access and ID tokens.
+  assert.equal(client.RefreshTokenValidity, 10080);
+  assert.equal(client.AccessTokenValidity, 60);
+  assert.equal(client.IdTokenValidity, 60);
+  assert.deepEqual(client.TokenValidityUnits, {
+    AccessToken: "minutes",
+    IdToken: "minutes",
+    RefreshToken: "minutes",
+  });
   assert.ok(
     !client.ExplicitAuthFlows ||
       client.ExplicitAuthFlows.every((flow: string) => flow === "ALLOW_REFRESH_TOKEN_AUTH"),
