@@ -12,9 +12,17 @@
     "billing"
   ],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "f45c8367-e3df-4b62-a20d-7588ed940857",
+      "author": "home",
+      "text": "Changed by Ryan's decision 2026-10-31: one combined invoice per client across all products. Direct mode uses one Stripe Subscription per client, with one subscription item per billing line, not one subscription per line. Adding, pausing or ending a deployment adds, changes or removes its item, so each deployment is still billed on its own as a line item, and Stripe produces one invoice per client per period. USD only, no Stripe Tax for now.",
+      "created_at": "2026-10-31T12:53:23.239802Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-31T12:33:32.702556Z",
-  "updated_at": "2026-10-31T12:33:32.702578Z",
+  "updated_at": "2026-10-31T12:53:23.240094Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

@@ -12,9 +12,17 @@
     "billing"
   ],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "69b7ed53-438b-4b96-b622-fc5b0c4fc10e",
+      "author": "home",
+      "text": "Ryan's decisions 2026-10-31: recording payments, allocating and writing off are admin-only actions. Show them only to admins, and the server refuses them for everyone else. The invoice view needs the PDF download. Suspension stays a manual operator/admin action.",
+      "created_at": "2026-10-31T12:53:23.700251Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-31T12:33:32.717592Z",
-  "updated_at": "2026-10-31T12:33:32.717610Z",
+  "updated_at": "2026-10-31T12:53:23.700579Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

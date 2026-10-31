@@ -33,10 +33,17 @@
         "model": "claude-fable-5-1",
         "name": "Billing planner"
       }
+    },
+    {
+      "id": "f91f3d22-cd49-4a98-a1c7-5dbc9dc4062a",
+      "author": "home",
+      "text": "Ryan's decisions 2026-10-31:\n- Pricing is out of scope for this epic. Build the catalog's structure with test-mode placeholder plans and prices; real plans and prices are a separate decision.\n- One combined invoice per client: a billing line becomes a subscription item (direct mode) or an invoice line item (invoiced mode), not its own subscription or invoice.",
+      "created_at": "2026-10-31T12:53:23.610494Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-31T12:33:32.626742Z",
-  "updated_at": "2026-10-31T12:36:38.067255Z",
+  "updated_at": "2026-10-31T12:53:23.610911Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

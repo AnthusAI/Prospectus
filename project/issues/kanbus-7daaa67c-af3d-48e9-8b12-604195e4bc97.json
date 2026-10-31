@@ -17,9 +17,17 @@
       "type": "relates-to"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "473669d3-419d-499c-8dec-d1e530dd7915",
+      "author": "home",
+      "text": "Ryan's decisions 2026-10-31: currency is fixed to `usd`. Net terms default to 30 days, with an optional per-account override. No tax fields are needed yet.",
+      "created_at": "2026-10-31T12:53:23.810584Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-31T12:33:32.611754Z",
-  "updated_at": "2026-10-31T12:36:37.976060Z",
+  "updated_at": "2026-10-31T12:53:23.811335Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

@@ -12,9 +12,17 @@
     "billing"
   ],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "46d25a95-d12d-4965-bd38-78f220954dd6",
+      "author": "home",
+      "text": "Ryan's decisions 2026-10-31 (see the epic comment):\n- USD only, and no tax lines (total = subtotal).\n- Default net 30 with an optional per-account override; no late fees.\n- Sequential invoice numbers from a configurable starting value.\n- Every invoice renders a PDF, manual ones included.\n- One combined invoice per client per period, with each billing line (site deployment or any other product) as its own line item.\n- Only admins may write off (mark `uncollectible`).",
+      "created_at": "2026-10-31T12:53:23.158324Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-31T12:33:32.672139Z",
-  "updated_at": "2026-10-31T12:33:32.672161Z",
+  "updated_at": "2026-10-31T12:53:23.158747Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

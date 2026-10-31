@@ -17,9 +17,17 @@
       "type": "relates-to"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "520ef4f9-6dff-40b3-98cc-e757ca04f921",
+      "author": "home",
+      "text": "Ryan's decisions on the open questions (2026-10-31). Where they differ from \"Decisions written into this plan\" above, these win.\n\n1. Tax: not now. Invoices carry no tax lines in the MVP, so total = subtotal. Revisit before any live mode.\n2. Currency: US dollars only. `currency` is always `usd`; refuse any other value.\n3. Terms: sensible defaults. Invoiced clients are net 30 (due date = issue date + 30 days), with an optional per-account override on the billing profile. No late fees.\n4. Recording payments: only admins may record external payments and allocate them; no second-operator confirmation. The prospectus CLI must support recording and allocating payments, so an agent signed in as an admin can do it for Ryan. See the new CLI story under this epic.\n5. Write-offs: only admins may write off an invoice (mark it `uncollectible`). The invoice and its journal entries stay on record. Still open: whether a written-off balance counts toward the client's amount owed.\n6. Suspension: only operators/admins, never automatic. Billing events produce follow-ups; nothing disables an entitlement on its own.\n7. Numbering and documents: sequential numbers from any starting value; the format doesn't matter. Every invoice gets a PDF representation, including manual (non-Stripe) invoices. Ryan wrote \"ODF\"; read here as PDF. Still open: the legal entity name and address printed on invoices.\n8. One combined invoice per client, covering all of the client's products, not only Papyrus. This changes decision 3: a site deployment remains its own billing line, so it is added, paused and ended on its own. It appears as its own line item on the client's one invoice per period, not as a separate invoice.\n   - Direct mode: one Stripe Subscription per client, with one subscription item per billing line.\n   - Invoiced mode: one invoice per client per period.\n9. Pricing: out of scope for this epic. Build the plan catalog's structure with test-mode placeholder prices; real plans and prices are a separate decision.\n\nStill open: 10 (trials and free tiers), 11 (refunds of external payments), 12 (accounting export), 13 (should a grant ever create a billing line automatically), plus the write-off balance treatment (5) and the legal entity details (7).",
+      "created_at": "2026-10-31T12:53:22.917337Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-31T12:30:54.918045Z",
-  "updated_at": "2026-10-31T12:36:38.108209Z",
+  "updated_at": "2026-10-31T12:53:22.937345Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

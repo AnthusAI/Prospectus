@@ -12,9 +12,17 @@
     "billing"
   ],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "8f37e004-15d6-482d-883f-3e2472838367",
+      "author": "home",
+      "text": "Ryan's decision 2026-10-31: only admins may record external payments and allocate them, with no second-operator confirmation. The server enforces this, so the same rule covers the CRM pages and the CLI. Partial payments and over-allocation refusal stand as designed. USD only.",
+      "created_at": "2026-10-31T12:53:23.344419Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-31T12:33:32.687291Z",
-  "updated_at": "2026-10-31T12:33:32.687313Z",
+  "updated_at": "2026-10-31T12:53:23.344668Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

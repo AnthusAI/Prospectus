@@ -29,10 +29,17 @@
         "model": "claude-fable-5-1",
         "name": "Billing planner"
       }
+    },
+    {
+      "id": "67663616-58d3-4b8f-be29-a880ab87f250",
+      "author": "home",
+      "text": "Ryan's decision 2026-10-31: suspension is only ever done by operators/admins, never automatically. Failed or late payments create follow-ups for an operator; nothing in billing changes an entitlement.",
+      "created_at": "2026-10-31T12:53:23.515195Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-31T12:33:32.747757Z",
-  "updated_at": "2026-10-31T12:36:38.079496Z",
+  "updated_at": "2026-10-31T12:53:23.515667Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
