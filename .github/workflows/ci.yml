@@ -1,3 +1,5 @@
+# Merge to main deploys once, after green CI: the deploy job starts the Amplify job for this exact
+# commit through GitHub OIDC. Amplify's own auto-build on main is off, so nothing builds twice.
 name: CI
 on:
   push:
@@ -5,6 +7,9 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-deploy-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   application:
     runs-on: ubuntu-latest
@@ -75,3 +80,13 @@ jobs:
           if node -e 'process.exit(require("./accounts/deployment.json").enabled ? 0 : 1)'; then
             PROSPECTUS_ACCOUNTS_UI=1 node --import tsx --test test/accounts-persisted-ui.test.ts
           fi
+  deploy:
+    needs: application
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+    uses: AnthusAI/Papyrus/.github/workflows/amplify-deploy.yml@14b03d4d738acee7555e4c445502e73d52d59564 # pinned: never deploy from a moving branch
+    with:
+      app-id: d15sc1sptohtqb
+      role-to-assume: arn:aws:iam::712236451410:role/prospectus-github-deploy
