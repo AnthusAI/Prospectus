@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-d5fa0e40-a010-4ea3-8eb1-8889c1471140",
+  "title": "Enroll each CLI login at the account service",
+  "description": "Enroll every CLI login the way a browser sign-in is enrolled, so the account service never answers `401 reenrollment_required` for a CLI session.\n\nUse cli-login 0.3.0's hooks:\n1. `ApprovalPages(prepare=...)` asks the central service for an identity challenge when the person approves, and returns the challenge nonce for the Google sign-in. It also returns the sealed proof as the opaque `enrollment` string, bound to that one transaction.\n2. The CLI passes `enroll=` to `remote_login`. After its code exchange it posts its access and ID tokens with `{transaction, enrollment}` to `POST /cli/enroll`.\n3. The server checks the tokens as strictly as the browser callback does, including the login window and session binding, then resolves the person. Only after that does the CLI store anything.\n\nThe browser flow binds the challenge to `sha256(state)`. The CLI's state is the transaction and nonce pair `T.N`. Work out with the central service whether the login challenge or the authenticated challenge fits, and write the decision into docs/ARCHITECTURE.md.\n\nReference: `CliEnrollment` in Decision-Flywheel `src/decision_flywheel/cli_login_routes.py`.\n\nDone when: a remote login resolves to the same Person as that human's browser sign-in, and a tampered or reused enrollment string is refused.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fb083702-0e02-46f1-9a2c-1eb13e60903d",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-30T19:01:13.449801Z",
+  "updated_at": "2026-10-30T19:01:18.317082Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Cyclotron implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

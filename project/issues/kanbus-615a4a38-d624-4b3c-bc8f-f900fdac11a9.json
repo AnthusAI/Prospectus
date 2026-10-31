@@ -1,0 +1,61 @@
+{
+  "id": "kanbus-615a4a38-d624-4b3c-bc8f-f900fdac11a9",
+  "title": "Serve the cli-login approval pages on prospectus.anth.us",
+  "description": "Serve `/cli/discovery`, `/cli/approve` and `/cli/callback` on prospectus.anth.us using `cli_login.broker.pages.ApprovalPages`. Do not hand-write these pages; they carry the CSRF cookie, the code-matches confirmation and the state check.\n\nDiscovery returns:\n- issuer, client_id, oauth_domain and token_endpoint;\n- api_endpoint;\n- remote_login_endpoint (the broker URL);\n- remote_callback_uri;\n- enrollment_endpoint.\n\nThe pages invoke the broker's private operations by direct IAM invoke. Grant lambda:InvokeFunction on the broker function to the pages' role only.\n\nProbable shape: a Python Lambda behind an HTTP API route `/cli/{proxy+}`, packaged with a pinned cli-login. Confirm with Ryan before building it.\n\nSpecs use fake broker invokers; follow `cli_login_routes_test.py` in Decision-Flywheel. No network in specs.\n\nDone when: the approve page shows the code and Approve/Deny, and approving runs the Google sign-in. Done also requires that the callback completes the transaction in the broker.",
+  "type": "story",
+  "status": "in_progress",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fb083702-0e02-46f1-9a2c-1eb13e60903d",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "254f8bbe-14fb-4b11-9359-8bd574a6d819",
+      "author": "home",
+      "text": "2026-10-30 Pages implemented behind infra/cli-sign-in.json (disabled) in draft PR #93: cli/src/prospectus_cli/pages.py with 26 specs against an in-process broker. Open: the /cli rewrite on prospectus.anth.us (infra/hosting-settings.json is not applied by the pipeline).",
+      "created_at": "2026-10-30T19:16:21.181617Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "680c4987-4fd6-464b-bbd3-d431905b6e30",
+      "author": "home",
+      "text": "Ryan chose to apply the /cli rewrite from CDK. PR #93 commit 4a45ec3: custom resource prospectus-cli-rewrite keeps one 200 proxy rule /cli/<*> -> CRM API /cli/<*> ahead of the SPA rule on app d15sc1sptohtqb, leaving other rules untouched. New role prospectus-cli-rewrite: amplify:GetApp/UpdateApp on that app only, plus its logs. Created only when cli-sign-in is enabled; not deployed.",
+      "created_at": "2026-10-30T20:52:47.746791Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "0bcb69ef-f8ba-493e-b0d1-5592580db59f",
+      "author": "home",
+      "text": "Ryan approved the prospectus-cli-rewrite role as written (2026-10-30): amplify:GetApp and amplify:UpdateApp on arn:aws:amplify:us-east-1:712236451410:apps/d15sc1sptohtqb, plus its own log group.",
+      "created_at": "2026-10-30T21:23:31.845833Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "4726c341-edc2-49d1-9691-d2462a3bb5e1",
+      "author": "home",
+      "text": "Rollout step 1 PR opened: https://github.com/AnthusAI/Prospectus/pull/94 (1ba0cd7), cli-sign-in enabled with broker null. Pages build verified inside the pinned Amplify build image (Python 3.11.2). Not merged; awaiting Ryan's direction.",
+      "created_at": "2026-10-30T21:40:17.633383Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "d07e934e-4c5f-4d5a-b75a-cdba898a3311",
+      "author": "home",
+      "text": "Step 1 live 2026-10-30: PR #94 merged (ec6dbed), Amplify job 91 SUCCEED. App rules are now [/cli/<*> -> https://m72iza6r73.execute-api.us-east-1.amazonaws.com/cli/<*> (200), SPA rule], so the helper kept the SPA rule. Through prospectus.anth.us, GET /cli/discovery, GET /cli/approve?…, GET /cli/callback?… and POST /cli/approve all return the pages' 503 remote_sign_in_unavailable (JSON, no-store); 8 pages invocations match the 8 probes. The SPA still serves /pipeline. Live pages role has only logs actions. Not yet proven: query-string and Set-Cookie passthrough (need the configured pages, step 3).",
+      "created_at": "2026-10-30T22:02:33.128780Z",
+      "comment_type": "default"
+    }
+  ],
+  "created_at": "2026-10-30T19:01:13.433658Z",
+  "updated_at": "2026-10-30T22:02:33.129020Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Cyclotron implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

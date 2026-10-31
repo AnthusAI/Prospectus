@@ -1,0 +1,38 @@
+{
+  "id": "kanbus-fb083702-0e02-46f1-9a2c-1eb13e60903d",
+  "title": "Prospectus CLI with remote sign-in through cli-login",
+  "description": "Give Prospectus a command-line client that signs in through cli-login's remote sign-in, so an agent on a cloud machine can work with the CRM without long-lived keys. Ryan asked for this on 2026-10-30 after the Cyclotron lab went live with the same flow.\n\nHow it works for the person: the agent runs `prospectus login --remote --as you@example.com`. That prints an approval URL on prospectus.anth.us and a short code. The person opens the URL on any device, checks that the code matches, approves, and signs in with Google. The CLI receives its own Cognito tokens and keeps them in the machine's most secure store. It never handles an access key or a password.\n\nThe library is cli-login (https://github.com/AnthusAI/cli-login, PyPI `cli-login`, import `cli_login`, version 0.3.0 or later). It provides the broker Lambda and its CloudFormation template (`infra/broker.yaml`), the approval and callback pages (`cli_login.broker.pages.ApprovalPages`), the client (`cli_login.remote.remote_login`), session renewal (`cli_login.session.Session`) and the credential stores. Read its docs/design.md and docs/protocol.md first. Do not reimplement the protocol; if Prospectus needs something the library lacks, propose it on the cli-login board.\n\nThe reference product is the Cyclotron lab (AnthusAI Decision-Flywheel repo): `src/decision_flywheel/cli_login_routes.py` (discovery, approve, callback, enroll), `src/decision_flywheel/cli.py` (the `cyclotron` command), `docs/cli-remote-login.md`, and `infra/lab/template.yaml` (CliBrokerArn and CliBrokerEndpoint wiring). Papyrus plans the same for its CLI. Ryan wants all products to work the same way.\n\nProspectus-specific points:\n- The library is Python and Prospectus is TypeScript. The CLI and the pages run in Python. The pages can be a small Python Lambda behind a `/cli/{proxy+}` route. Confirm that shape with Ryan before building it.\n- The CRM's own Google-only Cognito client is the sign-in client. It needs the callback `https://prospectus.anth.us/cli/callback`.\n- Each login must be enrolled like a browser sign-in (signed identity challenge, then resolve). Otherwise the account service answers `401 reenrollment_required`.\n- The broker stack creates IAM resources. Per AGENTS.md, new persistent IAM or security resources need Ryan's concrete approval before deploy.\n\nLessons from the Cyclotron rollout:\n- Deploy the broker Lambda at the same cli-login version as the pages. On 2026-10-30 a 0.2.0 broker silently dropped the enrollment nonce, and the CLI refused the tokens with \"tokens for a different request\".\n- A server reading a missing S3 object without s3:ListBucket gets AccessDenied, not NotFound.\n- Throttles are deliberate here: an anonymous sign-in broker is the one place limits belong.\n\nDone when: an agent on a machine with no browser runs `prospectus login --remote`, Ryan approves it from his phone, and `prospectus whoami` and one CRM read succeed against prospectus.anth.us. The epic is also done when the session renews and `prospectus logout` revokes it.",
+  "type": "epic",
+  "status": "in_progress",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "73e76b07-2ad4-4fb5-8fe4-385f4ce7c849",
+      "author": "home",
+      "text": "2026-10-30 Ryan approved the design: pages are a Python Lambda (pinned cli-login 0.3.0) on explicit /cli routes of the prospectus HTTP API, reached through an Amplify rewrite; enrollment uses the existing BFF login-challenge (digest sha256hex(T)) and identity/resolve (loginState T) with the CLI sending Origin https://prospectus.anth.us; the broker is its own stack prospectus-cli-broker. Kanbus API accepts the Cognito access token only (openid scope) and requires the kanbus board group.",
+      "created_at": "2026-10-30T19:07:15.863486Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-opus-5-5",
+        "name": "Prospectus implementation"
+      }
+    }
+  ],
+  "created_at": "2026-10-30T19:01:13.384310Z",
+  "updated_at": "2026-10-30T19:07:18.672761Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Cyclotron implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
