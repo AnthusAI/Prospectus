@@ -63,6 +63,14 @@ Feature: Invoice ledger with partial payments
     When an issued invoice with no allocations is voided
     Then its status is void, its balance is zero and its number is not reused
 
+  Scenario: Issuer details and payment methods come from data
+    Given an admin set the issuer record with a legal name, an address, and bank transfer and Venmo payment methods
+    When an invoice is issued
+    Then the invoice record carries a copy of that issuer block and those payment methods, and its PDF shows them
+    When the admin later changes the issuer address
+    Then the issued invoice and its PDF still show the address it was issued with
+    And no issuer name, address or payment detail appears in the repository
+
   Scenario: Issued invoices are immutable
     Given an issued invoice
     When anyone tries to edit its lines

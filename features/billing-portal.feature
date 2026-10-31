@@ -24,7 +24,7 @@ Feature: Plan and billing in the Anthus One portal
   Scenario: Invoiced account
     Given an owner of an invoiced-mode account
     Then the page lists invoices with due dates and balances
-    And shows the payment instructions the admin set on the profile
+    And shows the payment methods and instructions copied onto the invoice from the issuer record
     And shows Pay now only for invoices issued via Stripe
 
   Scenario: Partially paid invoice

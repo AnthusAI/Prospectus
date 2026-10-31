@@ -37,7 +37,7 @@ One profile per account at `billing/profiles/<accountUUID>.json`. It references 
 | `stripeCustomerId`    | The account's one Stripe Customer (`cus_...`), when one exists                                   |
 | `billingContact`      | Name, email, postal address and tax id as the client supplied them                               |
 | `netTermsDays`        | Optional per-account override of the default 30 days                                             |
-| `paymentInstructions` | Text an admin sets for invoiced clients (for example bank transfer details), shown in the portal |
+| `paymentMethods`      | Optional override of the issuer's accepted payment methods for this client |
 | `status`, `revision`  | Lifecycle state and the compare-and-set revision                                                 |
 | `audit`               | Bounded audit of who changed what, by operation id                                               |
 
@@ -103,12 +103,13 @@ Prospectus is the system of record. Admins raise invoices.
 - Only admins may write off an invoice by marking it `uncollectible`. The invoice and its journal entries stay on record. Whether a written-off balance still counts toward what the client owes is open.
 - An invoice whose due date has passed with a balance above zero is past due. Past due is derived from the due date and balance, not stored as a status.
 - Every invoice has a PDF, manual invoices included. Prospectus renders it from the issued record; a Stripe-issued invoice also keeps Stripe's own PDF link. The legal entity name and address printed on it are open.
+- **Issuer details are data, not code.** The seller block (legal name, address, billing email) and the accepted payment methods with their instructions (for example bank transfer, check, Venmo) live in one admin-set issuer record, `billing/issuer.json`, written like every other billing record and never committed to this public repository. An issued invoice copies the issuer block and payment methods into its own record, so a later change to the issuer never alters an issued invoice or its PDF.
 
 ### Payments
 
-`billing/payments/<paymentUUID>.json`: account, amount, currency, `method` (`stripe_card`, `stripe_bank`, `bank_transfer`, `check`, `cash`, `other`), received date, external reference (check number, transfer reference or Stripe payment intent), who recorded it (the admin's operator grant id, or `stripe-webhook`), notes and the unallocated remainder.
+`billing/payments/<paymentUUID>.json`: account, amount, currency, `method` (`stripe_card`, `stripe_bank`, `bank_transfer`, `check`, `venmo`, `cash`, `other`), received date, external reference (check number, transfer reference or Stripe payment intent), who recorded it (the admin's operator grant id, or `stripe-webhook`), notes and the unallocated remainder.
 
-Only admins record external payments (`bank_transfer`, `check`, `cash`, `other`). There is no second-operator confirmation. `stripe_card` and `stripe_bank` payments enter the ledger only through the webhook mirror; recording one by hand is refused.
+Only admins record external payments (`bank_transfer`, `check`, `venmo`, `cash`, `other`). There is no second-operator confirmation. `stripe_card` and `stripe_bank` payments enter the ledger only through the webhook mirror; recording one by hand is refused.
 
 ### Allocations
 
@@ -163,7 +164,7 @@ Billing produces follow-ups in the CRM Serve queue, made from the account id and
 ## Surfaces
 
 - **CRM, "Usage and billing" under Serve.** Per account: the profile, each line with plan, status and period, open invoices with balances and PDF download, recent payments and the journal timeline. Admin actions (raise and issue an invoice, record and allocate a payment, reverse, write off) are buttons shown only to admins; read-only operators see the same view without them. Billing contact fields are masked until revealed. Lucide icons, no emoji.
-- **Anthus One portal, "Plan and billing".** Owners see each deployment with its plan and next charge, invoices with status, balance and PDF, Set up billing for a pending line, Manage billing, and Pay now on an open Stripe-issued invoice (Stripe's hosted invoice page). Invoiced accounts also see the payment instructions. Members and viewers see that billing is managed by the account's owners, and no amounts. The portal collects no card or bank details and loads no Stripe script; every payment action leaves for Stripe and returns to `one.anth.us`.
+- **Anthus One portal, "Plan and billing".** Owners see each deployment with its plan and next charge, invoices with status, balance and PDF, Set up billing for a pending line, Manage billing, and Pay now on an open Stripe-issued invoice (Stripe's hosted invoice page). Invoiced accounts also see the accepted payment methods and their instructions from the invoice. Members and viewers see that billing is managed by the account's owners, and no amounts. The portal collects no card or bank details and loads no Stripe script; every payment action leaves for Stripe and returns to `one.anth.us`.
 
 ## CLI for agents
 
@@ -205,7 +206,7 @@ Ryan's decisions were recorded on 2026-10-31 on kanbus-a78bcd.
 | 4   | Who records and allocates      | Decided | Admins only (`accounts:admin:billing`), no second-operator confirmation; the CLI supports it for agents                                                |
 | 5   | Write-offs                     | Partly  | Admins only mark `uncollectible`; the invoice and journal stay on record. **Open:** whether a written-off balance counts toward what is owed           |
 | 6   | Automatic suspension           | Decided | Never automatic; operators only. Billing events create follow-ups                                                                                      |
-| 7   | Numbering and documents        | Partly  | Numbers are `YYYYMM-NNN`, sequential within each month (Ryan, 2026-10-31); every invoice has a PDF, manual ones included. **Open:** legal entity name and address on invoices         |
+| 7   | Numbering and documents        | Decided | Numbers are `YYYYMM-NNN`, sequential within each month (Ryan, 2026-10-31); every invoice has a PDF, manual ones included. the issuer block and payment methods are admin-set data (`billing/issuer.json`), not code (Ryan, 2026-10-31)         |
 | 8   | One invoice per site or client | Decided | One combined invoice per client per period across all products; each line is its own line item. Direct: one subscription per client, one item per line |
 | 9   | Pricing and plans              | Decided | Out of scope; catalog structure with test-mode placeholder prices                                                                                      |
 | 10  | Trials and free tiers          | Open    | Is a product granted without a billing line ever client-facing, or always internal?                                                                    |
