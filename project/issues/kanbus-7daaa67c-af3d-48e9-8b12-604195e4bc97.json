@@ -11,10 +11,15 @@
   "labels": [
     "billing"
   ],
-  "dependencies": [],
+  "dependencies": [
+    {
+      "target": "kanbus-4c99c603-e820-48f5-869f-7d13ba3457bc",
+      "type": "relates-to"
+    }
+  ],
   "comments": [],
   "created_at": "2026-10-31T12:33:32.611754Z",
-  "updated_at": "2026-10-31T12:33:32.611778Z",
+  "updated_at": "2026-10-31T12:36:37.976060Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

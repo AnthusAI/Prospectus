@@ -19,9 +19,22 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "9123603f-21f4-4b0c-99e0-dd14aea22be1",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): kanbus-a78bcdbc (billing) is on main since 0e04c6a. Division of labour: this epic owns per-site products, family metadata (kanbus-db57cb), entitlement grants, site-driven account creation and memberships, and lifecycle events (kanbus-6efecd); billing owns the plan catalog and prices, billing lines, modes, the invoice ledger and Stripe. Billing consumes entitlement.changed from kanbus-6efecd as an operator prompt to attach or end a plan, never as an automatic charge, until Ryan decides otherwise (billing epic open question 13). The operator-side account setup (create for a client, grant, invite owner) is kanbus-4c99c6 under kanbus-d6b6dc; it complements kanbus-dbc30a (site-driven) rather than replacing it.",
+      "created_at": "2026-10-31T12:36:38.028900Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
+    }
+  ],
   "created_at": "2026-10-31T12:33:19.705909Z",
-  "updated_at": "2026-10-31T12:34:20.415328Z",
+  "updated_at": "2026-10-31T12:36:38.029113Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

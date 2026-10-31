@@ -11,10 +11,28 @@
   "labels": [
     "billing"
   ],
-  "dependencies": [],
-  "comments": [],
+  "dependencies": [
+    {
+      "target": "kanbus-6efecd1a-44a2-43c4-bf9d-0e230de806fb",
+      "type": "relates-to"
+    }
+  ],
+  "comments": [
+    {
+      "id": "476f5072-f6ea-4f66-8289-15183dc3bdb6",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): where kanbus-6efecd lands a durable event stream, billing follow-ups for entitlement changes consume it instead of a billing-only source; payment and due-date events stay in the billing journal.",
+      "created_at": "2026-10-31T12:36:38.079281Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
+    }
+  ],
   "created_at": "2026-10-31T12:33:32.747757Z",
-  "updated_at": "2026-10-31T12:33:32.747780Z",
+  "updated_at": "2026-10-31T12:36:38.079496Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

@@ -15,9 +15,22 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "0b9c3771-6d49-4298-8447-ce60d0706801",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): the billing plan catalog (kanbus-8ef496) will key plans on the product family name defined here (use the same string, 'papyrus', rather than the 'papyrus-site' placeholder in that story) and will refuse a line for a public-reader product. Display names come from this metadata, not the catalog.",
+      "created_at": "2026-10-31T12:36:38.054469Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
+    }
+  ],
   "created_at": "2026-10-31T12:34:04.964350Z",
-  "updated_at": "2026-10-31T12:34:20.334750Z",
+  "updated_at": "2026-10-31T12:36:38.054686Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

@@ -11,10 +11,36 @@
   "labels": [
     "account-creation"
   ],
-  "dependencies": [],
-  "comments": [],
+  "dependencies": [
+    {
+      "target": "kanbus-dbc30ae2-b9f1-485b-b9cd-586680241119",
+      "type": "relates-to"
+    },
+    {
+      "target": "kanbus-2823b546-04ef-426a-9cef-d9779be518a8",
+      "type": "relates-to"
+    },
+    {
+      "target": "kanbus-59284ce5-eab4-4fbb-8288-b1b2217c9ea4",
+      "type": "relates-to"
+    }
+  ],
+  "comments": [
+    {
+      "id": "72096fea-1f3b-4e1a-ba2a-aa514ad753ae",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): complements kanbus-dbc30a (a site creates an account for a signed-in person) and kanbus-2823b5 (owners and admins change memberships from a site): this is the operator-driven path for clients set up by Anthus. The operator create needs its own route and permission; the membership and invitation code should be shared with those stories, and the API Gateway policy change is one reviewed change for all of them.",
+      "created_at": "2026-10-31T12:36:38.091562Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
+    }
+  ],
   "created_at": "2026-10-31T12:34:22.060282Z",
-  "updated_at": "2026-10-31T12:34:22.060311Z",
+  "updated_at": "2026-10-31T12:36:38.091762Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

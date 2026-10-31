@@ -15,9 +15,22 @@
       "type": "relates-to"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "910e3c21-cb9e-4197-a34c-3a93cd8b3187",
+      "author": "home",
+      "text": "2026-10-31 (Billing planner): the billing plan (kanbus-a78bcdbc) treats these events as prompts, not triggers: on entitlement.changed to active with no billing line, billing opens an operator follow-up to attach a plan (kanbus-8e3174); on disabled, a follow-up to end the line. Automatic line creation from events would charge a client without an operator choosing a plan and price, so it is an open question for Ryan in the billing epic. Consumer idempotency by operationId matches the billing journal design.",
+      "created_at": "2026-10-31T12:36:38.041498Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-fable-5-1",
+        "name": "Billing planner"
+      }
+    }
+  ],
   "created_at": "2026-10-31T12:34:04.951835Z",
-  "updated_at": "2026-10-31T12:34:20.320781Z",
+  "updated_at": "2026-10-31T12:36:38.041701Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
