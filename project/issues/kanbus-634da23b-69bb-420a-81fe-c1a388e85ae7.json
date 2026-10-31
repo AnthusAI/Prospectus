@@ -1,0 +1,42 @@
+{
+  "id": "kanbus-634da23b-69bb-420a-81fe-c1a388e85ae7",
+  "title": "Document the Papyrus integration contract",
+  "description": "Feature: Papyrus can integrate from the Prospectus docs alone\n  Scenario: A Papyrus engineer reads docs/accounts/PAPYRUS_SITES.md\n    Then it gives the exact request, response and error contract for:\n      - CLI enrollment through cli-login's prepare and enroll hooks: a challenge bound to sha256hex(T), resolve with loginState T;\n      - account selection (X-Prospectus-Account is a choice that the site checks with POST /v1/accounts/{id}/authorize);\n      - whoami through GET /v1/identities/me;\n      - account creation, membership changes, and the lifecycle events;\n    And it says which call fails closed and how reenrollment_required reaches the CLI\n\nSource: the answers sent to the Papyrus session on 2026-10-31.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a93e35bd-6e2f-46e8-bf56-38d7a03969fb",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-dbc30ae2-b9f1-485b-b9cd-586680241119",
+      "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-2823b546-04ef-426a-9cef-d9779be518a8",
+      "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-6efecd1a-44a2-43c4-bf9d-0e230de806fb",
+      "type": "blocked-by"
+    },
+    {
+      "target": "kanbus-b91466b2-7704-45a3-8bba-dd445bb803db",
+      "type": "blocked-by"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-31T12:34:04.977250Z",
+  "updated_at": "2026-10-31T12:34:20.388562Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

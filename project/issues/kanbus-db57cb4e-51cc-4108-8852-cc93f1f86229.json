@@ -1,0 +1,30 @@
+{
+  "id": "kanbus-db57cb4e-51cc-4108-8852-cc93f1f86229",
+  "title": "Offer Papyrus newsrooms as one sellable product family",
+  "description": "Feature: A Papyrus newsroom is sellable even though each site is its own product\n  Scenario: An operator sells a newsroom on a site\n    Given per-site products papyrus-<site> in accounts/papyrus-sites.json\n    When an operator or the portal lists what can be sold\n    Then each editor site appears under the family papyrus with a display name, and public-reader sites never appear\n    And granting a newsroom is an entitlement to that site's product (kanbus-592fbb)\n\nChange: add display and family metadata to papyrus-sites.json entries (reviewed, unknown fields still refused) and expose it to the operator directory and Anthus One portal. Plan IDs and prices belong to the billing plan catalog in kanbus-a78bcd, not here.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a93e35bd-6e2f-46e8-bf56-38d7a03969fb",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-592fbbaf-85aa-4d36-aa4d-d46e74000406",
+      "type": "blocked-by"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-31T12:34:04.964350Z",
+  "updated_at": "2026-10-31T12:34:20.334750Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

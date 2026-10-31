@@ -1,0 +1,30 @@
+{
+  "id": "kanbus-b91466b2-7704-45a3-8bba-dd445bb803db",
+  "title": "Re-review each Papyrus site's federation policy for the CLI callbacks",
+  "description": "Feature: The Papyrus CLI signs in through the site's registered federation client\n  Scenario: A site adds its CLI callbacks to the registered client\n    Given Ryan approved (2026-10-31) moving the Papyrus CLI onto the clientId registered in accounts/papyrus-sites.json\n    When the site's prospectus-google-only client (Papyrus amplify/auth/prospectus-google-client.ts) gains https://<site>/cli/callback and a loopback callback\n    Then Prospectus records a new reviewed federation policy ID for that site in accounts/papyrus-sites.json\n    And central enrollment keeps binding to that one client (accounts/google-identity.ts enrollmentBinding)\n\n  Scenario: Something outside the reviewed policy changed\n    Given the synthesized client differs from the reviewed inputs\n    Then the review is refused and the old policy ID stays\n\nReview inputs Papyrus supplies for each site (from docs/SECURITY.md \"Identity evidence\"):\n- the synthesized CfnUserPoolClient and its full callback and logout URL list;\n- the Google provider and Google OAuth client;\n- confirmation that Google-only login has no alternative login paths and no linked profiles;\n- whether administrator linking or a pre-token trigger exists (it must not);\n- the OAuth flows and scopes (code only);\n- how the CLI handles PKCE S256, state and nonce;\n- the token validity settings.\n\nLoopback: Cognito matches callbacks exactly, with no port wildcard. So the loopback callback needs a fixed port and path, for example http://localhost:<port>/callback, and the review must state that as an accepted risk on a production client. The CRM chose no localhost CLI callback.\n\nProspectus change: one reviewed papyrus-sites.json edit per site (federationReviewId), with Ryan's approval of each review ID.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a93e35bd-6e2f-46e8-bf56-38d7a03969fb",
+  "labels": [],
+  "dependencies": [
+    {
+      "target": "kanbus-2755969c-d69c-420f-b437-70cfa4d6951f",
+      "type": "relates-to"
+    }
+  ],
+  "comments": [],
+  "created_at": "2026-10-31T12:34:04.911653Z",
+  "updated_at": "2026-10-31T12:34:20.263969Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
