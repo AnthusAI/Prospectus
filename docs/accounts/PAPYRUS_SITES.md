@@ -19,6 +19,8 @@ Add one reviewed entry to `accounts/papyrus-sites.json`:
 }
 ```
 
+The product is `papyrus-<siteId>`, the name the Papyrus app shell sends. The portal opens `papyrus-p-apyr-us` at https://p.apyr.us by turning hyphens into dots; when the site's host is something else, add `"siteUrl": "https://<host>"` (an https origin, no path) and the same pair to `PAPYRUS_SITE_URLS` in `src/apps.ts`, which a test keeps equal to the registry.
+
 Unknown fields, missing reviews, non-`papyrus-` product names and roles shared with any other registration are refused at synthesis and at runtime. The central Lambda reads the same bundled file, so the registry does not grow its environment. The registry holds at most 40 sites, but the API Gateway access policy limit (8192 characters) is reached sooner with the real Amplify role names (about 95 characters each): with the other registrations and the lab verifier enabled, twenty deployed-length sites fit and twenty-four do not. `infra/test/accounts-plane.test.ts` checks that size.
 
 ### Public-reader sites

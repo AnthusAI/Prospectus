@@ -245,6 +245,15 @@ test("Papyrus site failures name the broken site rule", () => {
   );
   const cases: Array<[(entry: any) => void, string]> = [
     [(entry) => (entry.email = "x"), "A Papyrus site entry must have exactly the reviewed fields."],
+    [
+      (entry) => (entry.siteUrl = "http://dataparade.anth.us"),
+      "A Papyrus site URL must be absent or an https origin with no path.",
+    ],
+    [
+      (entry) => (entry.siteUrl = "https://dataparade.anth.us/newsroom"),
+      "A Papyrus site URL must be absent or an https origin with no path.",
+    ],
+    [(entry) => (entry.siteUrl = 5), "A Papyrus site URL must be absent or an https origin with no path."],
     [(entry) => (entry.product = 5), "A Papyrus site product must be a string."],
     [
       (entry) => (entry.product = "cyclotron"),
