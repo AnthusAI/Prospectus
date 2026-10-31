@@ -32,3 +32,10 @@ Feature: Amplify owns a separate private Prospectus application
     And Google sign-in completes through the deployed Cognito client and returns to localhost
     And the deployed API and accounts service accept requests from that origin
     And nothing is deployed and no cloud environment is created
+
+  Scenario: Merge to main deploys once, after green CI
+    Given Amplify auto-build is off on the main branch of app d15sc1sptohtqb
+    When a commit is pushed to main and the CI job passes
+    Then the deploy job assumes the prospectus-github-deploy role through GitHub OIDC
+    And it starts exactly one Amplify release job for that commit
+    And a failing CI job starts no Amplify job

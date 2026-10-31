@@ -1,7 +1,7 @@
 {
   "branchName": "main",
   "stage": "PRODUCTION",
-  "enableAutoBuild": true,
+  "enableAutoBuild": false,
   "enablePullRequestPreview": false,
   "framework": "React"
 }
