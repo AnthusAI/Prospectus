@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-dbc30ae2-b9f1-485b-b9cd-586680241119",
+  "title": "Let a registered Papyrus site create an account entitled to its own product",
+  "description": "Feature: Account creation from a registered Papyrus site\n  Scenario: A signed-in, enrolled person creates a newsroom account\n    Given a person enrolled through a registered papyrus-<site> registration\n    When the site server calls POST /v1/accounts as the site role with the person's access token and an Idempotency-Key UUID\n    Then the API policy admits the call, central makes the person owner and entitles only that site's product\n    And accountCreationLimits apply (409 account_limit beyond the limit)\n\n  Scenario: Public-reader sites cannot create accounts\n    Given a registration with audience public-reader\n    When it calls POST /v1/accounts\n    Then it is refused\n\nGap on 2026-10-31: accounts/papyrus-sites.ts papyrusSiteRoutes has no POST/v1/accounts, so Papyrus's create route (Papyrus PRs 330/331, recorded on kanbus-5161d7) is refused by the API resource policy. Change: add exactly POST/v1/accounts (never /v1/accounts/*) for editor sites only, keep the access-policy size test (infra/test/accounts-plane.test.ts) passing, and update docs/accounts/PAPYRUS_SITES.md \"What a site may call\". This is an API resource-policy change, so it needs Ryan's approval of the synthesized policy.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-a93e35bd-6e2f-46e8-bf56-38d7a03969fb",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-10-31T12:34:04.926163Z",
+  "updated_at": "2026-10-31T12:34:04.926186Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus implementation"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
