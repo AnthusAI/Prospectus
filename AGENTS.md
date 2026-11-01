@@ -6,6 +6,15 @@ Use Kanbus for development tracking and preserve issue IDs. The operational CRM 
 
 Keep backend queries and reusable UI in Kanbus/Virtuus. Prospectus supplies domain configuration and application interactions. All canonical cloud data remains ordinary Kanbus files in S3 with unchanged paths and bytes; DynamoDB is only a supplemental catalog.
 
-Write behavior specifications before implementation and verify real API persistence, authorization and revision conflicts. Preserve isolated branches and use pull requests for review; merge into `main` only with direction. Pin Kanbus/Virtuus source revisions for CI. Never deploy from a moving dependency branch.
+Write behavior specifications before implementation and verify real API persistence, authorization and revision conflicts. Preserve isolated branches and use pull requests for review. Pin Kanbus/Virtuus source revisions for CI. Never deploy from a moving dependency branch.
 
 The replacement CRM destination is prospectus.anth.us in papyrus-production account 712236451410, using the main deployment branch. The obsolete dedicated deployment and its exclusive backend/data were removed after accepted central access and explicit deletion confirmation. Preserve the central application and shared resources. New persistent IAM or security resources require concrete approval. No manual site-content sync as the routine publication path.
+
+## Git workflow
+
+Git Flow, as in the other Anthus projects. `develop` is the default and integration branch; `main` is what is deployed.
+
+- Branch from `origin/develop` (`feature/kanbus-xxxxxx-slug`, `fix/...`, `chore/...`, `docs/...`, `board/...`) and open the pull request to `develop`. CI runs on every pull request and on every push to `develop`.
+- Never commit to `develop` or `main` directly. Work lands on `develop` by pull request, merged with a merge commit once CI is green. Kanbus board changes go to `develop` the same way.
+- Promotion is a pull request from `develop` to `main` with a merge commit. Merging it deploys production (docs/OPERATIONS.md, "Deployment"). Promote or merge to `main` only with direction, and coordinate the promotion with any Papyrus release it depends on.
+
