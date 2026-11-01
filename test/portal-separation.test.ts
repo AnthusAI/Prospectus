@@ -86,6 +86,7 @@ test("workspace products open their own sites", () => {
   assert.equal(productUrl("papyrus-p-apyr-us"), "https://p.apyr.us");
   assert.equal(productUrl("papyrus-pilobol-us"), "https://pilobol.us");
   assert.equal(productUrl("papyrus-dataparade"), "https://dataparade.anth.us");
+  assert.equal(productUrl("papyrus-machines-on-machines"), "https://machines-on-machines.anth.us");
   assert.equal(productUrl("cyclotron"), "https://lab.cyclotron.anth.us");
   assert.equal(productUrl("unknown-product"), undefined);
 });

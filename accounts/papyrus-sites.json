@@ -32,5 +32,15 @@
     "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-datapar-AmplifyComputeRoleD988057-nr3WivMurIWW",
     "siteReviewId": "papyrus-dataparade-site-v1-2026-10-31",
     "siteUrl": "https://dataparade.anth.us"
+  },
+  {
+    "audience": "public-reader",
+    "clientId": "64dvnuf7baa05ppomnftu919vu",
+    "federationReviewId": "papyrus-machines-on-machines-google-only-unlinked-v1-2026-11-01",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_vbiZjHtWJ",
+    "product": "papyrus-machines-on-machines",
+    "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-machine-AmplifyComputeRoleD988057-9M21hBacB13d",
+    "siteReviewId": "papyrus-machines-on-machines-site-v1-2026-11-01",
+    "siteUrl": "https://machines-on-machines.anth.us"
   }
 ]
