@@ -63,3 +63,9 @@ Feature: Remote CLI sign-in through cli-login
     When the rewrite helper's role is synthesized
     Then it may read and update only the Amplify app d15sc1sptohtqb and write its own logs
     And it cannot pass a role, touch a branch or reach any other app
+
+  Scenario: The broker is deployed and its private operations are not public
+    Given the prospectus-cli-broker stack built from cli-login 0.3.0 with infra/cli-broker/parameters.json
+    When a CLI posts a valid start request to the broker's function URL for https://prospectus.anth.us
+    Then it receives a transaction whose approval URL is on https://prospectus.anth.us/cli/approve
+    And describe, bind, complete and deny on the function URL are not found
