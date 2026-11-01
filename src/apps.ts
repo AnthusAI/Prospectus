@@ -51,6 +51,7 @@ export const ANTHUS_APPS: readonly AnthusApp[] = [
 /** Papyrus sites whose host is not their product name: the `siteUrl` entries of accounts/papyrus-sites.json. */
 export const PAPYRUS_SITE_URLS: Readonly<Record<string, string>> = {
   "papyrus-dataparade": "https://dataparade.anth.us",
+  "papyrus-machines-on-machines": "https://machines-on-machines.anth.us",
 };
 
 /**
