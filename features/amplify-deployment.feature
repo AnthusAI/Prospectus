@@ -39,3 +39,10 @@ Feature: Amplify owns a separate private Prospectus application
     Then the deploy job assumes the prospectus-github-deploy role through GitHub OIDC
     And it starts exactly one Amplify release job for that commit
     And a failing CI job starts no Amplify job
+
+  Scenario: Work integrates on develop and deploys on promotion
+    Given develop is the default branch and pull requests target it
+    When a pull request merges to develop
+    Then CI runs on develop and no Amplify job starts
+    When develop is promoted to main by a pull request with a merge commit
+    Then that merge deploys once, after green CI

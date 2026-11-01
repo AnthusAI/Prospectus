@@ -20,7 +20,7 @@ The dedicated Cyclotron hosting that preceded the central application is retired
 - Cloud threads and CI have no AWS access. Nothing a worker does deploys.
 - Every AWS action runs on Ryan's M1 Mac, logged in to the AWS CLI with Touch ID. The AWS console in a browser is not used.
 - New persistent IAM or security resources, OAuth changes and operator grants need concrete approval first.
-- Deployment is only through the Amplify `main` pipeline. There is no manual content sync and no separate branch deployment.
+- Deployment is only through the Amplify `main` pipeline. There is no manual content sync and no separate branch deployment. Work integrates on `develop`; promoting `develop` to `main` is the release (see [AGENTS.md](../AGENTS.md#git-workflow)).
 
 ## Deployment
 
@@ -67,7 +67,7 @@ Each additive slice is switched by a checked-in file that the pipeline reads. Ch
 | `accounts/papyrus-sites.json` | Registered Papyrus sites, at most 40 | empty |
 | `accounts/lab-verifier.json` | The Cyclotron lab verifier: the external role `cyclotron-lab-verifier` (created by Cyclotron in its own account) and one Allow in the API access policy for two routes; it trusts the sites in `accounts/papyrus-sites.json` and needs at least one. Enable only after Cyclotron has deployed the role and Ryan has approved the synthesized policy change | `enabled: false` |
 | `accounts/operator-grants.json` | Operators who may read the whole directory | one reviewed grant |
-| `infra/cli-sign-in.json` | Remote CLI sign-in (see [ARCHITECTURE.md](ARCHITECTURE.md#remote-cli-sign-in-cli-login)): the pages Lambda `prospectus-cli-pages`, its four `/cli/*` routes and the `/cli/<*>` rewrite on the Amplify app. `broker: null` deploys the pages unconfigured (`503`); the broker's function ARN and URL are committed only after its stack is approved and deployed | `enabled: true`, `broker: null` (step 1) |
+| `infra/cli-sign-in.json` | Remote CLI sign-in (see [ARCHITECTURE.md](ARCHITECTURE.md#remote-cli-sign-in-cli-login)): the pages Lambda `prospectus-cli-pages`, its four `/cli/*` routes and the `/cli/<*>` rewrite on the Amplify app. `broker: null` deploys the pages unconfigured (`503`); the broker's function ARN and URL are committed only after its stack is approved and deployed | `enabled: true` with the `prospectus-cli-broker` outputs (step 3) |
 | `evaluation-deployment.json` | Inquiry intake runtime, its mode (`synthetic-only` or `real-contacts`) and `spamLabelling` (`shadow` or `label`, see [INTAKE_SPAM.md](INTAKE_SPAM.md)) | `enabled: false`, `synthetic-only` here; `main` carries `enabled: true`, `real-contacts` since the engage-page change |
 | `intake-forms.json` | App waitlist and contact forms (see [ARCHITECTURE.md](ARCHITECTURE.md#integrating-an-apps-waitlist) and [the contact form](ARCHITECTURE.md#integrating-an-apps-contact-form)); a form needs `enabled: true` plus a recorded `approval`, and the `real-contacts` runtime | `babulus-waitlist-v1` is `enabled: true` for `https://babulus.anth.us` only (Ryan approved 2026-10-20, recorded in the entry); it collects real contacts once deployed, and acceptance is a labelled test signup after deploy. `papyrus-waitlist-v1` and `papyrus-contact-v1` are `enabled: true` for `https://p.apyr.us` only (Ryan approved 2026-10-21, recorded in each entry); enabling them adds, per form, one route, one Lambda integration and permission, one route throttle and the `https://p.apyr.us` CORS origin, and the `IntakeContactBaseUrl` output once. Acceptance is a labelled test message after deploy. `papyrus-newsletter-v1` is `enabled: true` for `https://p.apyr.us` only (Ryan approved 2026-10-21, recorded in the entry); enabling it adds its signup route, the confirm and unsubscribe page routes, the SES identity, configuration set, DNS records and token key in [Newsletter sending](#newsletter-sending), and the `IntakeNewsletterBaseUrl` output. Acceptance is a labelled test signup after deploy and SES production access |
 
@@ -103,7 +103,19 @@ Rollout, with each AWS step run from Ryan's Mac (the code is merged; the setting
 
 The runtime role already covers `prospectus-central/accounts/*`, which includes the markers, so no IAM change is needed.
 
-### Product access
+### CLI sign-in broker
+
+Stack `prospectus-cli-broker` is cli-login's `infra/broker.yaml` at the cli-login version pinned in `cli/pyproject.toml` (0.3.0), with the parameters in `infra/cli-broker/parameters.json`. It was created on 2026-11-01 from a change set Ryan approved (IAM role `BrokerRole`, a public function URL, and an invoke permission for `prospectus-cli-pages-runtime` only). Its outputs are committed in `infra/cli-sign-in.json`. To update it, build the zip at the new tag (`python scripts/build_broker.py` in cli-login prints its sha256 and key), upload it under that key to the code bucket, change `CodeKey` (and the pin) in a reviewed pull request, then create a change set from that file and execute it only after approval:
+
+```sh
+aws cloudformation create-change-set --stack-name prospectus-cli-broker --change-set-name <name> \
+  --template-body file://<cli-login>/infra/broker.yaml --capabilities CAPABILITY_IAM \
+  --parameters file://infra/cli-broker/parameters.json
+```
+
+The public URL answers only `/start` and `/poll`; `describe`, `bind`, `complete` and `deny` are reachable only by the pages role.
+
+## Product access
 
 An account starts with only the product it was created from. An operator can grant or disable another registered product with `POST /v1/account-directory/operator/accounts/<accountId>/entitlements/<product>` and the body `{"status":"active"}` or `{"status":"disabled"}`. A grant gives the product its registered capabilities, which members still use only within their role. Disabling denies that product's authorize calls and keeps memberships and all account data. Each change is an `entitlement.changed` audit event under the same revision check as membership changes.
 
@@ -111,7 +123,7 @@ Only a person holding a reviewed `accounts:admin:entitlements` grant in `account
 
 ### Delivery
 
-this repository is public, so CI runs on GitHub Actions (`.github/workflows/ci.yml`, on pull requests and pushes to `main`) and CD runs in AWS. Since 2026-10-31 (Ryan: Amplify builds only deploy, CI runs in GitHub Actions) merging to `main` deploys once, after green CI: the `deploy` job in `ci.yml` assumes the `prospectus-github-deploy` role through GitHub OIDC (`infra/github-deploy/prospectus-github-deploy-role.template.yaml`, which may only `amplify:StartJob` and `amplify:GetJob` on this app's `main` jobs) and starts one Amplify release job for that commit, which runs `amplify.yml`. Amplify's own auto-build on `main` is off (`enableAutoBuild: false` in `infra/branch-settings.json`), so nothing builds twice and a red CI run deploys nothing. The shared deploy workflow is pinned to a reviewed Papyrus commit. Nobody starts builds by hand. The settings were `false` since the initial `papyrus-proof` source (b57ad68) with no recorded reason, so a proof app would not deploy on push.
+this repository is public, so CI runs on GitHub Actions (`.github/workflows/ci.yml`, on pull requests and pushes to `develop` and `main`) and CD runs in AWS. Pull requests merge to `develop`, the integration branch; a push to `develop` runs CI and deploys nothing. Since 2026-10-31 (Ryan: Amplify builds only deploy, CI runs in GitHub Actions) merging to `main`, normally the `develop` to `main` promotion, deploys once, after green CI: the `deploy` job in `ci.yml` assumes the `prospectus-github-deploy` role through GitHub OIDC (`infra/github-deploy/prospectus-github-deploy-role.template.yaml`, which may only `amplify:StartJob` and `amplify:GetJob` on this app's `main` jobs) and starts one Amplify release job for that commit, which runs `amplify.yml`. Amplify's own auto-build on `main` is off (`enableAutoBuild: false` in `infra/branch-settings.json`), so nothing builds twice and a red CI run deploys nothing. The shared deploy workflow is pinned to a reviewed Papyrus commit. Nobody starts builds by hand. The settings were `false` since the initial `papyrus-proof` source (b57ad68) with no recorded reason, so a proof app would not deploy on push.
 
 
 ### Login challenge signing secret
@@ -239,7 +251,7 @@ Local previews and proofs use only synthetic data: `npm run preview:local` for l
 
 - Work is tracked in Kanbus under `project/`. Preserve issue IDs and change state with Kanbus commands.
 - Write behavior specifications (`.feature` files) before implementation and verify real API persistence, authorization and revision conflicts.
-- Use isolated branches and pull requests; merge into `main` only with direction.
+- Use isolated branches and pull requests to `develop`; promote `develop` to `main` only with direction.
 - Code style: Prettier formatting, no comments that restate a line, long descriptive names, no single-letter identifiers.
 
 ## Appendix: proof history

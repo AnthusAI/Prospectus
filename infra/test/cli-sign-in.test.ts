@@ -65,10 +65,14 @@ const pagesPolicy = (t: Template) => {
   };
 };
 
-test("the committed configuration is rollout step 1: the pages deploy without a broker", () => {
+test("the committed configuration is rollout step 3: the pages invoke the deployed prospectus-cli-broker", () => {
   const committed = JSON.parse(readFileSync(new URL("../cli-sign-in.json", import.meta.url), "utf8"));
-  assert.deepEqual(committed, { enabled: true, broker: null });
-  assert.deepEqual(parseCliSignIn(committed), { broker: null });
+  const broker = {
+    functionArn: "arn:aws:lambda:us-east-1:712236451410:function:prospectus-cli-broker-Broker-DqTdYMCKaxIV",
+    endpoint: "https://as2bd25hd44j27w52eft64gxnm0drplh.lambda-url.us-east-1.on.aws/",
+  };
+  assert.deepEqual(committed, { enabled: true, broker });
+  assert.deepEqual(parseCliSignIn(committed), { broker });
 });
 
 test("while disabled there is no pages function, role or route", () => {

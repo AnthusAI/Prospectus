@@ -1,0 +1,26 @@
+[
+  {
+    "amountCents": 100,
+    "displayName": "Placeholder Papyrus site, monthly",
+    "family": "papyrus",
+    "interval": "month",
+    "planId": "papyrus-site-monthly",
+    "stripePriceIds": { "live": null, "test": "price_test_placeholder_papyrus_site_monthly" }
+  },
+  {
+    "amountCents": 1000,
+    "displayName": "Placeholder Papyrus site, yearly",
+    "family": "papyrus",
+    "interval": "year",
+    "planId": "papyrus-site-yearly",
+    "stripePriceIds": { "live": null, "test": "price_test_placeholder_papyrus_site_yearly" }
+  },
+  {
+    "amountCents": 200,
+    "displayName": "Placeholder Cyclotron Lab, monthly",
+    "family": "cyclotron-lab",
+    "interval": "month",
+    "planId": "cyclotron-lab-monthly",
+    "stripePriceIds": { "live": null, "test": "price_test_placeholder_cyclotron_lab_monthly" }
+  }
+]

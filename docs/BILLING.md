@@ -16,7 +16,7 @@ Billing charges clients for the products their accounts hold: each Papyrus site 
 | Record                  | Path under `prospectus-central/billing/` | Written by                           |
 | ----------------------- | ---------------------------------------- | ------------------------------------ |
 | Billing profile         | `profiles/<accountUUID>.json`            | Admins                               |
-| Billing line            | `lines/<accountUUID>/<product>.json`     | Admins; Stripe mirror for status     |
+| Billing line            | `lines/<accountUUID>/<hex(product)>.json` | Admins; Stripe mirror for status    |
 | Invoice                 | `invoices/<invoiceUUID>.json`            | Admins; Stripe mirror                |
 | Payment                 | `payments/<paymentUUID>.json`            | Admins (external); Stripe mirror     |
 | Allocation              | `allocations/<allocationUUID>.json`      | Admins; Stripe mirror                |
@@ -25,6 +25,8 @@ Billing charges clients for the products their accounts hold: each Papyrus site 
 | Journal event           | `journal/<eventId>.json`                 | Every mutation, including the mirror |
 
 The plan catalog is a reviewed repository file, `accounts/billing-plans.json`, not stored data.
+
+Billing is its own Virtuus project (`billing`) in the Rust bridge, beside `accounts`, so it writes only billing paths. The bridge accepts only hex digits and hyphens after the kind, so a line's product name is stored hex-encoded (`papyrus-example-invalid` is `7061707972...`), as retired site subjects are. A journal `<eventId>` is the SHA-256 of the record and the client operation id.
 
 ## Billing profile
 
@@ -38,10 +40,11 @@ One profile per account at `billing/profiles/<accountUUID>.json`. It references 
 | `billingContact`      | Name, email, postal address and tax id as the client supplied them                               |
 | `netTermsDays`        | Optional per-account override of the default 30 days                                             |
 | `paymentMethods`      | Optional override of the issuer's accepted payment methods for this client |
+| `openLines`           | The account's open and opening lines by product: the create operation, the plan interval and when it was reserved |
 | `status`, `revision`  | Lifecycle state and the compare-and-set revision                                                 |
 | `audit`               | Bounded audit of who changed what, by operation id                                               |
 
-Only admins set a profile. The billing contact is billing data, not identity: it is never used to find, match or authorize a Person, and it never appears in logs. Switching mode is refused while the account has open billing lines; each line is first re-homed by its own explicit operation, and the refusal names the lines.
+Only admins set a profile. The billing contact is billing data, not identity: it is never used to find, match or authorize a Person, and it never appears in logs. Switching mode is refused while the account has open billing lines; each line is first re-homed by its own explicit operation, and the refusal names the lines. Opening a line first reserves its product in `openLines` with a compare-and-set on the profile, and ending a line removes the reservation afterwards. Because a mode switch writes the same record, the two cannot pass each other: either the switch lands first and the line opens under the new mode, or the switch sees the reservation and is refused. The direct-mode interval rule is checked against the same reservations. A reservation whose line ended, or whose line never appeared within ten minutes, is a step that did not finish and no longer blocks; sending the create or end again with its operation id finishes it. These writes advance the profile revision but write no journal event of their own.
 
 Customers read their own profile through `GET /accounts/{id}/billing` on the portal BFF, which returns the mode and a masked contact.
 
@@ -55,7 +58,7 @@ The catalog is validated at synthesis and at service start. An unknown field, a 
 
 ## Billing lines
 
-A billing line is the billable unit, keyed by account and product: `billing/lines/<accountUUID>/<product>.json`, with a plan from the catalog, a status (`pending`, `active`, `paused`, `ended`), a period and, in direct mode, the Stripe subscription item id. Each Papyrus site is its own product (`papyrus-<site>`), so a client with three sites has three lines. Each line is added, paused and ended on its own and never touches another.
+A billing line is the billable unit, keyed by account and product: `billing/lines/<accountUUID>/<hex(product)>.json`, with a plan from the catalog, a status (`pending`, `active`, `paused`, `ended`), a period and, in direct mode, the Stripe subscription item id. Only an `active` line pauses, and resuming returns it to `active`; there is no `resumed` status, only a `line.resumed` journal action. Every line that is not `ended` counts as open, for the mode-switch refusal and the direct-mode interval rule. An ended line may be created again with a new period. Papyrus site products bill under family `papyrus`; the `cyclotron` product bills under `cyclotron-lab`. Each Papyrus site is its own product (`papyrus-<site>`), so a client with three sites has three lines. Each line is added, paused and ended on its own and never touches another; opening and ending a line also update the profile's `openLines`.
 
 The entitlement is access; the line is money. They are changed by different operations:
 
@@ -132,7 +135,7 @@ Only admins record external payments (`bank_transfer`, `check`, `venmo`, `cash`,
 
 ### Concurrency and replay
 
-Every write carries a client-generated operation id and uses revision compare-and-set. A replay of the same operation returns the original result and writes no second revision. Two admins allocating the same payment at once cannot together exceed its remainder: the loser's write fails its revision check and is re-evaluated.
+Every write carries a client-generated operation id and uses revision compare-and-set. A replay of the same operation returns the original result and writes no second revision: the journal event names the storage commit, and Virtuus answers that commit with its original result. A write may carry an `expectedRevision`; a stale one is refused as `409 revision_conflict`, and without one the loser of a race re-reads and is re-evaluated. The record's bounded audit keeps the last 32 entries; the journal keeps every event. Two admins allocating the same payment at once cannot together exceed its remainder: the loser's write fails its revision check and is re-evaluated.
 
 ## Stripe boundary
 

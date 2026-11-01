@@ -45,6 +45,10 @@ Tests that exercise the native identity and account files need the Rust bridge: 
 
 Build `kanbus-api-local` from the API pin, set `KANBUS_API_BINARY` to that executable, then run `npm run preview:local` for a loopback-only synthetic form and workspace. Local credentials and records stay in the ignored `local-data/` directory. For an explicitly chosen private LAN review set `PROSPECTUS_LAN_ADDRESS` and run `npm run preview:lan`. Use made-up names and messages and `.invalid` addresses only.
 
+## Branches
+
+Git Flow: pull requests go to `develop`, the default and integration branch, and promoting `develop` to `main` deploys production. See [AGENTS.md](AGENTS.md#git-workflow).
+
 ## Tracking
 
 Development work is tracked in Kanbus under `project/`, configured by the root `.kanbus.yml`. Change issue state with Kanbus commands, never by editing issue JSON. The operational CRM board configuration is `config/prospectus.kanbus.yml`.
