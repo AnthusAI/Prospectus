@@ -26,7 +26,7 @@
   },
   {
     "clientId": "2d81ql2qo3qkkjiubeft26pslv",
-    "federationReviewId": "papyrus-dataparade-google-only-unlinked-v1-2026-10-31",
+    "federationReviewId": "papyrus-dataparade-google-only-unlinked-v2-2026-10-31",
     "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_ewYJ5H4M2",
     "product": "papyrus-dataparade",
     "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-datapar-AmplifyComputeRoleD988057-nr3WivMurIWW",
