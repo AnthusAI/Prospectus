@@ -18,7 +18,7 @@
   {
     "audience": "public-reader",
     "clientId": "4fefkac5sepfm8cbdogeo898lv",
-    "federationReviewId": "papyrus-shipped-google-only-unlinked-v1-2026-10-21",
+    "federationReviewId": "papyrus-shipped-google-only-unlinked-v2-2026-10-31",
     "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_t5Rk1NdU7",
     "product": "papyrus-shipped",
     "roleArn": "arn:aws:iam::712236451410:role/amplify-app-shell-shipped-AmplifyComputeRoleD988057-XMW5ARboawnW",
