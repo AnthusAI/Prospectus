@@ -74,6 +74,25 @@ Feature: Plan catalog and billing lines
     When an admin creates a line with an annual plan
     Then it is refused with a message naming the interval
 
+  Scenario: Concurrent direct-mode lines of different intervals
+    Given a direct-mode account with no open lines
+    When two admins at the same moment create lines for two products, one monthly and one annual
+    Then one line opens and the other is refused with a message naming the interval
+
+  Scenario: A line that opens during a mode switch
+    Given an invoiced account with no open lines
+    When an admin creates a line at the same moment another admin switches the profile to direct
+    Then either the switch lands first and the line opens in direct mode
+    Or the line opens in invoiced mode and the switch is refused naming it
+    And no open line ever has a mode other than its profile's
+
+  Scenario: A line whose creation failed midway
+    Given a line creation that reserved its product on the profile but failed before writing the line
+    Then a mode switch is refused naming that product
+    When the same creation is sent again with its operation id
+    Then the line opens and no second reservation exists
+    And an abandoned reservation stops blocking after ten minutes
+
   Scenario: Only billing admins change lines
     Given an operator holding only accounts:admin:read, or a signed-in account owner
     When they create, pause or end a line
