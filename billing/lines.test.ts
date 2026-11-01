@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { BillingError, type JournalEvent } from "./model";
-import { linePath } from "./store";
-import { billingFixture, operator, owner, profileInput } from "./testing/billing-fixture";
+import { linePath, profilePath } from "./store";
+import { BillingLines } from "./lines";
+import { reviewedBillingPlans } from "./plans";
+import { BillingProfiles } from "./profile";
+import { billingFixture, grants, operator, owner, profileInput } from "./testing/billing-fixture";
 
 const ada = operator("ada"),
   grace = operator("grace");
@@ -66,9 +69,10 @@ test("two sites get two lines, and ending one does not touch the other", async (
   const { line } = await lines.end(ada, accountId, SITE, { endDate: "2030-04-01" }, randomUUID());
   assert.equal(line.status, "ended");
   assert.deepEqual(files.objects.get(linePath(accountId, SECOND)), other);
+  // The line ends first, then its reservation is released from the profile; the other line is never written.
   assert.deepEqual(
     files.commits.filter((path) => !path.startsWith("journal/")),
-    [linePath(accountId, SITE)],
+    [linePath(accountId, SITE), profilePath(accountId)],
   );
   const listed = await lines.list(accountId);
   assert.deepEqual(
@@ -312,4 +316,125 @@ test("billing reads entitlements but never writes account files", async () => {
   await lines.end(ada, accountId, SITE, {}, randomUUID());
   assert.ok(entitlementReads.length >= 2);
   for (const path of files.objects.keys()) assert.match(path, /^(profiles|lines|journal)\//);
+});
+
+/** Runs `competitor` once, just before the next new storage commit, to land a competing writer mid-operation. */
+function interleave(
+  files: { beforeCommit?: (path: string) => void | Promise<void> },
+  competitor: () => Promise<unknown>,
+) {
+  let ran = false;
+  const outcome: { error?: unknown } = {};
+  files.beforeCommit = async () => {
+    if (ran) return;
+    ran = true;
+    await competitor().catch((error) => (outcome.error = error));
+  };
+  return outcome;
+}
+
+test("a mode switch landing while a line opens: the line opens under the new mode", async () => {
+  const { files, profiles, lines, accountId } = await billable();
+  const competitor = interleave(files, () =>
+    profiles.set(grace, accountId, profileInput({ mode: "direct" }), randomUUID()),
+  );
+  const { line } = await lines.create(ada, accountId, SITE, monthly, randomUUID());
+  assert.equal(competitor.error, undefined);
+  assert.equal((await profiles.get(accountId))!.mode, "direct");
+  assert.equal(line.mode, "direct");
+  assert.equal(line.status, "pending");
+});
+
+test("a line opening while a mode switch is evaluated: the switch is refused naming it", async () => {
+  const { files, profiles, lines, accountId } = await billable();
+  const competitor = interleave(files, () => lines.create(grace, accountId, SITE, monthly, randomUUID()));
+  await assert.rejects(
+    profiles.set(ada, accountId, profileInput({ mode: "direct" }), randomUUID()),
+    (error: any) => refusedWith(409, "open_billing_lines")(error) && error.message.includes(SITE),
+  );
+  assert.equal(competitor.error, undefined);
+  assert.equal((await profiles.get(accountId))!.mode, "invoiced");
+  assert.equal((await lines.get(accountId, SITE))!.mode, "invoiced");
+});
+
+test("two direct-mode lines of different intervals opening at once: one is refused naming the interval", async () => {
+  const { files, lines, accountId } = await billable("direct");
+  const competitor = interleave(files, () =>
+    lines.create(grace, accountId, SECOND, { plan: "papyrus-site-yearly" }, randomUUID()),
+  );
+  await assert.rejects(
+    lines.create(ada, accountId, SITE, monthly, randomUUID()),
+    refusedWith(409, "interval_mismatch", /month/),
+  );
+  assert.equal(competitor.error, undefined);
+  assert.deepEqual(
+    (await lines.list(accountId)).map((line) => [line.product, line.interval]),
+    [[SECOND, "year"]],
+  );
+});
+
+test("a creation that failed after reserving blocks a switch until it is sent again", async () => {
+  const { files, profiles, lines, accountId } = await billable();
+  const operationId = randomUUID();
+  files.beforeCommit = (path) => {
+    if (path === linePath(accountId, SITE)) throw new Error("synthetic crash before the line is written");
+  };
+  await assert.rejects(lines.create(ada, accountId, SITE, monthly, operationId), /synthetic crash/);
+  files.beforeCommit = undefined;
+  assert.equal(await lines.get(accountId, SITE), null);
+  await assert.rejects(
+    profiles.set(ada, accountId, profileInput({ mode: "direct" }), randomUUID()),
+    (error: any) => refusedWith(409, "open_billing_lines")(error) && error.message.includes(SITE),
+  );
+  const { line } = await lines.create(ada, accountId, SITE, monthly, operationId);
+  assert.equal(line.openedBy, operationId);
+  assert.deepEqual(Object.keys((await profiles.get(accountId))!.openLines!), [SITE]);
+});
+
+test("an abandoned reservation stops blocking after the timeout", async () => {
+  const { files, accountId } = await billable();
+  let now = "2030-03-17T17:46:40.000Z";
+  const fixture = billingFixture(files);
+  const lines = new BillingLines(files, grants, reviewedBillingPlans(), fixture.ports, () => now);
+  const profiles = new BillingProfiles(files, grants, () => now);
+  fixture.entitlements[accountId] = { [SITE]: "active" };
+  files.beforeCommit = (path) => {
+    if (path === linePath(accountId, SITE)) throw new Error("synthetic crash before the line is written");
+  };
+  await assert.rejects(lines.create(ada, accountId, SITE, monthly, randomUUID()), /synthetic crash/);
+  files.beforeCommit = undefined;
+  now = "2030-03-17T17:56:39.000Z";
+  await assert.rejects(
+    profiles.set(ada, accountId, profileInput({ mode: "direct" }), randomUUID()),
+    refusedWith(409, "open_billing_lines"),
+  );
+  now = "2030-03-17T17:56:41.000Z";
+  const { profile } = await profiles.set(ada, accountId, profileInput({ mode: "direct" }), randomUUID());
+  assert.equal(profile.mode, "direct");
+  assert.equal(profile.openLines, undefined);
+});
+
+test("an end whose release did not finish no longer blocks a switch, and replaying the end finishes it", async () => {
+  const { files, profiles, lines, accountId } = await billable();
+  await lines.create(ada, accountId, SITE, monthly, randomUUID());
+  const endOperation = randomUUID();
+  files.beforeCommit = (path) => {
+    if (path.startsWith("profiles/")) throw new Error("synthetic crash before the release");
+  };
+  await assert.rejects(lines.end(ada, accountId, SITE, {}, endOperation), /synthetic crash/);
+  files.beforeCommit = undefined;
+  assert.deepEqual(Object.keys((await profiles.get(accountId))!.openLines!), [SITE]);
+  const replay = await lines.end(ada, accountId, SITE, {}, endOperation);
+  assert.equal(replay.replayed, true);
+  assert.equal((await profiles.get(accountId))!.openLines, undefined);
+  // A stale reservation left behind also gives way to a switch on its own.
+  await lines.create(ada, accountId, SECOND, monthly, randomUUID());
+  files.beforeCommit = (path) => {
+    if (path.startsWith("profiles/")) throw new Error("synthetic crash before the release");
+  };
+  await assert.rejects(lines.end(ada, accountId, SECOND, {}, randomUUID()), /synthetic crash/);
+  files.beforeCommit = undefined;
+  const { profile } = await profiles.set(ada, accountId, profileInput({ mode: "direct" }), randomUUID());
+  assert.equal(profile.mode, "direct");
+  assert.equal(profile.openLines, undefined);
 });

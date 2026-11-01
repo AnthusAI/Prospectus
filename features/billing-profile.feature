@@ -33,6 +33,11 @@ Feature: Billing profile per account
     When each line is re-homed by its own operation
     Then the switch succeeds
 
+  Scenario: A line end whose release did not finish
+    Given a line that ended but whose reservation was not yet removed from the profile
+    When the admin switches the mode
+    Then the switch succeeds and the stale reservation is dropped
+
   Scenario: An operator without the billing grant cannot set a profile
     Given an operator holding only accounts:admin:read
     When they try to set the profile

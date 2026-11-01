@@ -40,10 +40,11 @@ One profile per account at `billing/profiles/<accountUUID>.json`. It references 
 | `billingContact`      | Name, email, postal address and tax id as the client supplied them                               |
 | `netTermsDays`        | Optional per-account override of the default 30 days                                             |
 | `paymentMethods`      | Optional override of the issuer's accepted payment methods for this client |
+| `openLines`           | The account's open and opening lines by product: the create operation, the plan interval and when it was reserved |
 | `status`, `revision`  | Lifecycle state and the compare-and-set revision                                                 |
 | `audit`               | Bounded audit of who changed what, by operation id                                               |
 
-Only admins set a profile. The billing contact is billing data, not identity: it is never used to find, match or authorize a Person, and it never appears in logs. Switching mode is refused while the account has open billing lines; each line is first re-homed by its own explicit operation, and the refusal names the lines.
+Only admins set a profile. The billing contact is billing data, not identity: it is never used to find, match or authorize a Person, and it never appears in logs. Switching mode is refused while the account has open billing lines; each line is first re-homed by its own explicit operation, and the refusal names the lines. Opening a line first reserves its product in `openLines` with a compare-and-set on the profile, and ending a line removes the reservation afterwards. Because a mode switch writes the same record, the two cannot pass each other: either the switch lands first and the line opens under the new mode, or the switch sees the reservation and is refused. The direct-mode interval rule is checked against the same reservations. A reservation whose line ended, or whose line never appeared within ten minutes, is a step that did not finish and no longer blocks; sending the create or end again with its operation id finishes it. These writes advance the profile revision but write no journal event of their own.
 
 Customers read their own profile through `GET /accounts/{id}/billing` on the portal BFF, which returns the mode and a masked contact.
 
@@ -57,7 +58,7 @@ The catalog is validated at synthesis and at service start. An unknown field, a 
 
 ## Billing lines
 
-A billing line is the billable unit, keyed by account and product: `billing/lines/<accountUUID>/<hex(product)>.json`, with a plan from the catalog, a status (`pending`, `active`, `paused`, `ended`), a period and, in direct mode, the Stripe subscription item id. Only an `active` line pauses, and resuming returns it to `active`; there is no `resumed` status, only a `line.resumed` journal action. Every line that is not `ended` counts as open, for the mode-switch refusal and the direct-mode interval rule. An ended line may be created again with a new period. Papyrus site products bill under family `papyrus`; the `cyclotron` product bills under `cyclotron-lab`. Each Papyrus site is its own product (`papyrus-<site>`), so a client with three sites has three lines. Each line is added, paused and ended on its own and never touches another.
+A billing line is the billable unit, keyed by account and product: `billing/lines/<accountUUID>/<hex(product)>.json`, with a plan from the catalog, a status (`pending`, `active`, `paused`, `ended`), a period and, in direct mode, the Stripe subscription item id. Only an `active` line pauses, and resuming returns it to `active`; there is no `resumed` status, only a `line.resumed` journal action. Every line that is not `ended` counts as open, for the mode-switch refusal and the direct-mode interval rule. An ended line may be created again with a new period. Papyrus site products bill under family `papyrus`; the `cyclotron` product bills under `cyclotron-lab`. Each Papyrus site is its own product (`papyrus-<site>`), so a client with three sites has three lines. Each line is added, paused and ended on its own and never touches another; opening and ending a line also update the profile's `openLines`.
 
 The entitlement is access; the line is money. They are changed by different operations:
 

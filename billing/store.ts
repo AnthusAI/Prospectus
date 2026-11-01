@@ -6,9 +6,13 @@ import {
   fail,
   MAXIMUM_AUDIT_ENTRIES,
   type BillingAction,
+  isOpenLine,
+  RESERVATION_TIMEOUT_MS,
   type BillingActor,
   type BillingLine,
+  type BillingProfile,
   type JournalEvent,
+  type OpenLineReservation,
   type VersionedRecord,
 } from "./model";
 
@@ -74,6 +78,88 @@ export async function readLines(files: IdentityFiles, accountId: string): Promis
   return lines.sort((left, right) => left.product.localeCompare(right.product));
 }
 
+/**
+ * The profile's open-line reservations that still hold: the line is open, or its file has not appeared yet and the
+ * reservation is younger than the timeout (a create in flight). A reservation whose line ended is a release that did
+ * not finish, and one whose line never appeared is a create that failed; neither blocks.
+ */
+export async function liveReservations(
+  files: IdentityFiles,
+  profile: Pick<BillingProfile, "accountId" | "openLines"> | null,
+  now: string,
+): Promise<Record<string, OpenLineReservation>> {
+  const live: Record<string, OpenLineReservation> = {};
+  for (const [product, reservation] of Object.entries(profile?.openLines ?? {})) {
+    const line = (await files.get<BillingLine>(linePath(profile!.accountId, product)))?.value;
+    const opened = line?.openedBy === reservation.operationId;
+    const inFlight = !opened && Date.parse(now) - Date.parse(reservation.reservedAt) < RESERVATION_TIMEOUT_MS;
+    if ((line && isOpenLine(line)) || inFlight) live[product] = reservation;
+  }
+  return live;
+}
+
+/**
+ * Rewrites the profile's open-line reservations with compare-and-set, re-reading on a lost race. This is the one
+ * record that both opening a line and switching mode write, which is what keeps them from passing each other. It
+ * advances the profile revision and writes no journal event; the line operation it belongs to writes that. `change`
+ * returns the next reservations, or null when nothing needs writing.
+ */
+export async function updateOpenLines(
+  files: IdentityFiles,
+  accountId: string,
+  intent: string,
+  change: (
+    profile: BillingProfile | null,
+  ) => Promise<Record<string, OpenLineReservation> | null> | Record<string, OpenLineReservation> | null,
+): Promise<void> {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const stored = await files.get<BillingProfile>(profilePath(accountId)),
+      profile = stored?.value ?? null;
+    const openLines = await change(profile);
+    if (!openLines) return;
+    if (!stored || !profile) fail(409, "not_yet_billable", "Account has no billing profile.");
+    const { openLines: _previous, ...rest } = profile;
+    const next: BillingProfile = {
+      ...rest,
+      ...(Object.keys(openLines).length ? { openLines } : {}),
+      revision: profile.revision + 1,
+    };
+    try {
+      await commitWithRetry(
+        files,
+        profilePath(accountId),
+        `billing:open-lines:${hash([intent, profile.revision])}`,
+        hash(["billing-open-lines-v1", intent, profile.revision]),
+        next,
+        stored.revision,
+      );
+      return;
+    } catch (error) {
+      if (error instanceof IdentityFileError && ["conflict", "operation_mismatch"].includes(error.code))
+        continue;
+      throw error;
+    }
+  }
+  fail(409, "busy", "Concurrent billing change; retry.");
+}
+
+/** True once a mutation's journal event exists, so a replay is answered without repeating any side step. */
+export async function isJournaled(
+  files: IdentityFiles,
+  recordKind: "profile" | "line",
+  accountId: string,
+  product: string | undefined,
+  operationId: string,
+) {
+  return !!(await files.get(journalPath(journalEventId(recordKind, accountId, product, operationId))));
+}
+const journalEventId = (
+  recordKind: "profile" | "line",
+  accountId: string,
+  product: string | undefined,
+  operationId: string,
+) => hash(["billing-journal-v1", recordKind, accountId, product ?? null, operationId]);
+
 export interface Mutation<T extends VersionedRecord> {
   action: BillingAction;
   recordKind: "profile" | "line";
@@ -114,13 +200,12 @@ export async function mutate<T extends VersionedRecord>(
     mutation.actor,
     mutation.request,
   ]);
-  const eventId = hash([
-    "billing-journal-v1",
+  const eventId = journalEventId(
     mutation.recordKind,
     mutation.accountId,
-    mutation.product ?? null,
+    mutation.product,
     mutation.operationId,
-  ]);
+  );
   const replay = async (storage: { storageOperationId: string; storageRequestHash: string }) =>
     // The committed intent answers first, so this returns the original stored result and never writes.
     (

@@ -85,7 +85,20 @@ export interface BillingProfile extends VersionedRecord {
   netTermsDays?: number;
   /** Absent: the issuer's accepted payment methods. */
   paymentMethods?: PaymentMethodKind[];
+  /** The account's open lines by product. Opening a line and switching mode both write this record, so neither can
+   * slip past the other; absent or empty means no line is open or opening. */
+  openLines?: Record<string, OpenLineReservation>;
 }
+
+/** Written before a line opens and removed after it ends. While the line file is still missing it is in flight. */
+export interface OpenLineReservation {
+  /** The create operation that opened the line; the line records it as openedBy. */
+  operationId: string;
+  interval: PlanInterval;
+  reservedAt: string;
+}
+/** A reservation whose line never appeared after this long is a create that failed, and no longer blocks. */
+export const RESERVATION_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Asks an operator whether to disable the product through the entitlement route. Billing never does it. */
 export interface EndedLineFollowUp {
@@ -108,6 +121,8 @@ export interface BillingLine extends VersionedRecord {
   /** The profile mode the line was opened under. */
   mode: BillingMode;
   status: LineStatus;
+  /** The create operation that opened this period, matching the profile's open-line reservation. */
+  openedBy: string;
   period: { start: string; end?: string };
   stripeSubscriptionItemId?: string;
   endFollowUp?: EndedLineFollowUp;

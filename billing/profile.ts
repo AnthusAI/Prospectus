@@ -14,7 +14,6 @@ import {
   DEFAULT_NET_TERMS_DAYS,
   fail,
   failWith,
-  isOpenLine,
   paymentMethodKinds,
   type BillingContact,
   type BillingMode,
@@ -22,9 +21,9 @@ import {
   type PaymentMethodKind,
 } from "./model";
 import {
+  liveReservations,
   mutate,
   profilePath,
-  readLines,
   requireAccountId,
   requireExpectedRevision,
   requireOperationId,
@@ -184,7 +183,8 @@ export class BillingProfiles {
   async get(accountId: string): Promise<BillingProfile | null> {
     return (await this.files.get<BillingProfile>(profilePath(requireAccountId(accountId))))?.value ?? null;
   }
-  /** Replaces the profile. A mode change is refused while the account has open lines, naming them. */
+  /** Replaces the profile. A mode change is refused while the account has open or opening lines, naming them; the
+   * reservations a line writes on this record before it opens are what make that refusal hold under concurrency. */
   async set(context: Context, accountId: string, input: unknown, operationId: string) {
     const actor = requireBillingAdministrator(context, this.grants);
     const id = requireAccountId(accountId),
@@ -201,15 +201,14 @@ export class BillingProfiles {
       expectedRevision,
       at: this.now(),
       apply: async (current) => {
-        if ((current?.mode ?? null) !== (request.mode ?? null)) {
-          const openLines = (await readLines(this.files, id)).filter(isOpenLine).map((line) => line.product);
-          if (openLines.length)
-            fail(
-              409,
-              "open_billing_lines",
-              `Billing mode cannot change while lines are open; end or re-home each first: ${openLines.join(", ")}.`,
-            );
-        }
+        const openLines = await liveReservations(this.files, current, this.now());
+        const products = Object.keys(openLines).sort();
+        if ((current?.mode ?? null) !== (request.mode ?? null) && products.length)
+          fail(
+            409,
+            "open_billing_lines",
+            `Billing mode cannot change while lines are open; end or re-home each first: ${products.join(", ")}.`,
+          );
         return {
           version: 1,
           kind: "billing-profile",
@@ -217,6 +216,7 @@ export class BillingProfiles {
           ...request,
           status: "active",
           ...(current?.stripeCustomerId ? { stripeCustomerId: current.stripeCustomerId } : {}),
+          ...(products.length ? { openLines } : {}),
         };
       },
     });

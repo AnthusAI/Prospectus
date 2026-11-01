@@ -116,10 +116,10 @@ test("changing mode with open lines is refused naming both lines, then succeeds 
       error.message.includes("papyrus-second-invalid"),
   );
   assert.equal((await profiles.get(accountId))!.mode, "invoiced");
-  // Editing the contact without a mode change stays possible.
+  // Editing the contact without a mode change stays possible. Each opened line advanced the profile revision.
   assert.equal(
     (await profiles.set(ada, accountId, profileInput({ netTermsDays: 60 }), randomUUID())).profile.revision,
-    2,
+    4,
   );
   for (const product of ["papyrus-example-invalid", "papyrus-second-invalid"])
     await lines.end(ada, accountId, product, { endDate: "2030-03-31" }, randomUUID());

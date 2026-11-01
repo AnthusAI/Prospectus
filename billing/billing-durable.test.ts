@@ -71,7 +71,9 @@ test("profiles, lines and journal events persist as ordinary billing files throu
   const stored = JSON.parse(
     await readFile(join(root, files.find((path) => path.includes("/profiles/"))!), "utf8"),
   );
-  assert.equal(stored.revision, 1);
+  // Two lines reserved and one released: each advanced the profile revision, and only the open line stays reserved.
+  assert.equal(stored.revision, 4);
+  assert.deepEqual(Object.keys(stored.openLines), ["papyrus-second-invalid"]);
   assert.equal(stored.currency, "usd");
 
   // A replay after a later change still returns the original committed result, through the Virtuus receipt.
@@ -79,7 +81,7 @@ test("profiles, lines and journal events persist as ordinary billing files throu
   const replay = await profiles.set(ada, accountId, profileInput(), profileOperation);
   assert.equal(replay.replayed, true);
   assert.deepEqual(replay.profile, first.profile);
-  assert.equal((await profiles.get(accountId))!.revision, 2);
+  assert.equal((await profiles.get(accountId))!.revision, 5);
   assert.equal((await canonicalFiles(root)).filter((path) => path.includes("/journal/")).length, 5);
 });
 
