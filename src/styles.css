@@ -1851,3 +1851,23 @@ body:has(.one) {
   gap: 10px;
   font-size: 13px;
 }
+
+.quota-meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+}
+.quota-meter-track {
+  display: block;
+  flex: 1 1 160px;
+  max-width: 360px;
+  height: 12px;
+  border: 1px dashed var(--line-strong);
+  background: var(--panel-2);
+}
+.quota-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}

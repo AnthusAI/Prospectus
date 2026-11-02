@@ -20,6 +20,7 @@ import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
 import { GOOGLE_ISSUER, GoogleKeys } from "./google-direct";
 import { challengeSignerFromConfiguration, loginChallengeSignerConfiguration } from "./challenge-signer";
+import { ParameterStoreRateTable, rateTableConfiguration } from "../quota/rate-table";
 import { ParameterStoreSiteSubjectSecret, siteSubjectSecretConfiguration } from "./site-subjects";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
   throw new Error("Canonical accounts runtime not enabled.");
@@ -62,6 +63,10 @@ const siteSubjectSecret = process.env.PROSPECTUS_SITE_SUBJECT_SECRET
   ? new ParameterStoreSiteSubjectSecret(
       siteSubjectSecretConfiguration(JSON.parse(process.env.PROSPECTUS_SITE_SUBJECT_SECRET)),
     )
+  : undefined;
+// Without the reviewed parameter every quota call is refused as unavailable: unpriced work is never free.
+const quotaRateTable = process.env.PROSPECTUS_QUOTA_RATE_TABLE
+  ? new ParameterStoreRateTable(rateTableConfiguration(JSON.parse(process.env.PROSPECTUS_QUOTA_RATE_TABLE)))
   : undefined;
 let activeRequestId = "unavailable";
 const timingForProject = (project: "identities" | "accounts" | "quota") => (value: NativeTiming) =>
@@ -115,6 +120,7 @@ export const handler = async (
       creationLimits,
       siteSubjectSecret,
       quota,
+      quotaRateTable,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

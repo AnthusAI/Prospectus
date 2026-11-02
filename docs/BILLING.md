@@ -4,7 +4,7 @@ Billing charges clients for the products their accounts hold: each Papyrus site 
 
 ## Principles
 
-- **Quota is separate.** The cloud-cost allowance an account may spend is [QUOTA.md](QUOTA.md): its own records, its own routes and its own operator permission. Billing may sell quota later but writes none of it.
+- **Quota is separate.** The weekly usage quota an Account may consume is [QUOTA.md](QUOTA.md): its own records, its own routes and its own operator permission. Billing may sell quota later but writes none of it.
 
 - **Billing is separate from access.** The account document stays the authorization record, committed by one conditional write (see [ARCHITECTURE.md](ARCHITECTURE.md#accounts)). Billing never writes it and never grants, disables or suspends an entitlement. An account with no billing profile works normally.
 - **Ordinary files.** Every billing record is an ordinary Kanbus/Virtuus JSON file under `prospectus-central/billing/`, with control files under `_virtuus/prospectus-central/billing/`, written through the Rust bridge with conditional writes and deterministic operation ids. DynamoDB may hold a catalog for CRM listing that can be rebuilt from the files; nothing consults it for authority or balances.

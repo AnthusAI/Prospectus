@@ -204,7 +204,7 @@ fn path_belongs_to_project(kind: &str, project: &str) -> bool {
     match project {
         "accounts" => ["accounts", "members"].contains(&kind),
         "billing" => ["profiles", "lines", "journal"].contains(&kind),
-        "quota" => ["allowances", "journal"].contains(&kind),
+        "quota" => ["settings", "weeks", "journal"].contains(&kind),
         "identities" => [
             "google",
             "aliases",

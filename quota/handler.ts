@@ -5,7 +5,7 @@ import { jsonResponse, parseJsonRequest } from "../accounts/request";
 import { logRefusal } from "../accounts/refusal-log";
 import type { Quota } from "./service";
 
-const QUOTA_REQUEST_MAXIMUM_BODY_BYTES = 2000;
+const QUOTA_REQUEST_MAXIMUM_BODY_BYTES = 16000;
 const ACCOUNT = "([a-f0-9-]{36})";
 
 /** The product behind a SigV4 call: a registered, enabled enrollment role carrying the quota flag. Anything else, a
@@ -18,14 +18,16 @@ function quotaProduct(event: RestEvent, products: ValidatedRegistrations): strin
 }
 
 /**
- * `/v1/quota/...`, called by a product's server role (not by a person):
+ * `/v1/quota/...`, called by a product's server role (not by a person). Products send billable items, never money;
+ * responses carry no units, rates or amounts.
  *
- * - `POST /v1/quota/accounts/{account}/reservations` with `operationId`, `maxCents`, `expiresInSeconds`
- * - `POST /v1/quota/accounts/{account}/reservations/{reservation}/settle` with `operationId`, `actualCents`,
- *   optional `allowOverage`
- * - `POST /v1/quota/accounts/{account}/reservations/{reservation}/release` with `operationId`
+ * - `POST .../accounts/{account}/reservations` with `operationId`, `items`, `expiresInSeconds`
+ * - `POST .../accounts/{account}/reservations/{reservation}/settle` with `operationId`, `items`
+ * - `POST .../accounts/{account}/reservations/{reservation}/release` with `operationId`
+ * - `POST .../accounts/{account}/usage` with `operationId`, `items` (pay after)
+ * - `POST .../accounts/{account}/check` with `{}`
  *
- * A store failure answers 503 and never success.
+ * A store or rate table failure answers 503 and never success.
  */
 export function quotaHandler(quota: Quota | undefined, products: ValidatedRegistrations) {
   return async (event: RestEvent) => {
@@ -40,19 +42,29 @@ export function quotaHandler(quota: Quota | undefined, products: ValidatedRegist
       if (event.httpMethod !== "POST") fail(405, "method", "Quota routes accept POST only.");
       const reserve = new RegExp(`^/v1/quota/accounts/${ACCOUNT}/reservations$`).exec(event.path);
       if (reserve) {
-        fields(["operationId", "maxCents", "expiresInSeconds"]);
+        fields(["operationId", "items", "expiresInSeconds"]);
         return jsonResponse(200, (await quota.reserve({ product }, reserve[1], body)).result);
       }
       const close = new RegExp(
         `^/v1/quota/accounts/${ACCOUNT}/reservations/${ACCOUNT}/(settle|release)$`,
       ).exec(event.path);
       if (close?.[3] === "settle") {
-        fields(["operationId", "actualCents", "allowOverage"]);
+        fields(["operationId", "items"]);
         return jsonResponse(200, (await quota.settle({ product }, close[1], close[2], body)).result);
       }
       if (close?.[3] === "release") {
         fields(["operationId"]);
         return jsonResponse(200, (await quota.release({ product }, close[1], close[2], body)).result);
+      }
+      const usage = new RegExp(`^/v1/quota/accounts/${ACCOUNT}/usage$`).exec(event.path);
+      if (usage) {
+        fields(["operationId", "items"]);
+        return jsonResponse(200, (await quota.record({ product }, usage[1], body)).result);
+      }
+      const check = new RegExp(`^/v1/quota/accounts/${ACCOUNT}/check$`).exec(event.path);
+      if (check) {
+        fields([]);
+        return jsonResponse(200, (await quota.check({ product }, check[1])).result);
       }
       fail(404, "route", "Quota route not found.");
     } catch (error) {

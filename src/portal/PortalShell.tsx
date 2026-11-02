@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { DirectoryAccount } from "../../packages/accounts-client/src/directory";
 import type { QuotaView } from "../../packages/accounts-client/src/quota";
-import { committedShare, formatCents } from "../shared/quota";
+
 import { appForProduct, productUrl } from "../apps";
 import { initials } from "../shared/initials";
 import { BrandMark, Eyebrow, Icon, Wordmark, type IconName } from "../shared/ui";
@@ -103,14 +103,14 @@ export function PortalShell({
           >
             <span className="portal-quota-bar" aria-hidden="true">
               {shown?.state === "set" && (
-                <span className="portal-quota-fill" style={{ width: `${committedShare(shown)}%` }} />
+                <span className="portal-quota-fill" style={{ width: `${shown.percentUsed}%` }} />
               )}
             </span>
             <span>
               {!shown
                 ? "Loading quota"
                 : shown.state === "set"
-                  ? `${formatCents(shown.remainingCents)} quota left`
+                  ? `${shown.percentUsed}% of weekly quota used`
                   : shown.state === "none"
                     ? "No quota yet"
                     : "Quota unavailable"}

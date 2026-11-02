@@ -121,9 +121,9 @@ An account starts with only the product it was created from. An operator can gra
 
 Only a person holding a reviewed `accounts:admin:entitlements` grant in `accounts/operator-grants.json` can call the route. Operator read access is not enough, and account owners cannot grant products to themselves. No such grant exists yet. The directory BFF's API Gateway policy still allows only `GET` on the account directory, so making the route reachable also needs that policy change, which is held for approval.
 
-### Quota allowance
+### Quota
 
-An operator sets an account's quota allowance with `POST /v1/account-directory/operator/accounts/<accountId>/quota` and the body `{"operationId":"<uuid>","allowanceCents":2500}`, the total in whole US cents. It needs a reviewed `accounts:admin:quota` grant in `accounts/operator-grants.json`; no such grant exists yet. Like the entitlement route, it is reachable only once the directory BFF's API Gateway policy allows operator writes, which is held for approval. The quota model, expiry rule and infrastructure needing approval are in [QUOTA.md](QUOTA.md).
+Each Account has a weekly quota. An operator chooses its plan or a per-Account allowance override with `POST /v1/account-directory/operator/accounts/<accountId>/quota` and a body such as `{"operationId":"<uuid>","plan":"<plan name>"}` or `{"operationId":"<uuid>","allowanceOverrideUnits":2500}` (`null` clears a field). It needs a reviewed `accounts:admin:quota` grant in `accounts/operator-grants.json`; no such grant exists yet. Like the entitlement route, it is reachable only once the directory BFF's API Gateway policy allows operator writes, which is held for approval. The plans and rates live in a private SSM SecureString (`quotaRateTable`) that operators set outside Git; until it holds a valid table every quota call is refused as unavailable. A refused item kind appears in the refusal log (`unknown_item_kind`) and as a `usage.refused` journal event naming the kind. The model, the HTTP contract and the infrastructure needing approval are in [QUOTA.md](QUOTA.md).
 
 ### Delivery
 

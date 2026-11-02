@@ -8,10 +8,7 @@
   "assignee": "synthetic-owner",
   "creator": "synthetic-owner",
   "parent": null,
-  "labels": [
-    "alpha",
-    "Beta"
-  ],
+  "labels": ["alpha", "Beta"],
   "dependencies": [],
   "comments": [
     {
@@ -40,7 +37,7 @@
     },
     "empty_obj": {},
     "empty_list": [],
-    "ratio": 2.50,
+    "ratio": 2.5,
     "big": 12345678901234567890123,
     "neg": -0.0,
     "exp": 1.5e-7

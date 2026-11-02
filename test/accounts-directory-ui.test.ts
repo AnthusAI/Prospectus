@@ -229,13 +229,17 @@ test(
                   ],
                   quota: {
                     state: "set",
-                    unit: "usd-cents",
-                    allowanceCents: 10000,
-                    usedCents: 2500,
-                    heldCents: 500,
-                    overageCents: 0,
-                    remainingCents: 7000,
-                    byProduct: [{ product: "papyrus", usedCents: 2500, heldCents: 500 }],
+                    percentUsed: 100,
+                    resetsAt: "2030-01-09T00:00:00.000Z",
+                    startedAt: "2030-01-02T00:00:00.000Z",
+                    byProduct: [{ product: "papyrus", percentOfQuota: 100 }],
+                    planId: "example-basic",
+                    allowanceOverrideUnits: null,
+                    allowanceUnits: 1000,
+                    usedUnits: 1040,
+                    heldUnits: 0,
+                    overshootUnits: 40,
+                    tableVersions: ["example-1"],
                   },
                 },
               }
@@ -246,7 +250,8 @@ test(
       await page.getByRole("button", { name: /Synthetic customer account/ }).click();
       await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
-      await expect(page.getByLabel("Quota figures")).toContainText("$70.00");
+      await expect(page.getByLabel("Internal usage")).toContainText("1040 units");
+      await expect(page.getByText(/The quota is used up/)).toBeVisible();
       await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
       await page
         .getByRole("navigation", { name: "Breadcrumb" })

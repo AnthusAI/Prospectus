@@ -8,7 +8,7 @@ import type {
   OperatorList,
 } from "../packages/accounts-client/src/directory";
 import { initials } from "./shared/initials";
-import { QuotaPanel, formatCents, quotaOf } from "./shared/quota";
+import { QuotaPanel, formatReset, quotaOf } from "./shared/quota";
 import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./shared/ui";
 
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
@@ -459,15 +459,16 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
       <div className="one-stats">
         {quota.state === "set" ? (
           <Stat
-            value={formatCents(quota.usedCents)}
+            value={`${quota.percentUsed}%`}
             label="QUOTA USED"
-            note={`of ${formatCents(quota.allowanceCents)} · ${formatCents(quota.remainingCents)} left`}
+            note={`Resets ${formatReset(quota.resetsAt)}`}
+            hot={quota.percentUsed >= 100}
           />
         ) : (
           <Stat
             value={null}
             label="QUOTA USED"
-            note={quota.state === "none" ? "No allowance yet" : "Could not be read"}
+            note={quota.state === "none" ? "No quota set" : "Could not be read"}
           />
         )}
         <Stat value={String(activeMembers.length)} label="ACTIVE MEMBERS" />
@@ -481,7 +482,7 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
               <h2 id="quota-heading" className="small">
                 Quota
               </h2>
-              <span>One allowance shared by every app on this account</span>
+              <span>One weekly quota shared by every app on this account</span>
             </div>
             <QuotaPanel view={quota} />
           </section>

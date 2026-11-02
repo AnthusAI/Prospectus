@@ -8,21 +8,21 @@ npm install @aws-sdk/credential-provider-node@3.972.86 @smithy/signature-v4@5.7.
 ```
 
 ```tsx
-import { browserAccountsClient } from '@anthus/prospectus-accounts-client';
-import { AccountSwitcher } from '@anthus/prospectus-accounts-client/react';
+import { browserAccountsClient } from "@anthus/prospectus-accounts-client";
+import { AccountSwitcher } from "@anthus/prospectus-accounts-client/react";
 ```
 
 The browser client defaults to the host BFF prefix `/api/prospectus`; requests include `/v1/...`. The host must verify its session, protect mutations from CSRF, then invoke the central service. `AccountSwitcher` receives `accounts`, `selectedAccountId`, `onSelect`, optional `disabled` and `error`. Unknown selection resets to the blank option. Selection is only a preference; the backend authorizes each selected account and operation. The selector inherits the host's form styling and can sit inside `.kb-theme-organizer`.
 
 ```ts
-import { serverAccountsClient } from '@anthus/prospectus-accounts-client/server';
+import { serverAccountsClient } from "@anthus/prospectus-accounts-client/server";
 const accounts = serverAccountsClient({
   endpoint: process.env.PROSPECTUS_ACCOUNTS_URL!, // HTTPS REST base including /api stage
-  region: 'us-east-1',
+  region: "us-east-1",
   humanToken: () => verifiedSession.accessToken,
 });
 const visible = await accounts.list();
-await accounts.authorize(selectedAccountId, 'console:write');
+await accounts.authorize(selectedAccountId, "console:write");
 ```
 
 The server entry uses the AWS SDK default credential provider, requiring a temporary session token. It signs for `execute-api`, including the human token and mutation request key in SigV4. No shared API key, manual credentials, IAM user keys or assume-role hop is required. Do not import `/server` into a browser bundle. The central runtime role registry and API Gateway resource policy must explicitly allow the caller role. HTTPS redirects are refused. Never forward an arbitrary browser token as a substitute for your verified session.
@@ -35,17 +35,32 @@ This client does not bill, charge, send invitations or email, or grant CRM membe
 
 ## Quota (server only)
 
-A product's server role reserves, settles and releases the account's shared cloud-cost quota with `serverQuotaClient` from `/server`. Amounts are integer US cents, and one allowance covers every app on the account. The role signs each call with SigV4 from runtime temporary credentials; no person or token is involved, and the product must be registered with the `quota` flag.
+Every Account has one weekly quota shared by every app. A product's server role reports billable items (never money) and the service converts them with a private rate table; the product sees only whether it may proceed, never units, rates or amounts. The role signs each call with SigV4 from runtime temporary credentials; no person or token is involved, and the product must be registered with the `quota` flag. The HTTP contract, for callers that are not TypeScript, is in `docs/QUOTA.md`.
 
 ```ts
-import { serverQuotaClient } from '@anthus/prospectus-accounts-client/server';
-const quota = serverQuotaClient({ endpoint: process.env.PROSPECTUS_ACCOUNTS_URL!, region: 'us-east-1' });
+import { serverQuotaClient } from "@anthus/prospectus-accounts-client/server";
+const quota = serverQuotaClient({ endpoint: process.env.PROSPECTUS_ACCOUNTS_URL!, region: "us-east-1" });
+
+// Expensive work: reserve from the estimated maximum, settle with the actual items, release if nothing ran.
 const operationId = crypto.randomUUID(); // keep it: it is the reservation ID, and repeating the call is safe
-const reservation = await quota.reserve(accountId, { operationId, maxCents: 250, expiresInSeconds: 3600 });
-// ... run the job only now; any throw above means "do not spend" ...
-await quota.settle(accountId, reservation.reservationId, { operationId: crypto.randomUUID(), actualCents: 180 });
-// or, if the job never ran:
-await quota.release(accountId, reservation.reservationId, { operationId: crypto.randomUUID() });
+const reservation = await quota.reserve(accountId, {
+  operationId,
+  items: [{ itemKind: "aws.batch.vcpu_seconds", quantity: 3600 }],
+  expiresInSeconds: 3600,
+});
+// ... run the work only now; any throw above means "do not spend" ...
+await quota.settle(accountId, reservation.reservationId, {
+  operationId: crypto.randomUUID(),
+  items: [{ itemKind: "aws.batch.vcpu_seconds", quantity: 2400 }],
+});
+
+// High-volume small items: check cheaply, record actual items in batches after the fact.
+const { allowed, percentUsed, resetsAt } = await quota.check(accountId);
+if (allowed)
+  await quota.record(accountId, {
+    operationId: crypto.randomUUID(),
+    items: [{ itemKind: "jev.tokens", quantity: 1500 }],
+  });
 ```
 
-Every refusal, store failure, timeout or unexpected response throws. A settle above the reservation, or after it expired, is recorded only with `allowOverage: true`. Retry an uncertain call with the same operation ID and the same input; the repeat returns the original result.
+Every refusal, store or table failure, timeout or unexpected response throws. An item kind the table does not know is refused (`unknown_item_kind`). Retry an uncertain call with the same operation ID and the same input; the repeat returns the original result.

@@ -8,6 +8,7 @@ import { operatorGrants, operatorSubjectHash, type OperatorPermission } from "..
 import { registrations } from "../accounts/registration";
 import type { RestEvent } from "../accounts/auth";
 import { directoryFixture } from "../accounts/testing/directory-fixture";
+import { FakeTable, batch, exampleTable, tokens } from "./testing/quota-fixture";
 
 const environments: Array<{ root: string }> = [];
 after(async () => {
@@ -27,6 +28,7 @@ const quotaProduct = {
 
 /** Real Virtuus files through the Rust bridge, the real central handler, a synthetic quota product and operator. */
 async function durable(withQuotaFiles = true) {
+  const table = new FakeTable();
   const environment = await directoryFixture();
   environments.push(environment);
   const products = registrations([
@@ -53,6 +55,7 @@ async function durable(withQuotaFiles = true) {
       {},
       undefined,
       quotaFiles ? new VirtuusQuotaFiles(environment.root) : undefined,
+      table,
     );
   const operator = central(["accounts:admin:read", "accounts:admin:quota"]);
   // The account must be entitled to the quota product before it may reserve.
@@ -79,12 +82,12 @@ async function durable(withQuotaFiles = true) {
     const response = await handler(quotaEvent(path, body));
     return { status: response.statusCode, body: JSON.parse(response.body) };
   };
-  const grant = async (allowanceCents: number, handler = operator) => {
+  const grant = async (body: Record<string, unknown>, handler = operator) => {
     const response = await handler(
       environment.identityFixture.event(
         0,
         `/v1/account-directory/operator/accounts/${environment.account.id}/quota`,
-        { operationId: randomUUID(), allowanceCents },
+        { operationId: randomUUID(), ...body },
         environment.outsider.proof,
         "POST",
       ),
@@ -105,144 +108,136 @@ async function durable(withQuotaFiles = true) {
     );
     return { status: response.statusCode, body: JSON.parse(response.body) };
   };
-  return { environment, central, operator, base, asProduct, grant, detail };
+  return { environment, central, operator, base, asProduct, grant, detail, table };
 }
 
-test("an operator grants an allowance and a product reserves, settles and releases against real Virtuus files", async () => {
+const reserveBody = (items = batch(100)) => ({ operationId: randomUUID(), items, expiresInSeconds: 600 });
+
+test("an operator sets a plan and a product reserves, settles, releases, records and checks against real Virtuus files", async () => {
   const { environment, operator, base, asProduct, grant } = await durable();
-  assert.equal(
-    (await asProduct(operator, base, { operationId: randomUUID(), maxCents: 1, expiresInSeconds: 60 })).body
-      .error,
-    "no_allowance",
-  );
-  assert.equal((await grant(2000)).status, 200);
+  assert.equal((await grant({ plan: "example-large" })).status, 200);
   const reservationId = randomUUID();
   const reserved = await asProduct(operator, base, {
+    ...reserveBody(batch(100)),
     operationId: reservationId,
-    maxCents: 500,
-    expiresInSeconds: 600,
   });
   assert.equal(reserved.body.status, "reserved");
   const settled = await asProduct(operator, `${base}/${reservationId}/settle`, {
     operationId: randomUUID(),
-    actualCents: 320,
+    items: batch(60),
   });
-  assert.deepEqual([settled.body.chargedCents, settled.body.releasedCents], [320, 180]);
+  assert.equal(settled.body.status, "settled");
   const second = randomUUID();
-  await asProduct(operator, base, { operationId: second, maxCents: 100, expiresInSeconds: 600 });
+  await asProduct(operator, base, { ...reserveBody(), operationId: second });
   assert.equal(
-    (await asProduct(operator, `${base}/${second}/release`, { operationId: randomUUID() })).body
-      .releasedCents,
-    100,
+    (await asProduct(operator, `${base}/${second}/release`, { operationId: randomUUID() })).body.status,
+    "released",
   );
-  // A restarted central process reads the same state.
-  const restarted = (await durable).length;
-  assert.ok(restarted >= 0);
+  const usage = environment.account.id;
+  const recorded = await asProduct(operator, base.replace("/reservations", "/usage"), {
+    operationId: randomUUID(),
+    items: tokens(5000),
+  });
+  assert.equal(recorded.body.status, "recorded");
+  const check = await asProduct(operator, base.replace("/reservations", "/check"), {});
+  assert.deepEqual([check.status, check.body.allowed, check.body.percentUsed], [200, true, 13]);
   const files = (await readdir(environment.root, { recursive: true }))
     .map((path) => path.split("\\").join("/"))
     .filter((path) => path.endsWith(".json") && !path.includes("_virtuus"));
-  assert.ok(files.some((path) => path.endsWith(`quota/allowances/${environment.account.id}.json`)));
-  assert.ok(
-    files.filter((path) => /quota\/journal\//.test(path)).length >= 5,
-    "grant, reserve, settle, reserve, release",
-  );
+  assert.ok(files.some((path) => path.endsWith(`quota/settings/${usage}.json`)));
+  assert.ok(files.some((path) => new RegExp(`quota/weeks/${usage}/[0-9]+\\.json$`).test(path)));
+  assert.ok(files.filter((path) => /quota\/journal\//.test(path)).length >= 5);
   assert.ok(!files.some((path) => path.includes("billing/")), "quota writes nothing under billing");
 });
 
-test("concurrent reservations from separate processes never exceed the allowance", async () => {
+test("concurrent reservations from separate processes never exceed this week's allowance", async () => {
   const { central, base, asProduct, grant, detail } = await durable();
-  await grant(1000);
+  await grant({ allowanceOverrideUnits: 1000 });
   const attempts = await Promise.all(
-    Array.from({ length: 6 }, () =>
-      asProduct(central([]), base, { operationId: randomUUID(), maxCents: 300, expiresInSeconds: 600 }),
-    ),
+    Array.from({ length: 6 }, () => asProduct(central([]), base, reserveBody(batch(100)))), // 300 units each
   );
   const succeeded = attempts.filter((attempt) => attempt.status === 200).length;
-  assert.ok(succeeded >= 1 && succeeded <= 3, `${succeeded} of 6 reservations of 300 fit in 1000`);
-  // Anything that did not succeed was a refusal or an error, never a hold that was not made.
+  assert.ok(succeeded >= 1 && succeeded <= 3, `${succeeded} of 6 reservations fit`);
   for (const attempt of attempts.filter((attempt) => attempt.status !== 200))
     assert.ok(
       ["quota_insufficient", "busy", "quota_unavailable"].includes(attempt.body.error),
       attempt.body.error,
     );
-  const held = (await detail(central([]), false)).body.account.quota;
-  assert.equal(held.heldCents, 300 * succeeded, "exactly the successful reservations are held");
-  // Then fill what is left serially: the total can reach the allowance and never pass it.
-  for (let index = 0; index < 20; index++)
-    await asProduct(central([]), base, { operationId: randomUUID(), maxCents: 100, expiresInSeconds: 600 });
+  assert.equal((await detail(central([]), false)).body.account.quota.percentUsed, 30 * succeeded);
+  for (let index = 0; index < 20; index++) await asProduct(central([]), base, reserveBody(batch(10)));
   const full = (await detail(central([]), false)).body.account.quota;
-  assert.deepEqual([full.heldCents, full.remainingCents], [1000, 0]);
+  assert.ok(full.percentUsed >= 99 && full.percentUsed <= 100, "it fills up and never passes 100%");
 });
 
 test("a retry through a restarted process returns the original result", async () => {
   const { central, base, asProduct, grant } = await durable();
-  await grant(1000);
-  const request = { operationId: randomUUID(), maxCents: 400, expiresInSeconds: 600 };
-  const first = await asProduct(central([]), base, request);
-  const second = await asProduct(central([]), base, request);
-  assert.deepEqual(second, first);
+  await grant({ plan: "example-large" });
+  const input = reserveBody();
+  const first = await asProduct(central([]), base, input);
+  assert.deepEqual(await asProduct(central([]), base, input), first);
+  const usage = { operationId: randomUUID(), items: tokens(100) };
+  const path = base.replace("/reservations", "/usage");
+  assert.deepEqual(await asProduct(central([]), path, usage), await asProduct(central([]), path, usage));
 });
 
-test("members see the account's quota, an operator sees the same numbers, and no allowance reads as none", async () => {
-  const { operator, central, base, asProduct, grant, detail } = await durable();
+test("members see only a percentage and a reset time; staff also see internal units; no allowance reads as none", async () => {
+  const { operator, central, base, asProduct, grant, detail, table } = await durable();
+  const noDefault = exampleTable();
+  delete noDefault.defaultPlan;
+  table.table = noDefault;
   assert.deepEqual((await detail(operator, false)).body.account.quota, { state: "none" });
-  assert.deepEqual((await detail(operator, true)).body.account.quota, { state: "none" });
-  await grant(1500);
-  await asProduct(operator, base, { operationId: randomUUID(), maxCents: 200, expiresInSeconds: 600 });
-  for (const operatorView of [false, true]) {
-    const quota = (await detail(central(["accounts:admin:read"]), operatorView)).body.account.quota;
-    assert.deepEqual(
-      [quota.state, quota.unit, quota.allowanceCents, quota.heldCents, quota.usedCents, quota.remainingCents],
-      ["set", "usd-cents", 1500, 200, 0, 1300],
-    );
-  }
+  assert.equal((await detail(operator, true)).body.account.quota.state, "none");
+  await grant({ allowanceOverrideUnits: 1500 });
+  await asProduct(operator, base, reserveBody(batch(100)));
+  const customer = (await detail(central(["accounts:admin:read"]), false)).body.account.quota;
+  assert.deepEqual(Object.keys(customer).sort(), ["byProduct", "percentUsed", "resetsAt", "state"]);
+  assert.equal(customer.percentUsed, 20);
+  const staff = (await detail(central(["accounts:admin:read"]), true)).body.account.quota;
+  assert.deepEqual(
+    [staff.state, staff.allowanceUnits, staff.heldUnits, staff.percentUsed],
+    ["set", 1500, 300, 20],
+  );
+  assert.doesNotMatch(JSON.stringify(staff), /example\./, "the rate table's contents are never shown");
 });
 
 test("without quota storage the directory says unavailable and the quota routes answer 503", async () => {
   const { central, base, asProduct, detail } = await durable(false);
   const handler = central([], false);
   assert.deepEqual((await detail(handler, false)).body.account.quota, { state: "unavailable" });
-  const response = await asProduct(handler, base, {
-    operationId: randomUUID(),
-    maxCents: 1,
-    expiresInSeconds: 60,
-  });
+  const response = await asProduct(handler, base, reserveBody());
   assert.deepEqual([response.status, response.body.error], [503, "quota_unavailable"]);
 });
 
-test("the operator grant route needs the reviewed quota permission and a clean body", async () => {
+test("an unusable rate table refuses quota calls and shows unavailable", async () => {
+  const { operator, base, asProduct, grant, detail, table } = await durable();
+  await grant({ plan: "example-large" });
+  table.table = '{"version":"unset"}';
+  const response = await asProduct(operator, base, reserveBody());
+  assert.deepEqual([response.status, response.body.error], [503, "quota_unavailable"]);
+  assert.deepEqual((await detail(operator, false)).body.account.quota, { state: "unavailable" });
+});
+
+test("the operator route needs the reviewed quota permission and a clean body", async () => {
   const { central, grant, environment } = await durable();
+  assert.equal((await grant({ plan: "example-large" }, central(["accounts:admin:read"]))).status, 403);
   assert.equal(
-    (await grant(100, central(["accounts:admin:read"]))).status,
+    (await grant({ plan: "example-large" }, central(["accounts:admin:entitlements"]))).status,
     403,
-    "read access never grants quota",
   );
-  assert.equal((await grant(100, central(["accounts:admin:entitlements"]))).status, 403);
   const owner = await central(["accounts:admin:quota"])(
     environment.identityFixture.event(
       0,
       `/v1/account-directory/operator/accounts/${environment.account.id}/quota`,
-      { operationId: randomUUID(), allowanceCents: 100 },
+      { operationId: randomUUID(), plan: "example-large" },
       environment.ownerDirectory.proof,
       "POST",
     ),
   );
   assert.equal(owner.statusCode, 403, "account owners cannot grant themselves quota");
   const operator = central(["accounts:admin:quota"]);
-  const bad = async (body: unknown) =>
-    (
-      await operator(
-        environment.identityFixture.event(
-          0,
-          `/v1/account-directory/operator/accounts/${environment.account.id}/quota`,
-          body,
-          environment.outsider.proof,
-          "POST",
-        ),
-      )
-    ).statusCode;
-  assert.equal(await bad({ operationId: randomUUID(), allowanceCents: 1, extra: true }), 400);
-  assert.equal(await bad({ operationId: randomUUID(), allowanceCents: -5 }), 400);
-  assert.equal(await bad({ allowanceCents: 5 }), 400);
-  assert.equal((await grant(100, operator)).status, 200);
+  assert.equal((await grant({ plan: "example-large", extra: true }, operator)).status, 400);
+  assert.equal((await grant({ allowanceOverrideUnits: -5 }, operator)).status, 400);
+  assert.equal((await grant({ plan: "example-missing" }, operator)).status, 400);
+  assert.equal((await grant({}, operator)).status, 400);
+  assert.equal((await grant({ plan: "example-large" }, operator)).status, 200);
 });

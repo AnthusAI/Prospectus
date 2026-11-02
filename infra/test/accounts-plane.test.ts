@@ -24,6 +24,7 @@ function template(
   anthusOne = false,
   labVerifier?: { roleArn: string; reviewId: string },
   quotaProducts: ProductRegistration[] = [],
+  quotaRateTable?: { version: "v1"; parameterName: string },
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -45,6 +46,7 @@ function template(
           papyrusSites,
           ...(labVerifier ? { labVerifier } : {}),
           ...(quotaProducts.length ? { quotaProducts } : {}),
+          ...(quotaRateTable ? { quotaRateTable } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -818,7 +820,7 @@ const syntheticQuotaProduct = (name: string): ProductRegistration => ({
   quota: true,
 });
 
-test("quota gives the central runtime its own prefixes and a registered product role exactly the three quota routes", () => {
+test("quota gives the central runtime its own prefixes and a registered product role exactly the five quota routes", () => {
   const before = template(true),
     after = template(true, false, false, [], parameterStoreSigner, false, undefined, [
       syntheticQuotaProduct("example-renderer"),
@@ -842,6 +844,8 @@ test("quota gives the central runtime its own prefixes and a registered product 
     "execute-api:/api/POST/v1/quota/accounts/*/reservations",
     "execute-api:/api/POST/v1/quota/accounts/*/reservations/*/settle",
     "execute-api:/api/POST/v1/quota/accounts/*/reservations/*/release",
+    "execute-api:/api/POST/v1/quota/accounts/*/usage",
+    "execute-api:/api/POST/v1/quota/accounts/*/check",
   ]);
   assert.ok(
     JSON.stringify(policy.find((item: any) => item.Effect === "Deny").Condition).includes(
@@ -869,5 +873,38 @@ test("a quota product must carry the quota flag", () => {
         { ...syntheticQuotaProduct("example-renderer"), quota: undefined },
       ]),
     /quota flag/,
+  );
+});
+
+test("the private quota rate table is one retained create-only parameter, readable only by the central runtime", () => {
+  const parameterName = "/example/quota/rate-table/v1";
+  const before = template(true),
+    after = template(true, false, false, [], parameterStoreSigner, false, undefined, [], {
+      version: "v1",
+      parameterName,
+    });
+  const resources = Object.values(after.Resources) as any[];
+  const custom = resources.filter((value) => value.Type === "Custom::ProspectusQuotaRateTable");
+  assert.equal(custom.length, 1);
+  assert.equal(custom[0].DeletionPolicy, "Retain");
+  assert.deepEqual(custom[0].Properties.ParameterName, parameterName);
+  const statements = resources
+    .filter((value) => value.Type === "AWS::IAM::Policy")
+    .flatMap((value) => value.Properties.PolicyDocument.Statement);
+  const reads = statements.filter((statement) => [statement.Action].flat().includes("ssm:GetParameter"));
+  assert.ok(JSON.stringify(reads).includes(parameterName));
+  const puts = statements.filter((statement) => [statement.Action].flat().includes("ssm:PutParameter"));
+  assert.ok(
+    puts.some(
+      (statement) =>
+        statement.Effect === "Deny" && statement.Condition?.StringEquals?.["ssm:Overwrite"] === "true",
+    ),
+  );
+  const text = JSON.stringify(after);
+  assert.ok(text.includes("PROSPECTUS_QUOTA_RATE_TABLE") && text.includes('Tier: \\"Advanced\\"'));
+  assert.ok(!JSON.stringify(before).includes("PROSPECTUS_QUOTA_RATE_TABLE"), "off unless configured");
+  assert.ok(
+    !text.includes('\\"rates\\"') && !text.includes("weeklyAllowanceUnits"),
+    "no rate or allowance is in the template",
   );
 });

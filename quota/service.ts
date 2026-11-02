@@ -7,43 +7,55 @@ import {
   DEFAULT_MAXIMUM_HOLD_SECONDS,
   DOCUMENT_BYTE_BUDGET,
   MAXIMUM_AUDIT_ENTRIES,
-  QUOTA_UNIT,
+  MAXIMUM_HOLD_SECONDS_LIMIT,
+  WEEK_MS,
   fail,
   isExpired,
+  type BillableItem,
   type Hold,
+  type OperatorQuotaView,
   type QuotaAction,
   type QuotaActor,
-  type QuotaAllowance,
+  type QuotaAuditEntry,
   type QuotaJournalEvent,
+  type QuotaSettings,
+  type QuotaView,
+  type QuotaWeek,
 } from "./model";
-import type { QuotaSummary, QuotaView } from "../packages/accounts-client/src/quota";
+import {
+  PLAN_PATTERN,
+  convertItems,
+  parseItems,
+  unknownItemKinds,
+  type RateTable,
+  type RateTableSource,
+} from "./rate-table";
 
-/** What quota needs to know about an account: whether it exists and which products it is entitled to. */
+/** What quota needs to know about an account: when it was created (the weekly cycle starts there) and which
+ * products it is entitled to. */
 export type AccountReader = (
   accountId: string,
-) => Promise<{ entitlements: Record<string, { status: string }> } | null>;
+) => Promise<{ createdAt: string; entitlements: Record<string, { status: string }> } | null>;
 
 export const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-export const allowancePath = (accountId: string) => `allowances/${accountId}.json`;
+export const settingsPath = (accountId: string) => `settings/${accountId}.json`;
+export const weekPath = (accountId: string, week: number) => `weeks/${accountId}/${week}.json`;
 export const journalPath = (eventId: string) => `journal/${eventId}.json`;
 
-export const requireAccountId = (value: unknown) =>
-  matchesStringPattern(value, UUID_PATTERN)
-    ? value.toLowerCase()
-    : fail(400, "invalid_account", "Account UUID required.");
-export const requireOperationId = (value: unknown) =>
-  matchesStringPattern(value, UUID_PATTERN)
-    ? value.toLowerCase()
-    : fail(400, "invalid_operation_id", "UUID operation ID required.");
-export const requireReservationId = (value: unknown) =>
-  matchesStringPattern(value, UUID_PATTERN)
-    ? value.toLowerCase()
-    : fail(400, "invalid_reservation", "UUID reservation ID required.");
-/** Whole cents. Nothing fractional, negative or beyond what an integer sum can hold exactly. */
-const cents = (value: unknown, minimum: number, code: string, message: string): number =>
-  Number.isSafeInteger(value) && (value as number) >= minimum ? (value as number) : fail(400, code, message);
+const uuid = (code: string, message: string) => (value: unknown) =>
+  matchesStringPattern(value, UUID_PATTERN) ? value.toLowerCase() : fail(400, code, message);
+export const requireAccountId = uuid("invalid_account", "Account UUID required.");
+export const requireOperationId = uuid("invalid_operation_id", "UUID operation ID required.");
+export const requireReservationId = uuid("invalid_reservation", "UUID reservation ID required.");
+
 const sum = (left: number, right: number) =>
   Number.isSafeInteger(left + right) ? left + right : fail(409, "quota_capacity", "Amount is too large.");
+
+/** Whole percent, 0 to 100. Reaching the allowance is 100; a zero allowance is always 100. */
+export function percentOf(units: number, allowance: number): number {
+  if (units >= allowance) return 100;
+  return Number((BigInt(units) * 100n) / BigInt(allowance));
+}
 
 async function commitWithRetry<T>(
   files: IdentityFiles,
@@ -67,50 +79,33 @@ async function commitWithRetry<T>(
     }
 }
 
-const blank = (accountId: string, operationId: string, at: string): QuotaAllowance => ({
-  version: 1,
-  kind: "quota-allowance",
-  accountId,
-  unit: QUOTA_UNIT,
-  allowanceCents: 0,
-  usedCents: 0,
-  overageCents: 0,
-  usedByProduct: {},
-  holds: {},
-  revision: 0,
-  creation: { operationId, at },
-  audit: [],
-});
-
-const heldBy = (allowance: QuotaAllowance, nowMs: number) => {
-  const held: Record<string, number> = {};
-  for (const hold of Object.values(allowance.holds))
-    if (!isExpired(hold, nowMs)) held[hold.product] = (held[hold.product] ?? 0) + hold.maxCents;
-  return held;
-};
-const remainingOf = (allowance: QuotaAllowance, nowMs: number) =>
-  allowance.allowanceCents -
-  allowance.usedCents -
-  Object.values(heldBy(allowance, nowMs)).reduce((total, amount) => total + amount, 0);
-
-/** The effect of one operation on an allowance: the next document and the result a repeat returns. */
-interface Applied {
-  next: QuotaAllowance;
+interface Versioned {
+  revision: number;
+  audit: QuotaAuditEntry[];
+}
+interface Applied<D> {
+  next: D;
   result: Record<string, unknown>;
-  /** Expired holds dropped from the document to make room; each is journaled before the document is written. */
-  expired: Array<[string, Hold]>;
-  /** The operation was already in the document; only the result is needed. */
+  detail?: Record<string, unknown>;
+  /** Expired holds dropped to make room; each is journaled before the document is written. */
+  expired?: Array<[string, Hold]>;
+  /** The operation was already in the document; only its result is needed. */
   unchanged?: boolean;
 }
-interface Operation {
+interface Operation<D extends Versioned, X = undefined> {
   action: QuotaAction;
+  path: string;
   accountId: string;
   reservationId?: string;
   operationId: string;
   actor: QuotaActor;
   /** The normalized client request. The same operation ID with another request is an idempotency conflict. */
   request: unknown;
-  apply: (current: QuotaAllowance | null, nowMs: number, at: string) => Applied;
+  /** Runs after a repeat has been answered and before anything is applied. */
+  prepare?: () => Promise<void>;
+  /** Extra reading for each attempt, for example last week's record. */
+  load?: () => Promise<X>;
+  apply: (current: D | null, nowMs: number, at: string, extra: X) => Applied<D>;
 }
 
 export interface QuotaCaller {
@@ -120,13 +115,28 @@ export interface QuotaOptions {
   maximumHoldSeconds?: number;
 }
 
+interface Context_ {
+  createdAt: string;
+  entitlements: Record<string, { status: string }>;
+  table: RateTable;
+  settings: QuotaSettings | null;
+  /** Units a week allows, or null when no plan and no override gives the account an allowance. */
+  allowanceUnits: number | null;
+  week: number;
+  startsAt: string;
+  endsAt: string;
+  nowMs: number;
+}
+
 /**
- * The account's quota. Every refusal path writes nothing, and every failure to read or write is an error, never a
- * success: an unknown account, a missing allowance or an unavailable store all mean the caller may not spend.
+ * Weekly quota. An account's allowance applies per week, in Prospectus's own internal usage units, and resets by
+ * time alone: the week is a fixed seven days counted from the account's creation, in UTC, and a new week simply
+ * reads a new record. Customers and products never see units, rates or money; they see a percentage.
  *
- * Money lives in one conditional-write document per account, so concurrent reservations cannot together exceed the
- * allowance: the loser re-reads and is checked against what the winner held. Each mutation then writes one journal
- * event that carries the operation's result, which is how a retry gets the original answer.
+ * Products report billable items. Prospectus converts them with a private rate table and charges units, recording the
+ * table version with each charge. Two ways to spend: `reserve`, `settle` and `release` for expensive work, and `check`
+ * and `record` for high-volume small items. Every refusal path writes nothing, and every failure to read or write is
+ * an error, never a success.
  */
 export class Quota {
   private maximumHoldSeconds: number;
@@ -135,133 +145,198 @@ export class Quota {
     private accounts: AccountReader,
     private grants: readonly OperatorGrant[],
     private now: () => string,
+    private table: RateTableSource,
     options: QuotaOptions = {},
   ) {
     this.maximumHoldSeconds = options.maximumHoldSeconds ?? DEFAULT_MAXIMUM_HOLD_SECONDS;
-    if (!Number.isSafeInteger(this.maximumHoldSeconds) || this.maximumHoldSeconds < 1)
-      throw new Error("The maximum hold lifetime must be a whole number of seconds.");
+    if (
+      !Number.isSafeInteger(this.maximumHoldSeconds) ||
+      this.maximumHoldSeconds < 1 ||
+      this.maximumHoldSeconds > MAXIMUM_HOLD_SECONDS_LIMIT
+    )
+      throw new Error("The maximum hold lifetime must be whole seconds, at most one week.");
   }
 
-  /** Holds quota for one job. Succeeds only if the account's remaining quota covers `maxCents`. */
+  private async context(accountIdInput: unknown): Promise<Context_ & { accountId: string }> {
+    const accountId = requireAccountId(accountIdInput);
+    const account = await this.accounts(accountId);
+    if (!account) fail(404, "account_missing", "Account not found.");
+    const table = await this.table.current();
+    const settings = (await this.files.get<QuotaSettings>(settingsPath(accountId)))?.value ?? null;
+    const nowMs = Date.parse(this.now());
+    const anchor = Date.parse(account.createdAt);
+    if (!Number.isFinite(anchor)) fail(503, "quota_unavailable", "Quota is unavailable.");
+    const week = Math.max(0, Math.floor((nowMs - anchor) / WEEK_MS));
+    const plan = settings?.planId ?? table.defaultPlan;
+    const allowanceUnits =
+      settings?.allowanceOverrideUnits ??
+      (plan !== undefined ? (table.plans[plan]?.weeklyAllowanceUnits ?? null) : null);
+    return {
+      accountId,
+      createdAt: account.createdAt,
+      entitlements: account.entitlements,
+      table,
+      settings,
+      allowanceUnits,
+      week,
+      startsAt: new Date(anchor + week * WEEK_MS).toISOString(),
+      endsAt: new Date(anchor + (week + 1) * WEEK_MS).toISOString(),
+      nowMs,
+    };
+  }
+
+  private blankWeek(context: Context_ & { accountId: string }, operationId: string, at: string): QuotaWeek {
+    return {
+      version: 1,
+      kind: "quota-week",
+      accountId: context.accountId,
+      week: context.week,
+      startsAt: context.startsAt,
+      endsAt: context.endsAt,
+      allowanceUnits: context.allowanceUnits,
+      usedUnits: 0,
+      overshootUnits: 0,
+      usedByProduct: {},
+      usedByKind: {},
+      usedByTableVersion: {},
+      holds: {},
+      closedFromPriorWeek: {},
+      revision: 0,
+      creation: { operationId, at },
+      audit: [],
+    };
+  }
+
+  private readWeek(accountId: string, week: number) {
+    return this.files.get<QuotaWeek>(weekPath(accountId, week));
+  }
+
+  /** Cheap read for high-volume work: may this account start work now? Nothing is written. */
+  async check(caller: QuotaCaller, accountIdInput: unknown) {
+    const context = await this.context(accountIdInput);
+    if (context.entitlements[caller.product]?.status !== "active")
+      fail(403, "product_not_entitled", "The account is not entitled to this product.");
+    if (context.allowanceUnits === null) fail(403, "no_allowance", "The account has no quota allowance.");
+    const week = (await this.readWeek(context.accountId, context.week))?.value ?? null;
+    const committed = week ? committedUnits(week, context.nowMs) : 0;
+    const percentUsed = percentOf(committed, context.allowanceUnits);
+    return { result: { allowed: percentUsed < 100, percentUsed, resetsAt: context.endsAt } };
+  }
+
+  /** Holds quota for expensive work. Succeeds only if this week's remaining quota covers the estimated maximum. */
   async reserve(
     caller: QuotaCaller,
     accountIdInput: unknown,
-    input: { operationId?: unknown; maxCents?: unknown; expiresInSeconds?: unknown },
+    input: { operationId?: unknown; items?: unknown; expiresInSeconds?: unknown },
   ) {
-    const accountId = requireAccountId(accountIdInput),
-      reservationId = requireOperationId(input.operationId),
-      maxCents = cents(
-        input.maxCents,
-        1,
-        "invalid_amount",
-        "The reservation maximum must be whole cents above zero.",
-      ),
-      expiresInSeconds = cents(
-        input.expiresInSeconds,
-        1,
-        "invalid_expiry",
-        "The reservation lifetime must be whole seconds above zero.",
-      );
+    const operationId = requireOperationId(input.operationId),
+      items = parseItems(input.items, 1),
+      expiresInSeconds =
+        Number.isSafeInteger(input.expiresInSeconds) && (input.expiresInSeconds as number) >= 1
+          ? (input.expiresInSeconds as number)
+          : fail(400, "invalid_expiry", "The reservation lifetime must be whole seconds above zero.");
     if (expiresInSeconds > this.maximumHoldSeconds)
       fail(400, "invalid_expiry", "The reservation lifetime is longer than this service allows.");
-    const account = await this.accounts(accountId);
-    if (!account) fail(404, "account_missing", "Account not found.");
-    if (account.entitlements[caller.product]?.status !== "active")
+    const context = await this.context(accountIdInput);
+    if (context.entitlements[caller.product]?.status !== "active")
       fail(403, "product_not_entitled", "The account is not entitled to this product.");
-    return this.run({
+    const { accountId } = context;
+    return this.run<QuotaWeek>({
       action: "reservation.reserved",
+      path: weekPath(accountId, context.week),
       accountId,
-      reservationId,
-      operationId: reservationId,
+      reservationId: operationId,
+      operationId,
       actor: `product:${caller.product}`,
-      request: { maxCents, expiresInSeconds },
+      request: { items, expiresInSeconds },
+      prepare: () => this.refuseUnknown(context, caller, "reservation.reserved", operationId, items),
       apply: (current, nowMs, at) => {
-        if (!current) fail(403, "no_allowance", "The account has no quota allowance.");
-        const requestHash = hash(["quota-hold-v1", accountId, caller.product, maxCents, expiresInSeconds]);
+        if (context.allowanceUnits === null) fail(403, "no_allowance", "The account has no quota allowance.");
+        const conversion = convertItems(context.table, items);
+        const requestHash = hash(["quota-hold-v2", accountId, caller.product, items, expiresInSeconds]);
         const expiresAt = new Date(nowMs + expiresInSeconds * 1000).toISOString();
-        const existing = current.holds[reservationId];
-        const result = (hold: Pick<Hold, "maxCents" | "expiresAt">) => ({
-          reservationId,
+        const result = (hold: Pick<Hold, "expiresAt">) => ({
+          reservationId: operationId,
           accountId,
           status: "reserved",
-          maxCents: hold.maxCents,
           expiresAt: hold.expiresAt,
         });
+        const existing = current?.holds[operationId];
         if (existing) {
           if (existing.requestHash !== requestHash || existing.product !== caller.product)
             idempotencyConflict();
-          return { next: current, result: result(existing), expired: [], unchanged: true };
+          return { next: current!, result: result(existing), unchanged: true };
         }
-        if (maxCents > remainingOf(current, nowMs))
-          fail(402, "quota_insufficient", "The account's remaining quota does not cover this reservation.");
-        const hold: Hold = { product: caller.product, maxCents, reservedAt: at, expiresAt, requestHash };
-        const next = structuredClone(current);
-        next.holds[reservationId] = hold;
-        const expired = makeRoom(next, nowMs);
-        return { next, result: result(hold), expired };
+        const week = current ?? this.blankWeek(context, operationId, at);
+        const remaining = context.allowanceUnits - committedUnits(week, nowMs);
+        if (remaining <= 0) fail(402, "quota_exhausted", "This week's quota is used up.");
+        if (conversion.units > remaining)
+          fail(402, "quota_insufficient", "This week's remaining quota does not cover this reservation.");
+        const next = structuredClone(week);
+        next.allowanceUnits = context.allowanceUnits;
+        const hold: Hold = {
+          product: caller.product,
+          units: conversion.units,
+          tableVersion: context.table.version,
+          reservedAt: at,
+          expiresAt,
+          requestHash,
+        };
+        next.holds[operationId] = hold;
+        return {
+          next,
+          result: result(hold),
+          detail: { units: conversion.units, tableVersion: context.table.version, items },
+          expired: makeRoom(next, nowMs),
+        };
       },
     });
   }
 
-  /** Charges the actual cost of a reserved job and releases the rest. Past the reservation, or past its expiry, the
-   * cost is recorded only when the caller explicitly acknowledges the overage. */
+  /** Charges what the work actually used and releases the hold. The charge counts in the week it settles. */
   async settle(
     caller: QuotaCaller,
     accountIdInput: unknown,
     reservationIdInput: unknown,
-    input: { operationId?: unknown; actualCents?: unknown; allowOverage?: unknown },
+    input: { operationId?: unknown; items?: unknown },
   ) {
-    const accountId = requireAccountId(accountIdInput),
-      reservationId = requireReservationId(reservationIdInput),
+    const reservationId = requireReservationId(reservationIdInput),
       operationId = requireOperationId(input.operationId),
-      actualCents = cents(input.actualCents, 0, "invalid_amount", "The actual cost must be whole cents."),
-      allowOverage = input.allowOverage === undefined ? false : input.allowOverage;
-    if (typeof allowOverage !== "boolean")
-      fail(400, "invalid_overage", "allowOverage must be true or false.");
-    return this.run({
+      items = parseItems(input.items, 0);
+    const context = await this.context(accountIdInput);
+    const { accountId } = context;
+    return this.run<QuotaWeek, QuotaWeek | null>({
       action: "reservation.settled",
+      path: weekPath(accountId, context.week),
       accountId,
       reservationId,
       operationId,
       actor: `product:${caller.product}`,
-      request: { actualCents, allowOverage },
-      apply: (current, nowMs) => {
-        const hold = current?.holds[reservationId];
-        if (!current || !hold)
-          fail(409, "reservation_not_open", "The reservation is unknown, closed or reclaimed.");
+      request: { items },
+      prepare: () => this.refuseUnknown(context, caller, "reservation.settled", operationId, items),
+      load: async () =>
+        context.week > 0 ? ((await this.readWeek(accountId, context.week - 1))?.value ?? null) : null,
+      apply: (current, _nowMs, at, previous) => {
+        let hold = current?.holds[reservationId];
+        const fromPriorWeek = !hold && !current?.closedFromPriorWeek[reservationId];
+        if (!hold && fromPriorWeek) hold = previous?.holds[reservationId];
+        if (!hold) fail(409, "reservation_not_open", "The reservation is unknown, closed or reclaimed.");
         if (hold.product !== caller.product)
           fail(403, "wrong_product", "The reservation belongs to another product.");
-        const expired = isExpired(hold, nowMs);
-        // An expired hold no longer covers anything, so the whole cost is overage.
-        const overageCents = expired ? actualCents : Math.max(0, actualCents - hold.maxCents);
-        if (overageCents > 0 && !allowOverage)
-          expired
-            ? fail(
-                409,
-                "reservation_expired",
-                "The reservation expired; settle with allowOverage to record the cost.",
-              )
-            : fail(
-                409,
-                "exceeds_reservation",
-                "The cost is above the reservation; settle with allowOverage to record it.",
-              );
-        const next = structuredClone(current);
-        delete next.holds[reservationId];
-        next.usedCents = sum(next.usedCents, actualCents);
-        next.overageCents = sum(next.overageCents, overageCents);
-        next.usedByProduct[hold.product] = sum(next.usedByProduct[hold.product] ?? 0, actualCents);
-        const releasedCents = expired ? 0 : Math.max(0, hold.maxCents - actualCents);
+        const conversion = convertItems(context.table, items);
+        const next = structuredClone(current ?? this.blankWeek(context, operationId, at));
+        if (fromPriorWeek) next.closedFromPriorWeek[reservationId] = operationId;
+        else delete next.holds[reservationId];
+        charge(next, context, caller.product, conversion);
         return {
           next,
-          expired: [],
-          result: {
-            reservationId,
-            accountId,
-            status: expired ? "settled_late" : "settled",
-            chargedCents: actualCents,
-            releasedCents,
-            overageCents,
+          result: { reservationId, accountId, status: "settled" },
+          detail: {
+            units: conversion.units,
+            tableVersion: context.table.version,
+            lines: conversion.lines,
+            week: context.week,
+            fromPriorWeek,
           },
         };
       },
@@ -275,111 +350,237 @@ export class Quota {
     reservationIdInput: unknown,
     input: { operationId?: unknown },
   ) {
-    const accountId = requireAccountId(accountIdInput),
-      reservationId = requireReservationId(reservationIdInput),
+    const reservationId = requireReservationId(reservationIdInput),
       operationId = requireOperationId(input.operationId);
-    return this.run({
+    const context = await this.context(accountIdInput);
+    const { accountId } = context;
+    return this.run<QuotaWeek, QuotaWeek | null>({
       action: "reservation.released",
+      path: weekPath(accountId, context.week),
       accountId,
       reservationId,
       operationId,
       actor: `product:${caller.product}`,
       request: {},
-      apply: (current) => {
-        const hold = current?.holds[reservationId];
-        if (!current || !hold)
-          fail(409, "reservation_not_open", "The reservation is unknown, closed or reclaimed.");
+      load: async () =>
+        context.week > 0 ? ((await this.readWeek(accountId, context.week - 1))?.value ?? null) : null,
+      apply: (current, _nowMs, at, previous) => {
+        let hold = current?.holds[reservationId];
+        const fromPriorWeek = !hold && !current?.closedFromPriorWeek[reservationId];
+        if (!hold && fromPriorWeek) hold = previous?.holds[reservationId];
+        if (!hold) fail(409, "reservation_not_open", "The reservation is unknown, closed or reclaimed.");
         if (hold.product !== caller.product)
           fail(403, "wrong_product", "The reservation belongs to another product.");
-        const next = structuredClone(current);
-        delete next.holds[reservationId];
+        const next = structuredClone(current ?? this.blankWeek(context, operationId, at));
+        if (fromPriorWeek) next.closedFromPriorWeek[reservationId] = operationId;
+        else delete next.holds[reservationId];
+        next.allowanceUnits = context.allowanceUnits;
         return {
           next,
-          expired: [],
-          result: { reservationId, accountId, status: "released", releasedCents: hold.maxCents },
+          result: { reservationId, accountId, status: "released" },
+          detail: { week: context.week, fromPriorWeek },
         };
       },
     });
   }
 
-  /** Operator grant: sets the account's total allowance. Lowering it below what is used and held is allowed and
-   * leaves remaining quota negative, so new reservations are refused until it is raised again. */
-  async grant(
-    operator: Context,
+  /** Pay after: records what small, high-volume work actually used. It may take the week past 100%; that overshoot is
+   * recorded, the display stays at 100, and the next check or reserve refuses. */
+  async record(
+    caller: QuotaCaller,
     accountIdInput: unknown,
-    input: { operationId?: unknown; allowanceCents?: unknown },
+    input: { operationId?: unknown; items?: unknown },
   ) {
-    const accountId = requireAccountId(accountIdInput),
-      operationId = requireOperationId(input.operationId),
-      allowanceCents = cents(
-        input.allowanceCents,
-        0,
-        "invalid_amount",
-        "The allowance must be whole cents, zero or more.",
-      );
-    const authority = quotaAdministrationGrant(operator, this.grants);
-    if (!authority) fail(403, "operator_forbidden", "Explicit central quota permission is required.");
-    if (!(await this.accounts(accountId))) fail(404, "account_missing", "Account not found.");
-    return this.run({
-      action: "allowance.granted",
+    const operationId = requireOperationId(input.operationId),
+      items = parseItems(input.items, 1);
+    const context = await this.context(accountIdInput);
+    const { accountId } = context;
+    return this.run<QuotaWeek>({
+      action: "usage.recorded",
+      path: weekPath(accountId, context.week),
       accountId,
       operationId,
-      actor: `operator:${authority.reviewedGrantId}`,
-      request: { allowanceCents },
+      actor: `product:${caller.product}`,
+      request: { items },
+      prepare: () => this.refuseUnknown(context, caller, "usage.recorded", operationId, items),
       apply: (current, _nowMs, at) => {
-        const next = structuredClone(current ?? blank(accountId, operationId, at));
-        next.allowanceCents = allowanceCents;
-        return { next, expired: [], result: { accountId, unit: QUOTA_UNIT, allowanceCents } };
+        const conversion = convertItems(context.table, items);
+        const next = structuredClone(current ?? this.blankWeek(context, operationId, at));
+        charge(next, context, caller.product, conversion);
+        return {
+          next,
+          result: { accountId, status: "recorded" },
+          detail: {
+            units: conversion.units,
+            tableVersion: context.table.version,
+            lines: conversion.lines,
+            week: context.week,
+            overshootUnits: next.overshootUnits,
+          },
+        };
       },
     });
   }
 
-  /** The account's numbers for the CRM and the portal, or null when it has no allowance record. */
-  async summary(accountIdInput: unknown): Promise<QuotaSummary | null> {
-    const accountId = requireAccountId(accountIdInput);
-    const stored = await this.files.get<QuotaAllowance>(allowancePath(accountId));
-    if (!stored) return null;
-    const allowance = stored.value,
-      nowMs = Date.parse(this.now()),
-      held = heldBy(allowance, nowMs);
-    const products = new Set([...Object.keys(allowance.usedByProduct), ...Object.keys(held)]);
+  /** Operator: choose the account's plan and/or a per-account weekly allowance override. `null` clears a field. */
+  async setAllowance(
+    operator: Context,
+    accountIdInput: unknown,
+    input: { operationId?: unknown; plan?: unknown; allowanceOverrideUnits?: unknown },
+  ) {
+    const operationId = requireOperationId(input.operationId);
+    const authority = quotaAdministrationGrant(operator, this.grants);
+    if (!authority) fail(403, "operator_forbidden", "Explicit central quota permission is required.");
+    if (input.plan === undefined && input.allowanceOverrideUnits === undefined)
+      fail(400, "invalid_settings", "Set a plan, an allowance override, or both.");
+    if (input.plan !== undefined && input.plan !== null && !matchesStringPattern(input.plan, PLAN_PATTERN))
+      fail(400, "invalid_plan", "A plan name is malformed.");
+    const override = input.allowanceOverrideUnits;
+    if (
+      override !== undefined &&
+      override !== null &&
+      !(Number.isSafeInteger(override) && (override as number) >= 0)
+    )
+      fail(400, "invalid_amount", "An allowance override must be whole units, zero or more, or null.");
+    const context = await this.context(accountIdInput);
+    if (typeof input.plan === "string" && !context.table.plans[input.plan])
+      fail(400, "unknown_plan", "That plan is not in the rate table.");
+    const { accountId } = context;
+    return this.run<QuotaSettings>({
+      action: "settings.changed",
+      path: settingsPath(accountId),
+      accountId,
+      operationId,
+      actor: `operator:${authority.reviewedGrantId}`,
+      request: { plan: input.plan ?? "unchanged", override: override ?? "unchanged" },
+      apply: (current, _nowMs, at) => {
+        const next: QuotaSettings = structuredClone(
+          current ?? {
+            version: 1,
+            kind: "quota-settings",
+            accountId,
+            revision: 0,
+            creation: { operationId, at },
+            audit: [],
+          },
+        );
+        if (input.plan === null) delete next.planId;
+        else if (typeof input.plan === "string") next.planId = input.plan;
+        if (override === null) delete next.allowanceOverrideUnits;
+        else if (typeof override === "number") next.allowanceOverrideUnits = override;
+        return {
+          next,
+          result: {
+            accountId,
+            planId: next.planId ?? null,
+            allowanceOverrideUnits: next.allowanceOverrideUnits ?? null,
+          },
+        };
+      },
+    });
+  }
+
+  /** What a customer may see: the week's percentage, its reset time and each app's share. No units, no money. */
+  async customerView(accountId: string): Promise<QuotaView> {
+    const view = await this.operatorView(accountId);
+    if (view.state !== "set") return view.state === "none" ? { state: "none" } : { state: "unavailable" };
     return {
-      unit: QUOTA_UNIT,
-      allowanceCents: allowance.allowanceCents,
-      usedCents: allowance.usedCents,
-      heldCents: Object.values(held).reduce((total, amount) => total + amount, 0),
-      overageCents: allowance.overageCents,
-      remainingCents: remainingOf(allowance, nowMs),
-      byProduct: [...products].sort().map((product) => ({
-        product,
-        usedCents: allowance.usedByProduct[product] ?? 0,
-        heldCents: held[product] ?? 0,
-      })),
+      state: "set",
+      percentUsed: view.percentUsed,
+      resetsAt: view.resetsAt,
+      byProduct: view.byProduct,
     };
   }
 
-  /** The directory's view: an unreadable store is `unavailable`, never an empty or unlimited quota. */
-  async view(accountId: string): Promise<QuotaView> {
+  /** What staff see: the customer view plus internal units. A failure is `unavailable`, never zero or unlimited. */
+  async operatorView(accountId: string): Promise<OperatorQuotaView> {
     try {
-      const summary = await this.summary(accountId);
-      return summary ? { state: "set", ...summary } : { state: "none" };
+      const context = await this.context(accountId);
+      const planId = context.settings?.planId ?? null,
+        allowanceOverrideUnits = context.settings?.allowanceOverrideUnits ?? null;
+      if (context.allowanceUnits === null) return { state: "none", planId, allowanceOverrideUnits };
+      const week = (await this.readWeek(context.accountId, context.week))?.value ?? null;
+      const held = week ? heldByProduct(week, context.nowMs) : {};
+      const used = week?.usedByProduct ?? {};
+      const allowance = context.allowanceUnits;
+      const heldUnits = Object.values(held).reduce((total, units) => total + units, 0);
+      const committed = (week?.usedUnits ?? 0) + heldUnits;
+      return {
+        state: "set",
+        percentUsed: percentOf(committed, allowance),
+        resetsAt: context.endsAt,
+        startedAt: context.startsAt,
+        byProduct: [...new Set([...Object.keys(used), ...Object.keys(held)])].sort().map((product) => ({
+          product,
+          percentOfQuota:
+            allowance === 0
+              ? 0
+              : Math.min(
+                  100,
+                  Number((BigInt((used[product] ?? 0) + (held[product] ?? 0)) * 100n) / BigInt(allowance)),
+                ),
+        })),
+        planId,
+        allowanceOverrideUnits,
+        allowanceUnits: allowance,
+        usedUnits: week?.usedUnits ?? 0,
+        heldUnits,
+        overshootUnits: week?.overshootUnits ?? 0,
+        tableVersions: Object.keys(week?.usedByTableVersion ?? {}).sort(),
+      };
     } catch {
       return { state: "unavailable" };
     }
   }
 
-  private async run(operation: Operation): Promise<{ result: Record<string, unknown>; replayed: boolean }> {
+  /** An unknown item kind is refused before anything is charged, and recorded for operators. */
+  private async refuseUnknown(
+    context: Context_ & { accountId: string },
+    caller: QuotaCaller,
+    action: QuotaAction,
+    operationId: string,
+    items: readonly BillableItem[],
+  ) {
+    const unknown = unknownItemKinds(context.table, items);
+    if (!unknown.length) return;
+    const eventId = hash(["quota-refusal-v1", context.accountId, action, operationId]);
+    const requestHash = hash(["quota-refusal-request-v1", unknown]);
+    try {
+      await this.record_(eventId, requestHash, {
+        version: 1,
+        kind: "quota-journal-event",
+        eventId,
+        action: "usage.refused",
+        accountId: context.accountId,
+        operationId,
+        requestHash,
+        actor: `product:${caller.product}`,
+        beforeRevision: null,
+        afterRevision: null,
+        result: { status: "refused", code: "unknown_item_kind" },
+        detail: { refusedAction: action, itemKinds: unknown, tableVersion: context.table.version },
+        at: this.now(),
+      });
+    } catch {
+      // The refusal stands even if its operator-visible note could not be written.
+    }
+    fail(422, "unknown_item_kind", "An item kind is not recognized.");
+  }
+
+  private async run<D extends Versioned, X = undefined>(
+    operation: Operation<D, X>,
+  ): Promise<{ result: Record<string, unknown>; replayed: boolean }> {
     const requestHash = hash([
-      "quota-request-v1",
+      "quota-request-v2",
       operation.action,
       operation.accountId,
       operation.reservationId ?? null,
       operation.actor,
       operation.request,
     ]);
-    const eventId = hash(["quota-journal-v1", operation.accountId, operation.action, operation.operationId]);
+    const eventId = hash(["quota-journal-v2", operation.accountId, operation.action, operation.operationId]);
     const event = (
-      applied: Pick<Applied, "result">,
+      applied: Pick<Applied<D>, "result" | "detail">,
       beforeRevision: number | null,
       afterRevision: number | null,
       at: string,
@@ -396,16 +597,18 @@ export class Quota {
       beforeRevision,
       afterRevision,
       result: applied.result,
+      ...(applied.detail ? { detail: applied.detail } : {}),
       at,
     });
-    let transient = 0;
+    let transient = 0,
+      prepared = false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const journaled = await this.files.get<QuotaJournalEvent>(journalPath(eventId));
       if (journaled) {
         if (journaled.value.requestHash !== requestHash) idempotencyConflict();
         return { result: journaled.value.result, replayed: true };
       }
-      const stored = await this.files.get<QuotaAllowance>(allowancePath(operation.accountId)),
+      const stored = await this.files.get<D>(operation.path),
         current = stored?.value ?? null;
       const at = this.now(),
         nowMs = Date.parse(at);
@@ -415,16 +618,21 @@ export class Quota {
       if (prior) {
         // Committed before its journal event was written: finish the journal, then answer as a replay.
         if (prior.requestHash !== requestHash) idempotencyConflict();
-        await this.record(
+        await this.record_(
           eventId,
           requestHash,
           event(prior, prior.revision - 1 || null, prior.revision, prior.at),
         );
         return { result: prior.result, replayed: true };
       }
-      const applied = operation.apply(current, nowMs, at);
+      if (!prepared) {
+        await operation.prepare?.();
+        prepared = true;
+      }
+      const extra = (await operation.load?.()) as X;
+      const applied = operation.apply(current, nowMs, at, extra);
       if (applied.unchanged) {
-        await this.record(
+        await this.record_(
           eventId,
           requestHash,
           event(applied, current?.revision ?? null, current?.revision ?? null, at),
@@ -447,16 +655,16 @@ export class Quota {
         },
       ].slice(-MAXIMUM_AUDIT_ENTRIES);
       if (Buffer.byteLength(JSON.stringify(next)) > DOCUMENT_BYTE_BUDGET)
-        fail(409, "quota_capacity", "The account's quota record is full of active reservations.");
+        fail(409, "quota_capacity", "The account's quota record for this week is full.");
       // Expiry is a fact of time, so journaling it before the document changes is safe, and repeating it is harmless.
-      for (const [expiredId, hold] of applied.expired)
+      for (const [expiredId, hold] of applied.expired ?? [])
         await this.recordExpiry(operation.accountId, expiredId, hold, at);
       try {
         await commitWithRetry(
           this.files,
-          allowancePath(operation.accountId),
+          operation.path,
           `quota:${eventId}:${baseRevision}`,
-          hash(["quota-storage-v1", requestHash, baseRevision]),
+          hash(["quota-storage-v2", requestHash, baseRevision]),
           next,
           stored?.revision ?? null,
         );
@@ -475,7 +683,7 @@ export class Quota {
         }
         throw error;
       }
-      await this.record(
+      await this.record_(
         eventId,
         requestHash,
         event(applied, current ? baseRevision : null, next.revision, at),
@@ -485,7 +693,7 @@ export class Quota {
     fail(409, "busy", "Concurrent quota change; retry with the same operation ID.");
   }
 
-  private async record(eventId: string, requestHash: string, event: QuotaJournalEvent) {
+  private async record_(eventId: string, requestHash: string, event: QuotaJournalEvent) {
     try {
       await commitWithRetry(
         this.files,
@@ -504,9 +712,9 @@ export class Quota {
   }
 
   private async recordExpiry(accountId: string, reservationId: string, hold: Hold, at: string) {
-    const eventId = hash(["quota-expiry-v1", accountId, reservationId]);
-    const requestHash = hash(["quota-expiry-request-v1", accountId, reservationId, hold.expiresAt]);
-    await this.record(eventId, requestHash, {
+    const eventId = hash(["quota-expiry-v2", accountId, reservationId]);
+    const requestHash = hash(["quota-expiry-request-v2", accountId, reservationId, hold.expiresAt]);
+    await this.record_(eventId, requestHash, {
       version: 1,
       kind: "quota-journal-event",
       eventId,
@@ -518,29 +726,59 @@ export class Quota {
       actor: "system",
       beforeRevision: null,
       afterRevision: null,
-      result: {
-        reservationId,
-        accountId,
-        status: "expired",
-        maxCents: hold.maxCents,
-        expiresAt: hold.expiresAt,
-      },
+      result: { reservationId, accountId, status: "expired" },
+      detail: { units: hold.units, tableVersion: hold.tableVersion, expiresAt: hold.expiresAt },
       at,
     });
   }
 }
 
+function heldByProduct(week: QuotaWeek, nowMs: number) {
+  const held: Record<string, number> = {};
+  for (const hold of Object.values(week.holds))
+    if (!isExpired(hold, nowMs)) held[hold.product] = (held[hold.product] ?? 0) + hold.units;
+  return held;
+}
+/** Used plus held by unexpired holds: what counts against the week. */
+const committedUnits = (week: QuotaWeek, nowMs: number) =>
+  Object.values(heldByProduct(week, nowMs)).reduce((total, units) => total + units, week.usedUnits);
+
+/** Adds one charge to a week's aggregates, recording the table version it was priced under. */
+function charge(
+  week: QuotaWeek,
+  context: Context_,
+  product: string,
+  conversion: ReturnType<typeof convertItems>,
+) {
+  week.usedUnits = sum(week.usedUnits, conversion.units);
+  week.usedByProduct[product] = sum(week.usedByProduct[product] ?? 0, conversion.units);
+  week.usedByTableVersion[context.table.version] = sum(
+    week.usedByTableVersion[context.table.version] ?? 0,
+    conversion.units,
+  );
+  for (const line of conversion.lines) {
+    const kind = week.usedByKind[line.itemKind] ?? { quantity: 0, units: 0 };
+    week.usedByKind[line.itemKind] = {
+      quantity: sum(kind.quantity, line.quantity),
+      units: sum(kind.units, line.units),
+    };
+  }
+  week.allowanceUnits = context.allowanceUnits;
+  week.overshootUnits =
+    context.allowanceUnits === null ? 0 : Math.max(0, week.usedUnits - context.allowanceUnits);
+}
+
 /** Drops the oldest expired holds until the document fits its byte budget, and returns them for journaling. Active
  * holds are never dropped. */
-function makeRoom(allowance: QuotaAllowance, nowMs: number): Array<[string, Hold]> {
+function makeRoom(week: QuotaWeek, nowMs: number): Array<[string, Hold]> {
   const dropped: Array<[string, Hold]> = [];
-  const expired = Object.entries(allowance.holds)
+  const expired = Object.entries(week.holds)
     .filter(([, hold]) => isExpired(hold, nowMs))
     .sort(([, left], [, right]) => left.expiresAt.localeCompare(right.expiresAt));
   // Leave headroom for the audit entry and journal fields added after this point.
-  while (Buffer.byteLength(JSON.stringify(allowance)) > DOCUMENT_BYTE_BUDGET - 4096 && expired.length) {
+  while (Buffer.byteLength(JSON.stringify(week)) > DOCUMENT_BYTE_BUDGET - 4096 && expired.length) {
     const [id, hold] = expired.shift()!;
-    delete allowance.holds[id];
+    delete week.holds[id];
     dropped.push([id, hold]);
   }
   return dropped;

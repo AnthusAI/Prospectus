@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from "react";
 import type { DirectoryAccount, DirectoryDetail } from "../../packages/accounts-client/src/directory";
 import { ANTHUS_APPS, appForProduct, productUrl } from "../apps";
 import { initials } from "../shared/initials";
-import { QuotaPanel, committedShare, formatCents, quotaOf } from "../shared/quota";
+import { QuotaPanel, formatReset, quotaOf } from "../shared/quota";
 import { Eyebrow, Icon, Stat, Unavailable } from "../shared/ui";
 import { PORTAL_PAGES, type PortalPage } from "./PortalShell";
 import type { PortalTheme } from "./theme";
@@ -18,7 +18,7 @@ function hostOf(url: string): string {
 
 function quotaShare(detail: DirectoryDetail): number {
   const quota = quotaOf(detail.quota);
-  return quota.state === "set" ? committedShare(quota) : 0;
+  return quota.state === "set" ? quota.percentUsed : 0;
 }
 
 function Loading() {
@@ -51,12 +51,12 @@ export function HomePage({
             aria-hidden="true"
           />
           <div className="one-cellstack">
-            <strong className="portal-quota-title">Quota</strong>
+            <strong className="portal-quota-title">Weekly quota</strong>
             {!detail ? (
               <Loading />
             ) : (
               <>
-                <span className="one-muted">One allowance shared by every app in this workspace.</span>
+                <span className="one-muted">One quota shared by every app in this workspace.</span>
                 <QuotaPanel view={quotaOf(detail.quota)} />
               </>
             )}
@@ -464,7 +464,7 @@ export function UsagePage({
         <div>
           <Eyebrow>•••••• 01 / Usage</Eyebrow>
           <h1>Usage</h1>
-          <p>The quota shared by every app in {workspace.name}, and what each app has used.</p>
+          <p>The weekly quota shared by every app in {workspace.name}, and each app’s share of it.</p>
         </div>
       </div>
       {!quota ? (
@@ -473,13 +473,12 @@ export function UsagePage({
         <>
           {quota.state === "set" && (
             <div className="one-stats">
-              <Stat value={formatCents(quota.remainingCents)} label="REMAINING" />
               <Stat
-                value={formatCents(quota.usedCents)}
-                label="USED"
-                note={`of ${formatCents(quota.allowanceCents)}`}
+                value={`${quota.percentUsed}%`}
+                label="OF THIS WEEK'S QUOTA USED"
+                note={`Resets ${formatReset(quota.resetsAt)}`}
+                hot={quota.percentUsed >= 100}
               />
-              <Stat value={formatCents(quota.heldCents)} label="HELD FOR RUNNING WORK" />
             </div>
           )}
           <section className="one-card strong" aria-labelledby="usage-heading">
@@ -489,8 +488,8 @@ export function UsagePage({
             <QuotaPanel view={quota} />
           </section>
           <p className="one-muted portal-footnote">
-            Amounts are cloud cost in US dollars. Held amounts are set aside for work that is still running
-            and return to the quota when the work finishes or the hold expires.
+            The quota covers everything your apps use in a week. It resets on its own and unused quota does
+            not carry over. Work in progress is counted until it finishes.
           </p>
         </>
       )}

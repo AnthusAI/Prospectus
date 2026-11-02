@@ -31,7 +31,8 @@ const ACCOUNT: &str = "00000000-0000-4000-8000-000000000001";
 fn quota_project_accepts_only_its_own_kinds_and_canonical_segments() {
     let root = tempfile::tempdir().unwrap();
     for path in [
-        format!("allowances/{ACCOUNT}.json"),
+        format!("settings/{ACCOUNT}.json"),
+        format!("weeks/{ACCOUNT}/12.json"),
         format!("journal/{}.json", "a".repeat(64)),
     ] {
         assert_eq!(
@@ -47,7 +48,7 @@ fn quota_project_accepts_only_its_own_kinds_and_canonical_segments() {
         format!("profiles/{ACCOUNT}.json"),
         format!("accounts/{ACCOUNT}.json"),
         format!("lines/{ACCOUNT}/7061707972757300.json"),
-        "allowances/not-hex.json".to_owned(),
+        "weeks/not-hex.json".to_owned(),
     ] {
         assert_eq!(
             call(root.path(), "quota", commit(&path))["error"],
@@ -59,7 +60,7 @@ fn quota_project_accepts_only_its_own_kinds_and_canonical_segments() {
             call(
                 root.path(),
                 project,
-                commit(&format!("allowances/{ACCOUNT}.json"))
+                commit(&format!("weeks/{ACCOUNT}/1.json"))
             )["error"],
             "invalid"
         );

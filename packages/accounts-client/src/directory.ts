@@ -1,5 +1,5 @@
 import type { Role, Person, AccountSummary } from "./client.js";
-import type { QuotaView } from "./quota.js";
+import type { OperatorQuotaView, QuotaView } from "./quota.js";
 export interface DirectoryMembership {
   accountId: string;
   personId: string;
@@ -48,7 +48,7 @@ export interface OperatorList {
 export interface OperatorDetail extends OperatorAccount {
   entitlements: AccountSummary["entitlement"][];
   memberships: DirectoryMembership[];
-  quota: QuotaView;
+  quota: OperatorQuotaView;
 }
 export interface OperatorReader {
   operatorList(): Promise<OperatorList>;

@@ -16,6 +16,7 @@ import type { ChallengeSigner } from "./challenge-signer";
 import { publicReaderHandler, type SiteSubjectSecret } from "./site-subjects";
 import { RetiredSiteSubjects } from "./retired-site-subjects";
 import { Quota } from "../quota/service";
+import { unconfiguredRateTable, type RateTableSource } from "../quota/rate-table";
 import { quotaHandler } from "../quota/handler";
 /** Trusted runtime composition, intentionally no AWS configuration, resource
  * provisioning. Deployment bootstrap is separate. File adapters/namespaces are server-owned.
@@ -32,6 +33,7 @@ export function canonicalAccountsHandler(
   creationLimits: AccountCreationLimits = {},
   siteSubjectSecret?: SiteSubjectSecret,
   quotaFiles?: IdentityFiles,
+  quotaRateTable?: RateTableSource,
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),
@@ -50,9 +52,15 @@ export function canonicalAccountsHandler(
     quotaFiles &&
     new Quota(
       quotaFiles,
-      async (accountId) => (await service.read(accountId))?.value ?? null,
+      async (accountId) => {
+        const document = (await service.read(accountId))?.value;
+        return document
+          ? { createdAt: document.account.createdAt, entitlements: document.entitlements }
+          : null;
+      },
       reviewedGrants,
       () => new Date(nowSeconds() * 1000).toISOString(),
+      quotaRateTable ?? unconfiguredRateTable,
     );
   const quotaRoutes = quotaHandler(quota, products);
   const directoryHandler = accountDirectoryHandler(
