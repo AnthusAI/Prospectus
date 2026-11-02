@@ -27,6 +27,7 @@ const registrationFields = [
   "enabled",
   "googleFederation",
   "accountDirectory",
+  "quota",
   "audience",
   "executionDelegation",
 ];
@@ -209,6 +210,12 @@ export function registrations(
     );
     if (item.accountDirectory !== undefined && item.accountDirectory !== true)
       throw new Error("Directory registration must be explicitly true or absent.");
+    if (item.quota !== undefined && item.quota !== true)
+      throw new Error("Quota registration must be explicitly true or absent.");
+    if (item.quota === true && (item.audience !== undefined || isGoogleDirectItem(item)))
+      throw new Error(
+        "Only a server product may hold the quota flag, not a reader site or google-direct product.",
+      );
     if (item.googleFederation !== undefined) {
       requireRules(
         item.googleFederation,

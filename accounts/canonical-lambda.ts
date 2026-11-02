@@ -1,7 +1,12 @@
 import { matchesStringPattern } from "./validation-rules";
 import { resolve } from "node:path";
 import { canonicalAccountsHandler } from "./canonical-handler";
-import { VirtuusS3IdentityFiles, VirtuusS3AccountFiles, type NativeTiming } from "./identity-files";
+import {
+  VirtuusS3IdentityFiles,
+  VirtuusS3AccountFiles,
+  VirtuusS3QuotaFiles,
+  type NativeTiming,
+} from "./identity-files";
 import type { RestEvent } from "./auth";
 import { registrations } from "./registration";
 import grants from "./operator-grants.json";
@@ -15,6 +20,7 @@ import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
 import { GOOGLE_ISSUER, GoogleKeys } from "./google-direct";
 import { challengeSignerFromConfiguration, loginChallengeSignerConfiguration } from "./challenge-signer";
+import { ParameterStoreRateTable, rateTableConfiguration } from "../quota/rate-table";
 import { ParameterStoreSiteSubjectSecret, siteSubjectSecretConfiguration } from "./site-subjects";
 if (process.env.PROSPECTUS_CANONICAL_ACCOUNTS !== "enabled")
   throw new Error("Canonical accounts runtime not enabled.");
@@ -58,14 +64,20 @@ const siteSubjectSecret = process.env.PROSPECTUS_SITE_SUBJECT_SECRET
       siteSubjectSecretConfiguration(JSON.parse(process.env.PROSPECTUS_SITE_SUBJECT_SECRET)),
     )
   : undefined;
+// Without the reviewed parameter every quota call is refused as unavailable: unpriced work is never free.
+const quotaRateTable = process.env.PROSPECTUS_QUOTA_RATE_TABLE
+  ? new ParameterStoreRateTable(rateTableConfiguration(JSON.parse(process.env.PROSPECTUS_QUOTA_RATE_TABLE)))
+  : undefined;
 let activeRequestId = "unavailable";
-const timingForProject = (project: "identities" | "accounts") => (value: NativeTiming) =>
+const timingForProject = (project: "identities" | "accounts" | "quota") => (value: NativeTiming) =>
   console.info(JSON.stringify({ event: "accounts.native", requestId: activeRequestId, project, ...value }));
 let warmIdentities: VirtuusS3IdentityFiles | undefined;
 let warmAccounts: VirtuusS3AccountFiles | undefined;
+let warmQuota: VirtuusS3QuotaFiles | undefined;
 const closeWarmBridges = () => {
   warmIdentities?.close();
   warmAccounts?.close();
+  warmQuota?.close();
 };
 const warmBridges = () => {
   if (!warmIdentities || warmIdentities.isClosed)
@@ -77,7 +89,9 @@ const warmBridges = () => {
     );
   if (!warmAccounts || warmAccounts.isClosed)
     warmAccounts = new VirtuusS3AccountFiles(config, executable, true, timingForProject("accounts"));
-  return { identities: warmIdentities, accounts: warmAccounts };
+  if (!warmQuota || warmQuota.isClosed)
+    warmQuota = new VirtuusS3QuotaFiles(config, executable, true, timingForProject("quota"));
+  return { identities: warmIdentities, accounts: warmAccounts, quota: warmQuota };
 };
 process.once("SIGTERM", closeWarmBridges);
 export const handler = async (
@@ -87,7 +101,7 @@ export const handler = async (
   activeRequestId = matchesStringPattern(context?.awsRequestId, /^[a-f0-9-]{36}$/i)
     ? context!.awsRequestId!
     : "unavailable";
-  const { identities, accounts } = warmBridges();
+  const { identities, accounts, quota } = warmBridges();
   const remaining = context?.getRemainingTimeInMillis?.();
   const deadline =
     remaining === undefined ? undefined : setTimeout(closeWarmBridges, Math.max(1, remaining - 250));
@@ -105,6 +119,8 @@ export const handler = async (
       challengeSigner,
       creationLimits,
       siteSubjectSecret,
+      quota,
+      quotaRateTable,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

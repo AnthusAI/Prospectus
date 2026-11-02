@@ -227,6 +227,20 @@ test(
                     { accountId: id, personId: "synthetic-owner", role: "owner", status: "active" },
                     { accountId: id, personId: "synthetic-revoked", role: "viewer", status: "revoked" },
                   ],
+                  quota: {
+                    state: "set",
+                    percentUsed: 100,
+                    resetsAt: "2030-01-09T00:00:00.000Z",
+                    startedAt: "2030-01-02T00:00:00.000Z",
+                    byProduct: [{ product: "papyrus", percentOfQuota: 100 }],
+                    planId: "example-basic",
+                    allowanceOverrideUnits: null,
+                    allowanceUnits: 1000,
+                    usedUnits: 1040,
+                    heldUnits: 0,
+                    overshootUnits: 40,
+                    tableVersions: ["example-1"],
+                  },
                 },
               }
             : { person, accounts: mode === "empty" ? [] : [account] },
@@ -236,6 +250,8 @@ test(
       await page.getByRole("button", { name: /Synthetic customer account/ }).click();
       await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
+      await expect(page.getByLabel("Internal usage")).toContainText("1040 units");
+      await expect(page.getByText(/The quota is used up/)).toBeVisible();
       await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
       await page
         .getByRole("navigation", { name: "Breadcrumb" })

@@ -30,6 +30,7 @@ All canonical data lives in one private versioned S3 bucket, `prospectus-records
 | Newsletter subscriptions and suppressions | `_virtuus/cyclotron/prospectus/intake-newsletter/` (hashed objects, `kind: "newsletter-subscription"` or `"newsletter-suppression"`) |
 | Identities | `prospectus-central/identities/` and `_virtuus/prospectus-central/identities/` |
 | Accounts | `prospectus-central/accounts/` and `_virtuus/prospectus-central/accounts/` |
+| Weekly quota settings, per-week usage and journal | `prospectus-central/quota/` and `_virtuus/prospectus-central/quota/`, a separate Virtuus project; see [QUOTA.md](QUOTA.md) |
 | Billing (planned, not built) | `prospectus-central/billing/` and `_virtuus/prospectus-central/billing/`, never inside the account document; see [BILLING.md](BILLING.md) |
 
 DynamoDB (`CatalogTableName` output) is a supplemental query catalog for the CRM only. It can be rebuilt from the files; nothing consults it for authorization.
@@ -108,6 +109,8 @@ All are reached with SigV4 from a registered role and are restricted by both the
 | `POST /v1/accounts/{id}/authorize` | Check `console:read`, `console:write`, `members:read` or `members:write` |
 | `GET /v1/account-directory`, `GET /v1/account-directory/{id}` | Read-only view of the caller's accounts across all products, with permitted memberships |
 | `GET /v1/account-directory/operator/accounts[/{id}]` | Read-only listing of every account for reviewed operators |
+| `POST /v1/quota/accounts/{id}/reservations`, `.../reservations/{id}/settle`, `.../release`, `.../usage`, `.../check` | Reserve, settle, release, record usage and check the Account's shared weekly quota, in billable items. Only a product registered with the `quota` flag; see [QUOTA.md](QUOTA.md) |
+| `POST /v1/account-directory/operator/accounts/{id}/quota` | Choose an Account's quota plan or allowance override. Needs the reviewed `accounts:admin:quota` permission |
 
 ### Browser routes
 

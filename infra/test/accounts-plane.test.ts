@@ -23,6 +23,8 @@ function template(
   loginChallengeSigner: LoginChallengeSignerConfiguration = parameterStoreSigner,
   anthusOne = false,
   labVerifier?: { roleArn: string; reviewId: string },
+  quotaProducts: ProductRegistration[] = [],
+  quotaRateTable?: { version: "v1"; parameterName: string },
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -43,6 +45,8 @@ function template(
           consolePairReviewId: "cyclotron-execution-pair-v1-20261015",
           papyrusSites,
           ...(labVerifier ? { labVerifier } : {}),
+          ...(quotaProducts.length ? { quotaProducts } : {}),
+          ...(quotaRateTable ? { quotaRateTable } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -146,6 +150,8 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
         "prospectus-central/accounts/*",
         "_virtuus/prospectus-central/identities/*",
         "_virtuus/prospectus-central/accounts/*",
+        "prospectus-central/quota/*",
+        "_virtuus/prospectus-central/quota/*",
       ],
     },
   });
@@ -801,5 +807,104 @@ test("the lab verifier adds one small statement and twenty deployed-length sites
   assert.ok(
     deployedPolicySize(withVerifier) < 8192,
     `Deployed API resource policy would be ${deployedPolicySize(withVerifier)} bytes`,
+  );
+});
+
+const syntheticQuotaProduct = (name: string): ProductRegistration => ({
+  product: name,
+  roleArn: `arn:aws:iam::111122223333:role/${name}-runtime`,
+  issuer: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticPool",
+  clientIds: ["syntheticclient"],
+  capabilities: ["console:read"],
+  enabled: true,
+  quota: true,
+});
+
+test("quota gives the central runtime its own prefixes and a registered product role exactly the five quota routes", () => {
+  const before = template(true),
+    after = template(true, false, false, [], parameterStoreSigner, false, undefined, [
+      syntheticQuotaProduct("example-renderer"),
+    ]);
+  const runtimePolicies = (Object.values(after.Resources) as any[])
+    .filter((value) => value.Type === "AWS::IAM::Policy")
+    .flatMap((value) => value.Properties.PolicyDocument.Statement);
+  const objectAccess = runtimePolicies.find((statement) =>
+    JSON.stringify(statement.Resource).includes("prospectus-central/quota/*"),
+  );
+  assert.deepEqual([objectAccess.Action].flat().sort(), ["s3:GetObject", "s3:PutObject"]);
+  assert.ok(JSON.stringify(objectAccess.Resource).includes("_virtuus/prospectus-central/quota/*"));
+  const policy = (Object.values(after.Resources) as any[]).find(
+    (value) => value.Type === "AWS::ApiGateway::RestApi",
+  ).Properties.Policy.Statement;
+  const statement = policy.find(
+    (item: any) =>
+      item.Effect === "Allow" && JSON.stringify(item.Principal).includes("example-renderer-runtime"),
+  );
+  assert.deepEqual(statement.Resource, [
+    "execute-api:/api/POST/v1/quota/accounts/*/reservations",
+    "execute-api:/api/POST/v1/quota/accounts/*/reservations/*/settle",
+    "execute-api:/api/POST/v1/quota/accounts/*/reservations/*/release",
+    "execute-api:/api/POST/v1/quota/accounts/*/usage",
+    "execute-api:/api/POST/v1/quota/accounts/*/check",
+  ]);
+  assert.ok(
+    JSON.stringify(policy.find((item: any) => item.Effect === "Deny").Condition).includes(
+      "example-renderer-runtime",
+    ),
+    "the quota role is a permitted principal, and everything else stays denied",
+  );
+  const registered = JSON.stringify(after).includes('\\"quota\\":true');
+  assert.ok(registered, "the product is registered with the quota flag");
+  const deploymentIds = (value: any) =>
+    Object.entries(value.Resources)
+      .filter(([, resource]: any) => resource.Type === "AWS::ApiGateway::Deployment")
+      .map(([id]) => id);
+  assert.notDeepEqual(deploymentIds(after), deploymentIds(before), "the API stage is republished");
+});
+
+test("with no quota product no role may call a quota route", () => {
+  assert.ok(!JSON.stringify(template(true)).includes("/v1/quota"));
+});
+
+test("a quota product must carry the quota flag", () => {
+  assert.throws(
+    () =>
+      template(true, false, false, [], parameterStoreSigner, false, undefined, [
+        { ...syntheticQuotaProduct("example-renderer"), quota: undefined },
+      ]),
+    /quota flag/,
+  );
+});
+
+test("the private quota rate table is one retained create-only parameter, readable only by the central runtime", () => {
+  const parameterName = "/example/quota/rate-table/v1";
+  const before = template(true),
+    after = template(true, false, false, [], parameterStoreSigner, false, undefined, [], {
+      version: "v1",
+      parameterName,
+    });
+  const resources = Object.values(after.Resources) as any[];
+  const custom = resources.filter((value) => value.Type === "Custom::ProspectusQuotaRateTable");
+  assert.equal(custom.length, 1);
+  assert.equal(custom[0].DeletionPolicy, "Retain");
+  assert.deepEqual(custom[0].Properties.ParameterName, parameterName);
+  const statements = resources
+    .filter((value) => value.Type === "AWS::IAM::Policy")
+    .flatMap((value) => value.Properties.PolicyDocument.Statement);
+  const reads = statements.filter((statement) => [statement.Action].flat().includes("ssm:GetParameter"));
+  assert.ok(JSON.stringify(reads).includes(parameterName));
+  const puts = statements.filter((statement) => [statement.Action].flat().includes("ssm:PutParameter"));
+  assert.ok(
+    puts.some(
+      (statement) =>
+        statement.Effect === "Deny" && statement.Condition?.StringEquals?.["ssm:Overwrite"] === "true",
+    ),
+  );
+  const text = JSON.stringify(after);
+  assert.ok(text.includes("PROSPECTUS_QUOTA_RATE_TABLE") && text.includes('Tier: \\"Advanced\\"'));
+  assert.ok(!JSON.stringify(before).includes("PROSPECTUS_QUOTA_RATE_TABLE"), "off unless configured");
+  assert.ok(
+    !text.includes('\\"rates\\"') && !text.includes("weeklyAllowanceUnits"),
+    "no rate or allowance is in the template",
   );
 });

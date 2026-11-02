@@ -8,6 +8,7 @@ import type {
   OperatorList,
 } from "../packages/accounts-client/src/directory";
 import { initials } from "./shared/initials";
+import { QuotaPanel, formatReset, quotaOf } from "./shared/quota";
 import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./shared/ui";
 
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
@@ -415,6 +416,7 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
   const activeApps = detail.entitlements.filter((entitlement) => entitlement.status === "active").length;
   const activeMembers = detail.memberships.filter((member) => member.status === "active");
   const owner = activeMembers.find((member) => member.role === "owner");
+  const quota = quotaOf(detail.quota);
   const created = new Date(detail.createdAt).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -448,14 +450,27 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
             type="button"
             className="one-button"
             disabled
-            title="Not yet available: needs usage metering"
+            title="Allowance is set through the operator quota route, not from this page yet"
           >
             Add quota
           </button>
         </div>
       </section>
       <div className="one-stats">
-        <Stat value={null} label="QUOTA USED" note="Not yet metered" />
+        {quota.state === "set" ? (
+          <Stat
+            value={`${quota.percentUsed}%`}
+            label="QUOTA USED"
+            note={`Resets ${formatReset(quota.resetsAt)}`}
+            hot={quota.percentUsed >= 100}
+          />
+        ) : (
+          <Stat
+            value={null}
+            label="QUOTA USED"
+            note={quota.state === "none" ? "No quota set" : "Could not be read"}
+          />
+        )}
         <Stat value={String(activeMembers.length)} label="ACTIVE MEMBERS" />
         <Stat value={String(activeApps)} label="APPS ON" />
         <Stat value={null} label="SERVICES DEALS" note="Not yet recorded" hot />
@@ -465,12 +480,11 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
           <section className="one-card strong" aria-labelledby="quota-heading">
             <div className="one-section-head">
               <h2 id="quota-heading" className="small">
-                Quota this month
+                Quota
               </h2>
+              <span>One weekly quota shared by every app on this account</span>
             </div>
-            <Unavailable title="Not yet available">
-              <span>Usage by app appears here once Anthus One meters quota.</span>
-            </Unavailable>
+            <QuotaPanel view={quota} />
           </section>
           <section className="one-card strong" aria-labelledby="apps-heading">
             <div className="one-section-head">

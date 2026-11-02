@@ -204,6 +204,7 @@ fn path_belongs_to_project(kind: &str, project: &str) -> bool {
     match project {
         "accounts" => ["accounts", "members"].contains(&kind),
         "billing" => ["profiles", "lines", "journal"].contains(&kind),
+        "quota" => ["settings", "weeks", "journal"].contains(&kind),
         "identities" => [
             "google",
             "aliases",
@@ -247,7 +248,7 @@ fn valid_path(path: &str, prefix: bool, project: &str) -> bool {
 fn validate_request(request: &Request) -> Result<(), StoreError> {
     let project =
         std::env::var("PROSPECTUS_IDENTITY_PROJECT").unwrap_or_else(|_| "identities".into());
-    if !["identities", "accounts", "billing"].contains(&project.as_str())
+    if !["identities", "accounts", "billing", "quota"].contains(&project.as_str())
         || !valid_path(&request.path, request.action == "list", &project)
     {
         return Err(StoreError::Invalid("identity path required".into()));
@@ -416,7 +417,7 @@ fn bucket_owner_is_valid(owner: &str) -> bool {
 
 #[cfg(feature = "aws")]
 fn project_is_supported(project: &str) -> bool {
-    ["identities", "accounts", "billing"].contains(&project)
+    ["identities", "accounts", "billing", "quota"].contains(&project)
 }
 
 #[cfg(feature = "aws")]

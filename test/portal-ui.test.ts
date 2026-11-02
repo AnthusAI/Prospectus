@@ -83,6 +83,17 @@ test(
                   ]
                 : [{ accountId: account.id, personId: "synthetic-person", role: "viewer", status: "active" }],
               membershipsVisible: owner,
+              quota: owner
+                ? {
+                    state: "set",
+                    percentUsed: 37,
+                    resetsAt: "2030-01-09T00:00:00.000Z",
+                    byProduct: [
+                      { product: "papyrus-p-apyr-us", percentOfQuota: 25 },
+                      { product: "cyclotron", percentOfQuota: 12 },
+                    ],
+                  }
+                : { state: "none" },
             },
           },
         });
@@ -133,8 +144,9 @@ test(
         "href",
         "https://lab.cyclotron.anth.us",
       );
-      await expect(page.getByText("This month’s quota")).toBeVisible();
-      await expect(page.getByRole("note").first()).toContainText("Not yet available");
+      await expect(page.getByText("Weekly quota", { exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: /37% of weekly quota used/ })).toBeVisible();
+      await expect(page.getByText(/Resets /).first()).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Workspace" }).locator("option")).toHaveText([
         "Synthetic Harbor",
         "Synthetic Personal",
@@ -159,7 +171,16 @@ test(
       await page.reload();
       await expect(page.locator(".one").first()).toHaveAttribute("data-theme", "dark");
 
-      for (const key of ["Usage", "Plan and billing", "API keys"]) {
+      // Usage shows real quota numbers; an account with no allowance gets an explicit empty state.
+      await nav.getByRole("link", { name: "Usage" }).click();
+      await expect(page.getByRole("heading", { name: "Usage", level: 1 })).toBeVisible();
+      await expect(page.getByText("No weekly quota", { exact: true })).toBeVisible();
+      await page.getByRole("combobox", { name: "Workspace" }).selectOption(ALPHA);
+      await expect(page.getByText("37% used")).toBeVisible();
+      await expect(page.getByRole("cell", { name: "25%" })).toBeVisible();
+      await expect(page.locator("main")).not.toContainText("$");
+
+      for (const key of ["Plan and billing", "API keys"]) {
         await nav.getByRole("link", { name: key }).click();
         await expect(page.getByRole("heading", { name: key, level: 1 })).toBeVisible();
         await expect(page.getByRole("note")).toContainText("Not yet available");
