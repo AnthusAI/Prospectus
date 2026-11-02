@@ -3,6 +3,7 @@ import { SignatureV4 } from "@smithy/signature-v4";
 import { HttpRequest } from "@smithy/protocol-http";
 import { Sha256 } from "@aws-crypto/sha256-js";
 import { AccountsClient, decode } from "./client.js";
+import { QuotaClient } from "./quota.js";
 const GOOGLE_CHALLENGE_PATH = "/v1/identities/google/challenge";
 export interface TemporaryCredentials {
   accessKeyId: string;
@@ -75,6 +76,70 @@ export function serverAccountsClient(options: ServerClientOptions): AccountsClie
         body: payload,
         cache: "no-store",
         redirect: "error",
+      }),
+    );
+  });
+}
+
+export interface QuotaClientOptions {
+  /** The central accounts API, for example the `prospectus-accounts` stage URL. */
+  endpoint: string;
+  region: string;
+  credentials?: () => Promise<TemporaryCredentials>;
+  fetcher?: typeof fetch;
+}
+/**
+ * Server-only client for reserving, settling and releasing quota. The product's IAM role signs every call with SigV4
+ * from runtime temporary credentials; there is no person, token or static key. A refusal, an error, a timeout or an
+ * unexpected response throws, so the only way to learn that spending is allowed is a successful `reserve`.
+ */
+export function serverQuotaClient(options: QuotaClientOptions): QuotaClient {
+  const endpoint = new URL(options.endpoint);
+  if (
+    endpoint.protocol !== "https:" ||
+    endpoint.username ||
+    endpoint.password ||
+    endpoint.search ||
+    endpoint.hash
+  )
+    throw new Error("Use an HTTPS account API endpoint.");
+  const provider = options.credentials ?? defaultProvider();
+  return new QuotaClient(async (path, method, body) => {
+    if (method !== "POST" || !path.startsWith("/v1/quota/"))
+      throw new Error("Only quota routes are signed here.");
+    const credentials = await provider();
+    if (
+      !credentials.sessionToken ||
+      (credentials.expiration && credentials.expiration.getTime() <= Date.now())
+    )
+      throw new Error("Runtime temporary credentials are required; static access keys are refused.");
+    const url = new URL(`${endpoint.toString().replace(/\/$/, "")}${path}`);
+    const payload = JSON.stringify(body ?? {});
+    const signer = new SignatureV4({
+      service: "execute-api",
+      region: options.region,
+      credentials,
+      sha256: Sha256,
+    });
+    const signed = await signer.sign(
+      new HttpRequest({
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: url.port ? Number(url.port) : undefined,
+        path: url.pathname,
+        method,
+        headers: { host: url.host, "content-type": "application/json" },
+        body: payload,
+      }),
+    );
+    return decode(
+      await (options.fetcher ?? fetch)(url, {
+        method,
+        headers: signed.headers,
+        body: payload,
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(10_000),
       }),
     );
   });

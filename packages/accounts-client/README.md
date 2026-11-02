@@ -32,3 +32,20 @@ The server entry uses the AWS SDK default credential provider, requiring a tempo
 Canonical IDs are lowercase UUID-shaped opaque values (Person IDs are random; account creation IDs are deterministic for a replay tuple). A shared Cognito issuer/sub identifies a person across its registered application clients. Email is neither identity nor account authorization. Existing claimed people are never silently merged. Canonical directory-backed legacy linking is denied; cross-authority migration/merging is not implemented.
 
 This client does not bill, charge, send invitations or email, or grant CRM membership. Activation of the central service is controlled by `accounts/deployment.json`; see docs/OPERATIONS.md. See the repository's docs/ARCHITECTURE.md and docs/SECURITY.md. The read-only directory uses directoryList()/directoryDetail(id) and the /directory DTO export; it is available only to explicitly registered directory runtimes and never grants product authorization.
+
+## Quota (server only)
+
+A product's server role reserves, settles and releases the account's shared cloud-cost quota with `serverQuotaClient` from `/server`. Amounts are integer US cents, and one allowance covers every app on the account. The role signs each call with SigV4 from runtime temporary credentials; no person or token is involved, and the product must be registered with the `quota` flag.
+
+```ts
+import { serverQuotaClient } from '@anthus/prospectus-accounts-client/server';
+const quota = serverQuotaClient({ endpoint: process.env.PROSPECTUS_ACCOUNTS_URL!, region: 'us-east-1' });
+const operationId = crypto.randomUUID(); // keep it: it is the reservation ID, and repeating the call is safe
+const reservation = await quota.reserve(accountId, { operationId, maxCents: 250, expiresInSeconds: 3600 });
+// ... run the job only now; any throw above means "do not spend" ...
+await quota.settle(accountId, reservation.reservationId, { operationId: crypto.randomUUID(), actualCents: 180 });
+// or, if the job never ran:
+await quota.release(accountId, reservation.reservationId, { operationId: crypto.randomUUID() });
+```
+
+Every refusal, store failure, timeout or unexpected response throws. A settle above the reservation, or after it expired, is recorded only with `allowOverage: true`. Retry an uncertain call with the same operation ID and the same input; the repeat returns the original result.

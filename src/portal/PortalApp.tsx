@@ -12,7 +12,8 @@ import {
 import type { DirectoryDetail, DirectoryList } from "../../packages/accounts-client/src/directory";
 import { BrandMark, Eyebrow, Wordmark } from "../shared/ui";
 import { PortalShell, PORTAL_PAGES, portalHref, readPortalLocation, type PortalPage } from "./PortalShell";
-import { AppsPage, HomePage, PeoplePage, SettingsPage, UnavailablePage } from "./pages";
+import { AppsPage, HomePage, PeoplePage, SettingsPage, UnavailablePage, UsagePage } from "./pages";
+import { quotaOf } from "../shared/quota";
 import { usePortalTheme } from "./theme";
 import { WorkspaceUnavailableNote } from "./RequestAccess";
 
@@ -248,6 +249,7 @@ export function PortalApp() {
   else if (page === "people") content = <PeoplePage detail={detail} personId={list.person.id} />;
   else if (page === "settings")
     content = <SettingsPage workspace={workspace} detail={detail} theme={theme} onTheme={setTheme} />;
+  else if (page === "usage") content = <UsagePage workspace={workspace} detail={detail} />;
   else content = <UnavailablePage page={page} />;
 
   return (
@@ -256,6 +258,7 @@ export function PortalApp() {
       page={page}
       workspaces={workspaces}
       workspace={workspace}
+      quota={detail ? quotaOf(detail.quota) : undefined}
       personId={list.person.id}
       onNavigate={(next) => navigate(next, workspace.id)}
       onWorkspace={(id) => navigate(page, id)}

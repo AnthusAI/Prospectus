@@ -83,6 +83,21 @@ test(
                   ]
                 : [{ accountId: account.id, personId: "synthetic-person", role: "viewer", status: "active" }],
               membershipsVisible: owner,
+              quota: owner
+                ? {
+                    state: "set",
+                    unit: "usd-cents",
+                    allowanceCents: 5000,
+                    usedCents: 1250,
+                    heldCents: 400,
+                    overageCents: 0,
+                    remainingCents: 3350,
+                    byProduct: [
+                      { product: "papyrus-p-apyr-us", usedCents: 1250, heldCents: 0 },
+                      { product: "cyclotron", usedCents: 0, heldCents: 400 },
+                    ],
+                  }
+                : { state: "none" },
             },
           },
         });
@@ -133,8 +148,13 @@ test(
         "href",
         "https://lab.cyclotron.anth.us",
       );
-      await expect(page.getByText("This month’s quota")).toBeVisible();
-      await expect(page.getByRole("note").first()).toContainText("Not yet available");
+      await expect(
+        page.getByRole("heading", { name: "Quota" }).or(page.getByText("Quota", { exact: true })),
+      ).toBeVisible();
+      await expect(page.getByRole("link", { name: /\$33\.50 quota left/ })).toBeVisible();
+      await expect(
+        page.getByRole("group", { name: "Quota figures" }).or(page.getByLabel("Quota figures")),
+      ).toContainText("$50.00");
       await expect(page.getByRole("combobox", { name: "Workspace" }).locator("option")).toHaveText([
         "Synthetic Harbor",
         "Synthetic Personal",
@@ -159,7 +179,15 @@ test(
       await page.reload();
       await expect(page.locator(".one").first()).toHaveAttribute("data-theme", "dark");
 
-      for (const key of ["Usage", "Plan and billing", "API keys"]) {
+      // Usage shows real quota numbers; an account with no allowance gets an explicit empty state.
+      await nav.getByRole("link", { name: "Usage" }).click();
+      await expect(page.getByRole("heading", { name: "Usage", level: 1 })).toBeVisible();
+      await expect(page.getByText("No quota allowance")).toBeVisible();
+      await page.getByRole("combobox", { name: "Workspace" }).selectOption(ALPHA);
+      await expect(page.getByLabel("Quota figures")).toContainText("$33.50");
+      await expect(page.getByRole("cell", { name: "$12.50" })).toBeVisible();
+
+      for (const key of ["Plan and billing", "API keys"]) {
         await nav.getByRole("link", { name: key }).click();
         await expect(page.getByRole("heading", { name: key, level: 1 })).toBeVisible();
         await expect(page.getByRole("note")).toContainText("Not yet available");

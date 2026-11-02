@@ -227,6 +227,16 @@ test(
                     { accountId: id, personId: "synthetic-owner", role: "owner", status: "active" },
                     { accountId: id, personId: "synthetic-revoked", role: "viewer", status: "revoked" },
                   ],
+                  quota: {
+                    state: "set",
+                    unit: "usd-cents",
+                    allowanceCents: 10000,
+                    usedCents: 2500,
+                    heldCents: 500,
+                    overageCents: 0,
+                    remainingCents: 7000,
+                    byProduct: [{ product: "papyrus", usedCents: 2500, heldCents: 500 }],
+                  },
                 },
               }
             : { person, accounts: mode === "empty" ? [] : [account] },
@@ -236,6 +246,7 @@ test(
       await page.getByRole("button", { name: /Synthetic customer account/ }).click();
       await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
+      await expect(page.getByLabel("Quota figures")).toContainText("$70.00");
       await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
       await page
         .getByRole("navigation", { name: "Breadcrumb" })

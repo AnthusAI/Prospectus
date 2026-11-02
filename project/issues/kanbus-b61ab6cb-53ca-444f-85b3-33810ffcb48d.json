@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-b61ab6cb-53ca-444f-85b3-33810ffcb48d",
+  "title": "Make the operator write routes reachable from the directory BFF",
+  "description": "The directory BFF API Gateway policy allows only GET on the account directory, so the operator entitlement and quota grant routes cannot be called. Needs the held policy change plus a BFF route; owner approval required.",
+  "type": "task",
+  "status": "open",
+  "priority": 3,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-11-02T21:40:16.358395Z",
+  "updated_at": "2026-11-02T21:40:16.358418Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

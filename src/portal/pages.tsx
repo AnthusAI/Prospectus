@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { DirectoryAccount, DirectoryDetail } from "../../packages/accounts-client/src/directory";
 import { ANTHUS_APPS, appForProduct, productUrl } from "../apps";
 import { initials } from "../shared/initials";
+import { QuotaPanel, committedShare, formatCents, quotaOf } from "../shared/quota";
 import { Eyebrow, Icon, Stat, Unavailable } from "../shared/ui";
 import { PORTAL_PAGES, type PortalPage } from "./PortalShell";
 import type { PortalTheme } from "./theme";
@@ -13,6 +14,11 @@ function greeting(): string {
 
 function hostOf(url: string): string {
   return new URL(url).host;
+}
+
+function quotaShare(detail: DirectoryDetail): number {
+  const quota = quotaOf(detail.quota);
+  return quota.state === "set" ? committedShare(quota) : 0;
 }
 
 function Loading() {
@@ -39,15 +45,21 @@ export function HomePage({
           <h1>{greeting()}</h1>
         </div>
         <div className="one-card cool portal-quota-card">
-          <div className="portal-quota-ring" aria-hidden="true" />
+          <div
+            className="portal-quota-ring"
+            style={{ "--used": detail ? quotaShare(detail) : 0 } as CSSProperties}
+            aria-hidden="true"
+          />
           <div className="one-cellstack">
-            <strong className="portal-quota-title">This month’s quota</strong>
-            <Unavailable title="Not yet available">
-              <span>
-                One quota shared by every app will show here, split by app, with a heads-up before you run
-                out. Anthus One does not meter usage yet.
-              </span>
-            </Unavailable>
+            <strong className="portal-quota-title">Quota</strong>
+            {!detail ? (
+              <Loading />
+            ) : (
+              <>
+                <span className="one-muted">One allowance shared by every app in this workspace.</span>
+                <QuotaPanel view={quotaOf(detail.quota)} />
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -418,8 +430,6 @@ export function SettingsPage({
 }
 
 const UNAVAILABLE_TEXT: Partial<Record<PortalPage, string>> = {
-  usage:
-    "Usage by app and by person, against one monthly quota, will appear here once Anthus One meters usage.",
   plans: "Your plan, invoices and extra usage will be managed here once Anthus One records billing.",
   keys: "Keys for calling Anthus apps from your own systems will be managed here.",
 };
@@ -436,6 +446,54 @@ export function UnavailablePage({ page }: { page: PortalPage }) {
       <Unavailable title="Not yet available">
         <span>{UNAVAILABLE_TEXT[page]}</span>
       </Unavailable>
+    </main>
+  );
+}
+
+export function UsagePage({
+  workspace,
+  detail,
+}: {
+  workspace: DirectoryAccount;
+  detail: DirectoryDetail | null;
+}) {
+  const quota = detail ? quotaOf(detail.quota) : null;
+  return (
+    <main className="one-main narrow" aria-label="Usage">
+      <div className="one-pagehead">
+        <div>
+          <Eyebrow>•••••• 01 / Usage</Eyebrow>
+          <h1>Usage</h1>
+          <p>The quota shared by every app in {workspace.name}, and what each app has used.</p>
+        </div>
+      </div>
+      {!quota ? (
+        <Loading />
+      ) : (
+        <>
+          {quota.state === "set" && (
+            <div className="one-stats">
+              <Stat value={formatCents(quota.remainingCents)} label="REMAINING" />
+              <Stat
+                value={formatCents(quota.usedCents)}
+                label="USED"
+                note={`of ${formatCents(quota.allowanceCents)}`}
+              />
+              <Stat value={formatCents(quota.heldCents)} label="HELD FOR RUNNING WORK" />
+            </div>
+          )}
+          <section className="one-card strong" aria-labelledby="usage-heading">
+            <h2 id="usage-heading" className="portal-card-title">
+              Quota
+            </h2>
+            <QuotaPanel view={quota} />
+          </section>
+          <p className="one-muted portal-footnote">
+            Amounts are cloud cost in US dollars. Held amounts are set aside for work that is still running
+            and return to the quota when the work finishes or the hold expires.
+          </p>
+        </>
+      )}
     </main>
   );
 }

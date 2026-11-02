@@ -1,11 +1,13 @@
 import { context, type KeyResolver, type RestEvent } from "./auth";
 import type { ValidatedRegistrations } from "./registration";
 import { isGoogleDirect } from "./google-direct";
-import { jsonResponse } from "./request";
+import { jsonResponse, parseJsonRequest } from "./request";
 import { logRefusal } from "./refusal-log";
 import { AccountsError, fail, roleOperations } from "./model";
 import { DurableAccountsService, type AccountDocument } from "./durable-accounts";
 import { canReadOperatorDirectory, hasOperatorPermission, type OperatorGrant } from "./operator-policy";
+import type { Quota } from "../quota/service";
+import type { QuotaView } from "../quota/model";
 import type {
   OperatorAccount,
   OperatorDetail,
@@ -21,7 +23,10 @@ export function accountDirectoryHandler(
   keys: KeyResolver,
   clock = () => Date.now() / 1000,
   grants: readonly OperatorGrant[] = [],
+  quota?: Quota,
 ) {
+  const view = (accountId: string): Promise<QuotaView> =>
+    quota ? quota.view(accountId) : Promise.resolve({ state: "unavailable" });
   const summary = (document: AccountDocument, personId: string): DirectoryAccount | null => {
     const membership = document.memberships[personId];
     if (!membership || membership.status !== "active") return null;
@@ -52,6 +57,18 @@ export function accountDirectoryHandler(
       const product = products.find((item) => item.enabled && item.product === authenticated.product);
       if (product && isGoogleDirect(product) && event.path.startsWith("/v1/account-directory/operator/"))
         fail(403, "operator_forbidden", "This product cannot use operator routes.");
+      const quotaRoute = /^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})\/quota$/.exec(
+        event.path,
+      );
+      if (quotaRoute && event.httpMethod === "POST") {
+        const operator = await service.person(authenticated);
+        if (!quota) fail(503, "quota_unavailable", "Quota is unavailable.");
+        const { body } = parseJsonRequest(event, 2000);
+        if (Object.keys(body).some((key) => !["operationId", "allowanceCents"].includes(key)))
+          fail(400, "unknown_fields", "Unsupported quota fields.");
+        const granted = await quota.grant(authenticated, quotaRoute[1], body);
+        return jsonResponse(200, { person: operator, allowance: granted.result });
+      }
       const entitlementRoute =
         /^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})\/entitlements\/([a-z][a-z0-9-]{0,39})$/.exec(
           event.path,
@@ -132,6 +149,7 @@ export function accountDirectoryHandler(
           ...operatorSummary(stored.value),
           entitlements: structuredClone(Object.values(stored.value.entitlements)),
           memberships: structuredClone(Object.values(stored.value.memberships)),
+          quota: await view(stored.value.account.id),
         };
         return jsonResponse(200, { account });
       }
@@ -166,6 +184,7 @@ export function accountDirectoryHandler(
             : [stored.value.memberships[person.id]],
         ),
         membershipsVisible,
+        quota: await view(stored.value.account.id),
       };
       return jsonResponse(200, { account: detail });
     } catch (error) {

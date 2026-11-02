@@ -17,6 +17,10 @@ const LOGGED_ROUTE_TEMPLATES = new Set([
   "/v1/account-directory/operator/accounts",
   "/v1/account-directory/operator/accounts/{account}",
   "/v1/account-directory/operator/accounts/{account}/entitlements/{product}",
+  "/v1/account-directory/operator/accounts/{account}/quota",
+  "/v1/quota/accounts/{account}/reservations",
+  "/v1/quota/accounts/{account}/reservations/{account}/settle",
+  "/v1/quota/accounts/{account}/reservations/{account}/release",
 ]);
 const ACCOUNT_ID_SEGMENT_PATTERN = /^[a-f0-9-]{36}$/i;
 const HTTP_METHOD_PATTERN = /^[A-Z]{3,7}$/;

@@ -1,0 +1,20 @@
+{
+  "id": "kanbus-88c6f55b-be6d-4bdf-b465-7de47bfa1687",
+  "title": "Register Babulus as a quota product",
+  "description": "Follow-up to kanbus-c56402. Supply the Babulus role to AccountsPlaneOptions.quotaProducts with quota: true, grant the Babulus control plane role execute-api:Invoke on the three quota routes, and operator-grant the first allowance. Needs the owner's approval for the new IAM and a Prospectus coordination before any merge to main.",
+  "type": "task",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-11-02T21:40:16.338082Z",
+  "updated_at": "2026-11-02T21:40:16.338110Z",
+  "closed_at": null,
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

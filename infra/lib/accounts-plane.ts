@@ -11,6 +11,7 @@ import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
 import { papyrusSiteRoutes } from "../../accounts/papyrus-sites";
 import { labVerifierRoutes, type LabVerifierEntry } from "../../accounts/lab-verifier";
+import { quotaRoutes } from "../../quota/routes";
 import type { SiteSubjectSecretConfiguration } from "../../accounts/site-subjects";
 import { SITE_SUBJECT_SECRET_INITIALIZER_SOURCE } from "./site-subject-secret";
 export interface AccountsPlaneOptions {
@@ -32,6 +33,9 @@ export interface AccountsPlaneOptions {
   /** The v1 HMAC secret behind public-reader site subjects: an SSM SecureString created once by a create-only custom
    * resource and read by the central runtime. Absent: reader sites get 503 and no site subjects exist. */
   siteSubjectSecret?: SiteSubjectSecretConfiguration;
+  /** Reviewed product registrations that carry the `quota` flag. Each is registered with the central service and its
+   * role may invoke only the three quota routes. Absent: no product can reserve quota. */
+  quotaProducts?: readonly ProductRegistration[];
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
@@ -63,6 +67,9 @@ export class AccountsPlane extends Construct {
       "prospectus-central/accounts/*",
       "_virtuus/prospectus-central/identities/*",
       "_virtuus/prospectus-central/accounts/*",
+      // Quota is its own Virtuus project: allowances and a journal, apart from accounts and billing.
+      "prospectus-central/quota/*",
+      "_virtuus/prospectus-central/quota/*",
     ];
     runtime.addToPolicy(
       new iam.PolicyStatement({
@@ -156,6 +163,10 @@ export class AccountsPlane extends Construct {
       },
     };
     if (portalRegistration) products.push(portalRegistration);
+    const quotaProducts = options.quotaProducts ?? [];
+    if (quotaProducts.some((product) => product.quota !== true))
+      throw new Error("Quota products must carry the quota flag.");
+    products.push(...quotaProducts);
     const signer = options.loginChallengeSigner;
     let challengeSignerEnvironment: Record<string, string>;
     if (signer.kind === "kms") {
@@ -381,6 +392,17 @@ export class AccountsPlane extends Construct {
       );
       api.latestDeployment?.addToLogicalId({ anthusOne: options.anthusOne!.federationReviewId });
     }
+    const quotaRoles = quotaProducts.map((product) => product.roleArn);
+    if (quotaRoles.length) {
+      api.addToResourcePolicy(
+        new iam.PolicyStatement({
+          principals: quotaRoles.map((role) => new iam.ArnPrincipal(role)),
+          actions: ["execute-api:Invoke"],
+          resources: quotaRoutes.map((route) => `execute-api:/api/${route}`),
+        }),
+      );
+      api.latestDeployment?.addToLogicalId({ quotaRoles });
+    }
     const labVerifierRole = options.labVerifier?.roleArn;
     if (labVerifierRole) {
       if (!papyrusSiteRoles.length)
@@ -412,6 +434,7 @@ export class AccountsPlane extends Construct {
       ...(portalRole ? [portalRole.roleArn] : []),
       ...(options.consolePairEnabled ? [consoleBff, consoleWorker] : []),
       ...papyrusSiteRoles,
+      ...quotaRoles,
       ...(labVerifierRole ? [labVerifierRole] : []),
     ];
     api.addToResourcePolicy(
