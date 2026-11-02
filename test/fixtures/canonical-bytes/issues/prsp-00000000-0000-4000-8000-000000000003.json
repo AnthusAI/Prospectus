@@ -18,7 +18,11 @@
     "company": "Unknown-key Co"
   },
   "written_by_newer_cli": {
-    "nested": [1, 2, 3],
+    "nested": [
+      1,
+      2,
+      3
+    ],
     "flag": true
   }
 }
