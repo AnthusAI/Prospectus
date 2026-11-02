@@ -11,6 +11,7 @@ import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
 import { papyrusSiteRoutes } from "../../accounts/papyrus-sites";
 import { labVerifierRoutes, type LabVerifierEntry } from "../../accounts/lab-verifier";
+import { babulusRoutes } from "../../accounts/babulus";
 import { quotaRoutes } from "../../quota/routes";
 import type { SiteSubjectSecretConfiguration } from "../../accounts/site-subjects";
 import {
@@ -40,6 +41,9 @@ export interface AccountsPlaneOptions {
   /** Reviewed product registrations that carry the `quota` flag. Each is registered with the central service and its
    * role may invoke only the three quota routes. Absent: no product can reserve quota. */
   quotaProducts?: readonly ProductRegistration[];
+  /** The Babulus product (see accounts/babulus.ts): a Google-only Cognito product with the quota flag. Its role gets
+   * the identity and account routes plus the five quota routes. Absent: Babulus is not registered. */
+  babulus?: ProductRegistration;
   /** The private quota rate table: an SSM SecureString created once with a placeholder, whose real value operators set
    * outside Git. Absent: every quota call is refused as unavailable. */
   quotaRateTable?: RateTableConfiguration;
@@ -174,6 +178,11 @@ export class AccountsPlane extends Construct {
     if (quotaProducts.some((product) => product.quota !== true))
       throw new Error("Quota products must carry the quota flag.");
     products.push(...quotaProducts);
+    const babulus = options.babulus;
+    if (babulus) {
+      if (babulus.quota !== true) throw new Error("Quota products must carry the quota flag.");
+      products.push(babulus);
+    }
     const signer = options.loginChallengeSigner;
     let challengeSignerEnvironment: Record<string, string>;
     if (signer.kind === "kms") {
@@ -460,7 +469,17 @@ export class AccountsPlane extends Construct {
       );
       api.latestDeployment?.addToLogicalId({ anthusOne: options.anthusOne!.federationReviewId });
     }
-    const quotaRoles = quotaProducts.map((product) => product.roleArn);
+    if (babulus) {
+      api.addToResourcePolicy(
+        new iam.PolicyStatement({
+          principals: [new iam.ArnPrincipal(babulus.roleArn)],
+          actions: ["execute-api:Invoke"],
+          resources: babulusRoutes.map((route) => `execute-api:/api/${route}`),
+        }),
+      );
+      api.latestDeployment?.addToLogicalId({ babulusRole: babulus.roleArn });
+    }
+    const quotaRoles = [...quotaProducts, ...(babulus ? [babulus] : [])].map((product) => product.roleArn);
     if (quotaRoles.length) {
       api.addToResourcePolicy(
         new iam.PolicyStatement({
