@@ -7,6 +7,7 @@ import { Template } from "aws-cdk-lib/assertions";
 import { ProspectusBackend } from "../lib/prospectus-backend";
 import { PORTAL_GOOGLE_CLIENT_ID } from "../lib/scope";
 import { unscopableRoutesWithScopes } from "./route-auth";
+import { babulusRegistration } from "../../accounts/babulus";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
@@ -25,6 +26,7 @@ function template(
   labVerifier?: { roleArn: string; reviewId: string },
   quotaProducts: ProductRegistration[] = [],
   quotaRateTable?: { version: "v1"; parameterName: string },
+  babulus?: ProductRegistration,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -47,6 +49,7 @@ function template(
           ...(labVerifier ? { labVerifier } : {}),
           ...(quotaProducts.length ? { quotaProducts } : {}),
           ...(quotaRateTable ? { quotaRateTable } : {}),
+          ...(babulus ? { babulus } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -907,4 +910,52 @@ test("the private quota rate table is one retained create-only parameter, readab
     !text.includes('\\"rates\\"') && !text.includes("weeklyAllowanceUnits"),
     "no rate or allowance is in the template",
   );
+});
+
+const syntheticBabulus = () =>
+  babulusRegistration({
+    roleArn: "arn:aws:iam::111122223333:role/synthetic-babulus-runtime",
+    issuer: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticBabulus",
+    clientId: "syntheticbabulusclient",
+    federationReviewId: "synthetic-babulus-review-v1",
+  });
+
+test("babulus is registered with the quota flag and its role gets the account routes and the five quota routes", () => {
+  const after = template(
+    true,
+    false,
+    false,
+    [],
+    parameterStoreSigner,
+    false,
+    undefined,
+    [],
+    undefined,
+    syntheticBabulus(),
+  );
+  const policy = (Object.values(after.Resources) as any[]).find(
+    (value) => value.Type === "AWS::ApiGateway::RestApi",
+  ).Properties.Policy.Statement;
+  const statements = policy.filter(
+    (item: any) =>
+      item.Effect === "Allow" && JSON.stringify(item.Principal).includes("synthetic-babulus-runtime"),
+  );
+  const resources = statements.flatMap((item: any) => item.Resource);
+  assert.ok(resources.includes("execute-api:/api/POST/v1/accounts/*/authorize"));
+  assert.ok(resources.includes("execute-api:/api/POST/v1/quota/accounts/*/reservations"));
+  assert.ok(resources.includes("execute-api:/api/POST/v1/quota/accounts/*/check"));
+  assert.ok(!resources.includes("execute-api:/api/POST/v1/accounts"), "Babulus cannot create accounts");
+  assert.ok(!resources.some((value: string) => value.includes("memberships")), "or change memberships");
+  const text = JSON.stringify(after);
+  assert.ok(text.includes('\\"product\\":\\"babulus\\"') && text.includes('\\"quota\\":true'));
+  assert.ok(
+    JSON.stringify(policy.find((item: any) => item.Effect === "Deny").Condition).includes(
+      "synthetic-babulus-runtime",
+    ),
+  );
+});
+
+test("without the babulus option nothing about Babulus is registered", () => {
+  const text = JSON.stringify(template(true));
+  assert.ok(!text.includes("babulus"));
 });

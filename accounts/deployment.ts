@@ -4,6 +4,7 @@ import { papyrusSiteRegistrations } from "./papyrus-sites";
 import { reviewedLabVerifierEntry } from "./lab-verifier";
 import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { loginChallengeSignerConfiguration } from "./challenge-signer";
+import { babulusFromEnvironment } from "./babulus";
 import { siteSubjectSecretConfiguration } from "./site-subjects";
 import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
 import { PORTAL_GOOGLE_CLIENT_ID } from "../infra/lib/scope";
@@ -54,6 +55,7 @@ export function accountsDeployment() {
     consoleConfig.pairReviewId !== "cyclotron-execution-pair-v1-20261015"
   )
     throw new Error("Console activation requires the exact reviewed client and principal pair.");
+  const babulus = babulusFromEnvironment();
   return {
     consoleClientEnabled: consoleConfig.clientEnabled,
     consolePairEnabled: consoleConfig.pairEnabled,
@@ -66,6 +68,7 @@ export function accountsDeployment() {
     labVerifier: reviewedLabVerifierEntry(
       JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
     ),
+    ...(babulus ? { babulus } : {}),
     papyrusSites: papyrusSiteRegistrations(
       JSON.parse(readFileSync(new URL("./papyrus-sites.json", import.meta.url), "utf8")),
     ),
