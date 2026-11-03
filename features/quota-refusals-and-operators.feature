@@ -1,4 +1,4 @@
-Feature: Quota fails closed, operators set plans, and customers see one number
+Feature: Quota fails closed, admins set plans, and customers see one number
   The quota routes refuse anything that is not a registered, entitled product asking about a known Account.
   Operators choose a plan or a per-Account override. The CRM and portal show a percent used, when it resets, and
   clear empty and unavailable states, and never any money. See docs/QUOTA.md.
@@ -38,19 +38,24 @@ Feature: Quota fails closed, operators set plans, and customers see one number
     When a request carries an unknown field, uses a method other than POST, or names an unknown route
     Then it is refused and nothing is written
 
-  Scenario: An operator chooses a plan or an override
-    Given an operator with the reviewed accounts:admin:quota permission
+  Scenario: An admin chooses a plan or an override
+    Given an admin with the reviewed accounts:admin:quota permission
     When they choose a plan from the table, or a per-Account weekly allowance override, with an operation ID
     Then the Account's allowance follows, with the override winning over the plan
     And null clears either one
     And the journal records the operator's reviewed grant ID
     And repeating the call with the same operation ID changes nothing, and reusing it with other input is refused
 
-  Scenario: Only the reviewed quota permission may change a plan
+  Scenario: Only admins with the reviewed quota permission may change a plan
     Given a person with operator read access only, with only the entitlements permission, or an Account owner
     When they try to change a plan or override
     Then the request is refused
     And unknown plans, malformed plans, negative or fractional overrides, an empty change and unknown fields are refused
+
+  Scenario: Nothing in the portal or CRM edits quotas, plans or rates
+    Then neither surface has a control to add quota, change a plan, or edit a rate or allowance
+    And quota changes are made only through the admin route
+    And rates and allowances are written programmatically by a deployment, not by anyone by hand
 
   Scenario: The portal shows one number and no money
     Given a signed-in member of an Account with a weekly quota

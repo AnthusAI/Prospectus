@@ -10,7 +10,8 @@ export const quotaOf = <T extends QuotaView | OperatorQuotaView>(
   view: T | undefined,
 ): T | { state: "unavailable" } => view ?? { state: "unavailable" };
 
-/** When the week's quota resets, for people: a date and time in their own time zone. */
+/** When the week's quota resets, for people: the instant shown in the viewer's own time zone, with the zone named so
+ * nobody has to guess (the reset is one fixed moment for every Account, Saturday noon New York time). */
 export function formatReset(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
@@ -21,6 +22,7 @@ export function formatReset(iso: string): string {
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
+        timeZoneName: "short",
       });
 }
 

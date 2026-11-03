@@ -54,9 +54,7 @@ export function canonicalAccountsHandler(
       quotaFiles,
       async (accountId) => {
         const document = (await service.read(accountId))?.value;
-        return document
-          ? { createdAt: document.account.createdAt, entitlements: document.entitlements }
-          : null;
+        return document ? { entitlements: document.entitlements } : null;
       },
       reviewedGrants,
       () => new Date(nowSeconds() * 1000).toISOString(),

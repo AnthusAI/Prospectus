@@ -91,7 +91,8 @@ export const NEWSLETTER_TOKEN_SECRET_INITIALIZER_SOURCE = createOnlySecretInitia
  * unparseable, so quota is unavailable until an operator sets the real table outside Git. */
 export const QUOTA_RATE_TABLE_INITIALIZER_SOURCE = createOnlySecretInitializerSource({
   label: "quota rate table",
-  description: "Prospectus quota rate table v1. Operators set the value, which is private and never in Git.",
+  description:
+    "Prospectus quota rate table v1. A deployment writes the value from private config, never by hand, and it is never in Git.",
   fallbackId: "quota-rate-table",
   initialValue: '{"version":"unset"}',
   tier: "Advanced",
