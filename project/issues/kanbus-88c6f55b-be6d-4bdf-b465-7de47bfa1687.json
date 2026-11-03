@@ -10,9 +10,24 @@
   "parent": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "8e546311-f204-4823-90d1-d4769c3a8d45",
+      "author": "home",
+      "text": "PR opened registering babulus: accounts/babulus.ts (options validated, values from PROSPECTUS_BABULUS_* environment, none in Git), AccountsPlane 'babulus' option (product registration, account/authorize routes, five quota routes, no account creation), Anthus apps entry, specs and tests. Awaiting owner approval of the role and client values; not deployed.",
+      "created_at": "2026-11-02T23:36:38.429735Z",
+      "comment_type": "default"
+    },
+    {
+      "id": "b302f3d9-509b-4e30-8d7d-1320045e7485",
+      "author": "home",
+      "text": "PR opened registering babulus: accounts/babulus.ts (options validated, values from PROSPECTUS_BABULUS_* environment, none in Git), AccountsPlane 'babulus' option (product registration, account/authorize routes, five quota routes, no account creation), apps entry, specs and tests. Awaiting owner approval of the role and client values; not deployed.",
+      "created_at": "2026-11-02T23:36:45.760133Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-11-02T21:40:16.338082Z",
-  "updated_at": "2026-11-02T21:40:16.338110Z",
+  "updated_at": "2026-11-02T23:36:45.760358Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,
