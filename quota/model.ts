@@ -1,4 +1,5 @@
 import { AccountsError } from "../accounts/model";
+import { SHORTEST_WEEK_MS } from "./week";
 
 /** Quota refusals reuse the accounts error shape, so the refusal log records them by status and code only. */
 export class QuotaError extends AccountsError {}
@@ -11,10 +12,9 @@ export type { BillableItem, OperatorQuotaView, QuotaView } from "../packages/acc
 export const MAXIMUM_AUDIT_ENTRIES = 32;
 /** One week's record is one 64 KiB document. Expired holds are dropped to make room. */
 export const DOCUMENT_BYTE_BUDGET = 65536;
-export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-/** A hold is read from its own week and the next, so it may not outlive a week. */
-export const MAXIMUM_HOLD_SECONDS_LIMIT = WEEK_MS / 1000;
-/** Longest lifetime a product may ask for unless a deployment configures another (never above a week). */
+/** A hold is read from its own week and the next, so it must be shorter than the shortest week (167 hours). */
+export const MAXIMUM_HOLD_SECONDS_LIMIT = SHORTEST_WEEK_MS / 1000;
+/** Longest lifetime a product may ask for unless a deployment configures another (never above the shortest week). */
 export const DEFAULT_MAXIMUM_HOLD_SECONDS = 24 * 60 * 60;
 
 export const quotaActions = [
@@ -73,7 +73,7 @@ export interface QuotaWeek {
   version: 1;
   kind: "quota-week";
   accountId: string;
-  /** Whole weeks since the account was created. */
+  /** The week start as a date number: YYYYMMDD of its Saturday in the quota time zone. */
   week: number;
   startsAt: string;
   endsAt: string;

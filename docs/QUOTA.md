@@ -7,7 +7,7 @@ Billing is separate. Quota says how much an Account may use per week; billing (s
 ## Principles
 
 - **One number for customers.** Customers and products never see dollars, rates, the formula, units or per-item amounts. The portal shows percent used, the reset time and each app's share of the quota in percent.
-- **The formula is private and lives outside Git.** This repository is public and holds only the engine. The rate table (the rates and each plan's weekly allowance) is the value of an SSM SecureString parameter that infrastructure creates once with a placeholder and operators then set. Tests, fixtures, specs and docs use a made-up table.
+- **The formula is private and lives outside Git.** This repository is public and holds only the engine. The rate table (the rates and each plan's weekly allowance) is the value of an SSM SecureString parameter that infrastructure creates once with a placeholder and a deployment then writes from private configuration. Tests, fixtures, specs and docs use a made-up table.
 - **Fail closed.** An unknown Account, a product the Account is not entitled to, no allowance, no table, an unparseable table, an unknown item kind, a store that cannot be read or written: all are refusals or errors, never success and never free. The server client throws on all of them and on any response it does not recognize.
 - **Integers only.** Usage units are whole numbers. A rate is `units` per `per` of the item's own quantity, rounded up per item, computed without floating point.
 - **Conditional writes and retry-safe operation IDs.** Each week's record is one document written with a revision compare-and-set. Every mutating call carries a client-generated UUID; repeating it returns the original result and writes nothing again, and the same ID with a different request is `409 idempotency_conflict`.
@@ -15,9 +15,11 @@ Billing is separate. Quota says how much an Account may use per week; billing (s
 
 ## The week
 
-The weekly cycle is a fixed 7-day period counted from the Account's creation time, in UTC. Week 0 starts when the Account was created; a new week starts every 7 days after. There is nothing to run at a boundary: a new week reads a new record, so usage resets by time alone, the same way a hold expires. Unused quota does not carry over. Past weeks' records are kept for reporting and are not rewritten after their week ends. (Owner decision: the boundary can instead be a calendar week or a per-plan day.)
+Every Account's week starts at the same moment: **Saturday at 12:00 noon in America/New_York**, following daylight saving. Nothing depends on when an Account was created. A week is normally 168 hours, 167 hours when it contains the spring clock change and 169 hours when it contains the autumn one, because the boundary follows New York wall-clock time. The zone, day and hour are named in one place, `quota/week.ts`. A boundary instant belongs to the week it starts: noon exactly is the new week, one millisecond earlier is the old one.
 
-**Holds crossing a boundary.** A hold counts against the week it was taken until it ends, and no longer once that week is over. A charge counts in the week it settles. So work reserved late in one week and settled in the next is charged to the new week, and the old hold simply stops counting at the boundary. Such a reservation is closed once, by a marker in the new week's record, so settling or releasing it again is refused. A hold may not outlive a week.
+There is nothing to run at a boundary: a new week reads a new record, so usage resets by time alone, the same way a hold expires. Each week's record is keyed by its start, the date of that Saturday as `YYYYMMDD` (`weeks/<account>/20300316.json`). Unused quota does not carry over. Past weeks' records are kept for reporting and are not rewritten after their week ends. The portal and CRM show the reset as that one instant in the viewer's own time zone, with the zone named.
+
+**Holds crossing a boundary.** A hold counts against the week it was taken until it ends, and no longer once that week is over. A charge counts in the week it settles. So work reserved late in one week and settled in the next is charged to the new week, and the old hold simply stops counting at the boundary. Such a reservation is closed once, by a marker in the new week's record, so settling or releasing it again is refused. A settle or release looks in the current week and the one before, so a hold must not be able to reach past the next boundary: its lifetime is capped below the shortest week (167 hours), whatever the deployment configures.
 
 ## Allowance
 
@@ -62,7 +64,7 @@ The reserve `operationId` is the reservation ID; settle, release and usage carry
 
 Any non-200 response, a network error or an unexpected body means do not spend. After an uncertain outcome, repeat the same call with the same operation ID and body. The TypeScript client (`serverQuotaClient`) implements this; a Python caller implements the table above directly.
 
-Reservation lifetime: the caller states `expiresInSeconds`, at most the service maximum (24 hours by default, never above a week). A hold stops counting at its expiry or at the end of its week, whichever comes first, with no sweeper. A product should choose a lifetime just above its job's attempt timeout. Settling after expiry still records what was really used. Expired entries are dropped, with a `reservation.expired` journal event written first, only when the week's record needs room.
+Reservation lifetime: the caller states `expiresInSeconds`, at most the service maximum (24 hours by default, never above 167 hours, the shortest week). A hold stops counting at its expiry or at the end of its week, whichever comes first, with no sweeper. A product should choose a lifetime just above its job's attempt timeout. Settling after expiry still records what was really used. Expired entries are dropped, with a `reservation.expired` journal event written first, only when the week's record needs room.
 
 ## Storage
 
@@ -91,22 +93,22 @@ The value of the SSM SecureString parameter named by `AccountsPlaneOptions.quota
 }
 ```
 
-Unknown fields, non-integers, a rate with `per` below 1 and a `defaultPlan` that is not a plan all make the table unparseable. Infrastructure creates the parameter once with a placeholder that is deliberately unparseable, so quota is unavailable (503) until an operator sets the real value outside Git, and a deployment never overwrites it. The service caches the parsed table for a minute, so a change applies within about a minute. The rate table's contents never appear in an API response, in the CRM, in logs or in this repository.
+Unknown fields, non-integers, a rate with `per` below 1 and a `defaultPlan` that is not a plan all make the table unparseable. Rates and allowances are programmatic: nobody types them in, and there is no screen, route or command for editing them. A deployment writes the table to the parameter from private configuration that lives outside this repository. Infrastructure creates the parameter once with a placeholder that is deliberately unparseable, so an unset table refuses all spending (503) until that deployment has written a valid one, and the infrastructure itself never overwrites it. The service caches the parsed table for a minute, so a change applies within about a minute. The rate table's contents never appear in an API response, in the CRM, in logs or in this repository.
 
 ## Operator route
 
-`POST /v1/account-directory/operator/accounts/{account}/quota` with `{operationId, plan?, allowanceOverrideUnits?}` chooses the Account's plan (a name in the table) and/or a per-Account weekly allowance override in units; `null` clears a field. It needs the reviewed operator permission `accounts:admin:quota` in `accounts/operator-grants.json`; read access and `accounts:admin:entitlements` are not enough, and Account owners cannot change their own quota. The journal records the operator's reviewed grant ID. Like the entitlement route, it is reachable only once the directory BFF's API Gateway policy allows operator writes, which is held for approval (see [OPERATIONS.md](OPERATIONS.md#product-access)).
+`POST /v1/account-directory/operator/accounts/{account}/quota` with `{operationId, plan?, allowanceOverrideUnits?}` chooses the Account's plan (a name in the table) and/or a per-Account weekly allowance override in units; `null` clears a field. Only admins may set quotas: it needs the reviewed operator permission `accounts:admin:quota` in `accounts/operator-grants.json`; read access and `accounts:admin:entitlements` are not enough, and Account owners cannot change their own quota. The journal records the operator's reviewed grant ID. Like the entitlement route, it is reachable only once the directory BFF's API Gateway policy allows operator writes, which is held for approval (see [OPERATIONS.md](OPERATIONS.md#product-access)).
 
 ## What the CRM and portal show
 
-The account directory detail carries a `quota` view. Customers get `{state:"set", percentUsed, resetsAt, byProduct:[{product, percentOfQuota}]}`, `{state:"none"}` for an Account with no allowance, or `{state:"unavailable"}` when the store or table cannot be used; unavailable is never shown as zero or unlimited. Staff in the CRM additionally see the plan, the override, internal units (allowance, used, held, overshoot) and the table versions charged, never the table's contents. The portal shows the percent in its header, a weekly quota card on Home and a Usage page, with no money anywhere.
+The account directory detail carries a `quota` view. Customers get `{state:"set", percentUsed, resetsAt, byProduct:[{product, percentOfQuota}]}`, `{state:"none"}` for an Account with no allowance, or `{state:"unavailable"}` when the store or table cannot be used; unavailable is never shown as zero or unlimited. Staff in the CRM additionally see the plan, the override, internal units (allowance, used, held, overshoot) and the table versions charged, never the table's contents. The portal shows the percent in its header, a weekly quota card on Home and a Usage page, with no money anywhere. Neither surface has any control for editing quotas, plans, rates or allowances; the CRM has no "Add quota" button. Quota changes are made only through the admin route above.
 
 ## New infrastructure
 
 Nothing is deployed by this change. Each item needs the owner's concrete approval first:
 
 - The central accounts runtime role gains `s3:GetObject` and `s3:PutObject` on `prospectus-central/quota/*` and `_virtuus/prospectus-central/quota/*`, and the `s3:ListBucket` prefix condition gains the same two prefixes (`infra/lib/accounts-plane.ts`).
-- When `quotaRateTable` is configured: one retained SSM SecureString (Advanced tier) created once by a create-only custom resource with a placeholder value; the central runtime role gains `ssm:GetParameter` on that one parameter; a new initializer Lambda `prospectus-quota-rate-table-init` with its own role (`ssm:PutParameter` on that one parameter, with an explicit deny when `ssm:Overwrite` is true, and its log group). Operators then set the real value out of band.
+- When `quotaRateTable` is configured: one retained SSM SecureString (Advanced tier) created once by a create-only custom resource with a placeholder value; the central runtime role gains `ssm:GetParameter` on that one parameter; a new initializer Lambda `prospectus-quota-rate-table-init` with its own role (`ssm:PutParameter` on that one parameter, with an explicit deny when `ssm:Overwrite` is true, and its log group). A deployment from private configuration then writes the real value; nobody sets it by hand.
 - A third warm bridge process in the central Lambda for the `quota` project.
 - `AccountsPlaneOptions.quotaProducts`: reviewed registrations carrying `quota: true`. Each role is added to the API resource policy for exactly the five routes and to the permitted principals. Nothing passes any product today.
 - The new operator permission `accounts:admin:quota` and its first grant, and the held directory BFF policy change for operator writes.
@@ -115,10 +117,10 @@ Registering a product (for example Babulus) is a separate reviewed change.
 
 ## Decisions for the owner
 
-- **Week boundary:** a fixed 7-day cycle from the Account's creation, in UTC (applied). Alternatives: a calendar week, or a per-plan anchor.
+- **Week boundary:** Saturday 12:00 noon America/New_York for every Account, following daylight saving (decided; weeks of 167 and 169 hours around the clock changes).
 - **What counts toward the percentage:** used plus held. Work in progress is counted so the number reflects what is committed.
 - **Per-app share:** each app's contribution to the percentage, in percent of the quota.
-- **Maximum reservation lifetime:** 24 hours by default, never above a week.
+- **Maximum reservation lifetime:** 24 hours by default, never above 167 hours.
 - **Overshoot:** pay-after usage may overshoot and is recorded; there is no cap beyond refusing new work.
 - **Table cache:** one minute, so a rate or allowance change applies within about a minute.
-- **Who holds `accounts:admin:quota`,** and who may set the rate-table parameter.
+- **Who holds `accounts:admin:quota`,** and which deployment identity writes the rate-table parameter from private configuration.

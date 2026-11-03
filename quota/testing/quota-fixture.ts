@@ -10,10 +10,12 @@ import { Quota, type QuotaOptions } from "../service";
 
 export const ISSUER = `https://cognito-idp.us-east-1.amazonaws.com/${["us-east-1", "Example"].join("_")}`;
 export const OPERATOR_PRODUCT = "prospectus-crm";
-export const CREATED = Date.parse("2030-03-15T17:46:40.000Z");
-/** Two days into the account's first week. */
-export const START = CREATED + 2 * 24 * 60 * 60 * 1000;
-export const WEEK = 7 * 24 * 60 * 60 * 1000;
+/** A Wednesday, four days into the week that began Saturday 2030-03-16 at noon New York time (key 20300316). */
+export const START = Date.parse("2030-03-20T17:46:40.000Z");
+export const WEEK_KEY = 20300316;
+export const NEXT_WEEK_KEY = 20300323;
+/** The longest hold the service allows: just under the shortest week. */
+export const LONGEST_HOLD_SECONDS = 167 * 60 * 60;
 
 export const operator = (subject: string): Context => ({
   product: OPERATOR_PRODUCT,
@@ -66,19 +68,16 @@ export class FakeTable implements RateTableSource {
 }
 
 /** Synthetic accounts, a mutable clock and in-memory Virtuus-style files. No AWS. */
-export function quotaFixture(
-  options: { storage?: IdentityFiles; quota?: QuotaOptions; created?: number } = {},
-) {
+export function quotaFixture(options: { storage?: IdentityFiles; quota?: QuotaOptions } = {}) {
   const files = new MemoryBillingFiles();
   const store = options.storage ?? files;
   const accountId = randomUUID();
-  const createdAt = new Date(options.created ?? CREATED).toISOString();
   const entitlements: Record<string, Record<string, { status: "active" | "disabled" }>> = {
     [accountId]: { "example-renderer": { status: "active" }, "example-narrator": { status: "active" } },
   };
   const clock = { ms: START };
   const accounts = async (id: string) =>
-    entitlements[id] ? { createdAt, entitlements: structuredClone(entitlements[id]) } : null;
+    entitlements[id] ? { entitlements: structuredClone(entitlements[id]) } : null;
   const table = new FakeTable();
   const quota = new Quota(
     store,
@@ -115,6 +114,5 @@ export function quotaFixture(
     reserve,
     settle,
     percent,
-    createdAt,
   };
 }

@@ -446,14 +446,6 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
           <button type="button" className="one-button" disabled title="Not yet available: needs billing">
             Change plan
           </button>
-          <button
-            type="button"
-            className="one-button"
-            disabled
-            title="Allowance is set through the operator quota route, not from this page yet"
-          >
-            Add quota
-          </button>
         </div>
       </section>
       <div className="one-stats">

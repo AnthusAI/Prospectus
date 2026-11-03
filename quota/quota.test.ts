@@ -7,7 +7,9 @@ import {
   NARRATOR,
   RENDERER,
   START,
-  WEEK,
+  WEEK_KEY,
+  NEXT_WEEK_KEY,
+  LONGEST_HOLD_SECONDS,
   batch,
   exampleTable,
   operator,
@@ -21,8 +23,8 @@ const journal = (files: { objects: Map<string, { value: any }> }) =>
   [...files.objects.entries()]
     .filter(([path]) => path.startsWith("journal/"))
     .map(([, object]) => object.value);
-const week = (files: { objects: Map<string, { value: any }> }, accountId: string, index = 0) =>
-  files.objects.get(`weeks/${accountId}/${index}.json`)?.value;
+const week = (files: { objects: Map<string, { value: any }> }, accountId: string, key = WEEK_KEY) =>
+  files.objects.get(`weeks/${accountId}/${key}.json`)?.value;
 
 // With the made-up table: the default plan allows 1000 units a week, a batch second is 3 units, 10 tokens is 1 unit.
 
@@ -213,39 +215,103 @@ test("the week resets by time alone: a new week starts at zero, last week's reco
   clock.ms = Date.parse(resetsAt as string);
   const next = (await quota.check(RENDERER, accountId)).result;
   assert.equal(next.percentUsed, 0);
-  assert.equal(Date.parse(next.resetsAt as string), Date.parse(resetsAt as string) + WEEK);
+  assert.equal(Date.parse(next.resetsAt as string), Date.parse(resetsAt as string) + 168 * 3600 * 1000);
   await quota.record(RENDERER, accountId, { operationId: randomUUID(), items: tokens(1000) });
-  assert.equal(week(files, accountId, 0).usedUnits, 300, "last week is kept and untouched");
-  assert.equal(week(files, accountId, 1).usedUnits, 100);
+  assert.equal(week(files, accountId, WEEK_KEY).usedUnits, 300, "last week is kept and untouched");
+  assert.equal(week(files, accountId, NEXT_WEEK_KEY).usedUnits, 100);
   // A full allowance is available again: the unused 700 of week 0 did not carry over, and the cap is still 1000.
   assert.equal((await reserve(batch(300))).result.status, "reserved");
   await assert.rejects(reserve(batch(1)), refusedWith(402, "quota_exhausted"));
 });
 
-test("the weekly cycle is seven fixed UTC days from the account's creation", async () => {
-  const created = Date.parse("2030-01-01T10:00:00.000Z");
-  const { quota, accountId, clock } = quotaFixture({ created });
-  clock.ms = created + 3 * WEEK + 5;
+test("every Account's week starts at the same Saturday noon New York time, however old the Account is", async () => {
+  const { quota, accountId, clock } = quotaFixture();
   const { resetsAt } = (await quota.check(RENDERER, accountId)).result;
-  assert.equal(resetsAt, new Date(created + 4 * WEEK).toISOString());
+  assert.equal(resetsAt, "2030-03-23T16:00:00.000Z", "Saturday 12:00 EDT");
+  clock.ms = Date.parse("2030-03-23T16:00:00.000Z");
+  assert.equal((await quota.check(RENDERER, accountId)).result.resetsAt, "2030-03-30T16:00:00.000Z");
+});
+
+test("the week across the spring clock change is 167 hours and the quota resets at its exact end", async () => {
+  const { files, quota, accountId, clock, reserve } = quotaFixture();
+  clock.ms = Date.parse("2030-03-12T12:00:00.000Z");
+  await quota.record(RENDERER, accountId, { operationId: randomUUID(), items: batch(100) }); // 300 units
+  const { resetsAt } = (await quota.check(RENDERER, accountId)).result;
+  assert.equal(resetsAt, "2030-03-16T16:00:00.000Z");
+  assert.equal(week(files, accountId, 20300309).usedUnits, 300);
+  clock.ms = Date.parse(resetsAt as string) - 1;
+  assert.equal((await quota.check(RENDERER, accountId)).result.percentUsed, 30);
+  clock.ms = Date.parse(resetsAt as string);
+  const next = (await quota.check(RENDERER, accountId)).result;
+  assert.deepEqual([next.percentUsed, next.resetsAt], [0, "2030-03-23T16:00:00.000Z"]);
+  assert.equal((await reserve(batch(333))).result.status, "reserved");
+});
+
+test("the week across the autumn clock change is 169 hours", async () => {
+  const { quota, accountId, clock } = quotaFixture();
+  clock.ms = Date.parse("2030-11-05T12:00:00.000Z");
+  const { resetsAt } = (await quota.check(RENDERER, accountId)).result;
+  assert.equal(resetsAt, "2030-11-09T17:00:00.000Z");
+  clock.ms = Date.parse(resetsAt as string) - 1;
+  assert.equal((await quota.check(RENDERER, accountId)).result.resetsAt, "2030-11-09T17:00:00.000Z");
+  clock.ms = Date.parse(resetsAt as string);
+  assert.equal((await quota.check(RENDERER, accountId)).result.resetsAt, "2030-11-16T17:00:00.000Z");
+});
+
+test("a charge at the exact boundary counts in the new week, and one a millisecond earlier in the old", async () => {
+  const { files, quota, accountId, clock } = quotaFixture();
+  const boundary = Date.parse("2030-03-23T16:00:00.000Z");
+  clock.ms = boundary - 1;
+  await quota.record(RENDERER, accountId, { operationId: randomUUID(), items: batch(10) }); // 30
+  clock.ms = boundary;
+  await quota.record(RENDERER, accountId, { operationId: randomUUID(), items: batch(20) }); // 60
+  assert.equal(week(files, accountId, WEEK_KEY).usedUnits, 30);
+  assert.equal(week(files, accountId, NEXT_WEEK_KEY).usedUnits, 60);
+});
+
+test("a hold taken just before a clock-change boundary can still be settled just before it expires", async () => {
+  const { files, quota, accountId, clock, reserve, settle } = quotaFixture({
+    quota: { maximumHoldSeconds: LONGEST_HOLD_SECONDS },
+  });
+  // The week of Saturday 2030-03-09 is the 167-hour week. Take the longest hold one millisecond before it starts.
+  const springStart = Date.parse("2030-03-09T17:00:00.000Z");
+  clock.ms = springStart - 1;
+  const { result } = await reserve(batch(100), { expiresInSeconds: LONGEST_HOLD_SECONDS });
+  assert.ok(week(files, accountId, 20300302).holds[result.reservationId as string]);
+  clock.ms = springStart - 1 + LONGEST_HOLD_SECONDS * 1000 - 1;
+  assert.equal((await settle(result.reservationId, batch(10))).result.status, "settled");
+  assert.equal(week(files, accountId, 20300309).usedUnits, 30, "charged to the week in which it settled");
+  void quota;
+});
+
+test("a hold that would outlive the shortest week is refused", async () => {
+  const { reserve } = quotaFixture({ quota: { maximumHoldSeconds: LONGEST_HOLD_SECONDS } });
+  await assert.rejects(
+    reserve(batch(1), { expiresInSeconds: LONGEST_HOLD_SECONDS + 1 }),
+    refusedWith(400, "invalid_expiry"),
+  );
+  assert.throws(
+    () => quotaFixture({ quota: { maximumHoldSeconds: LONGEST_HOLD_SECONDS + 1 } }),
+    /shorter than the shortest week/,
+  );
 });
 
 test("a hold counts against the week it was taken until it ends; a charge counts in the week it settles", async () => {
   const { files, quota, accountId, clock, reserve, settle, percent } = quotaFixture({
-    quota: { maximumHoldSeconds: WEEK / 1000 },
+    quota: { maximumHoldSeconds: LONGEST_HOLD_SECONDS },
   });
   const endOfWeek = Date.parse(week(files, accountId)?.endsAt ?? new Date(START).toISOString());
-  const { result } = await reserve(batch(200), { expiresInSeconds: WEEK / 1000 }); // 600 held in week 0
+  const { result } = await reserve(batch(200), { expiresInSeconds: LONGEST_HOLD_SECONDS }); // 600 held in week 0
   const reservationId = result.reservationId as string;
-  const weekEnd = Date.parse(week(files, accountId, 0).endsAt);
+  const weekEnd = Date.parse(week(files, accountId, WEEK_KEY).endsAt);
   assert.ok(weekEnd > endOfWeek - 1);
   clock.ms = weekEnd - 1;
   assert.equal(await percent(), 60, "still held in its own week");
   clock.ms = weekEnd + 1000;
   assert.equal(await percent(), 0, "it does not count against the new week");
   await settle(reservationId, batch(100)); // 300 units, charged to the week that settles
-  assert.equal(week(files, accountId, 1).usedUnits, 300);
-  assert.equal(week(files, accountId, 0).usedUnits, 0, "last week is not rewritten");
+  assert.equal(week(files, accountId, NEXT_WEEK_KEY).usedUnits, 300);
+  assert.equal(week(files, accountId, WEEK_KEY).usedUnits, 0, "last week is not rewritten");
   assert.equal(await percent(), 30);
   await assert.rejects(settle(reservationId, batch(100)), refusedWith(409, "reservation_not_open"));
   await assert.rejects(
@@ -257,10 +323,10 @@ test("a hold counts against the week it was taken until it ends; a charge counts
 
 test("releasing a reservation from last week closes it without a charge", async () => {
   const { files, quota, accountId, clock, reserve, percent } = quotaFixture({
-    quota: { maximumHoldSeconds: WEEK / 1000 },
+    quota: { maximumHoldSeconds: LONGEST_HOLD_SECONDS },
   });
-  const { result } = await reserve(batch(100), { expiresInSeconds: WEEK / 1000 });
-  clock.ms = Date.parse(week(files, accountId, 0).endsAt) + 1000;
+  const { result } = await reserve(batch(100), { expiresInSeconds: LONGEST_HOLD_SECONDS });
+  clock.ms = Date.parse(week(files, accountId, WEEK_KEY).endsAt) + 1000;
   const released = await quota.release(RENDERER, accountId, result.reservationId, {
     operationId: randomUUID(),
   });

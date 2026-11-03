@@ -8,7 +8,6 @@ import {
   DOCUMENT_BYTE_BUDGET,
   MAXIMUM_AUDIT_ENTRIES,
   MAXIMUM_HOLD_SECONDS_LIMIT,
-  WEEK_MS,
   fail,
   isExpired,
   type BillableItem,
@@ -22,6 +21,7 @@ import {
   type QuotaView,
   type QuotaWeek,
 } from "./model";
+import { previousWeekKey, weekAt } from "./week";
 import {
   PLAN_PATTERN,
   convertItems,
@@ -31,11 +31,10 @@ import {
   type RateTableSource,
 } from "./rate-table";
 
-/** What quota needs to know about an account: when it was created (the weekly cycle starts there) and which
- * products it is entitled to. */
+/** What quota needs to know about an account: whether it exists and which products it is entitled to. */
 export type AccountReader = (
   accountId: string,
-) => Promise<{ createdAt: string; entitlements: Record<string, { status: string }> } | null>;
+) => Promise<{ entitlements: Record<string, { status: string }> } | null>;
 
 export const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const settingsPath = (accountId: string) => `settings/${accountId}.json`;
@@ -116,13 +115,14 @@ export interface QuotaOptions {
 }
 
 interface Context_ {
-  createdAt: string;
   entitlements: Record<string, { status: string }>;
   table: RateTable;
   settings: QuotaSettings | null;
   /** Units a week allows, or null when no plan and no override gives the account an allowance. */
   allowanceUnits: number | null;
+  /** The week start as a date number (YYYYMMDD of its Saturday in the quota time zone). */
   week: number;
+  previousWeek: number;
   startsAt: string;
   endsAt: string;
   nowMs: number;
@@ -130,8 +130,8 @@ interface Context_ {
 
 /**
  * Weekly quota. An account's allowance applies per week, in Prospectus's own internal usage units, and resets by
- * time alone: the week is a fixed seven days counted from the account's creation, in UTC, and a new week simply
- * reads a new record. Customers and products never see units, rates or money; they see a percentage.
+ * time alone: every account's week starts at the same instant (Saturday noon in the quota time zone, see week.ts),
+ * and a new week simply reads a new record. Customers and products never see units, rates or money; they see a percentage.
  *
  * Products report billable items. Prospectus converts them with a private rate table and charges units, recording the
  * table version with each charge. Two ways to spend: `reserve`, `settle` and `release` for expensive work, and `check`
@@ -154,7 +154,7 @@ export class Quota {
       this.maximumHoldSeconds < 1 ||
       this.maximumHoldSeconds > MAXIMUM_HOLD_SECONDS_LIMIT
     )
-      throw new Error("The maximum hold lifetime must be whole seconds, at most one week.");
+      throw new Error("The maximum hold lifetime must be whole seconds, shorter than the shortest week.");
   }
 
   private async context(accountIdInput: unknown): Promise<Context_ & { accountId: string }> {
@@ -164,23 +164,21 @@ export class Quota {
     const table = await this.table.current();
     const settings = (await this.files.get<QuotaSettings>(settingsPath(accountId)))?.value ?? null;
     const nowMs = Date.parse(this.now());
-    const anchor = Date.parse(account.createdAt);
-    if (!Number.isFinite(anchor)) fail(503, "quota_unavailable", "Quota is unavailable.");
-    const week = Math.max(0, Math.floor((nowMs - anchor) / WEEK_MS));
+    const window = weekAt(nowMs);
     const plan = settings?.planId ?? table.defaultPlan;
     const allowanceUnits =
       settings?.allowanceOverrideUnits ??
       (plan !== undefined ? (table.plans[plan]?.weeklyAllowanceUnits ?? null) : null);
     return {
       accountId,
-      createdAt: account.createdAt,
       entitlements: account.entitlements,
       table,
       settings,
       allowanceUnits,
-      week,
-      startsAt: new Date(anchor + week * WEEK_MS).toISOString(),
-      endsAt: new Date(anchor + (week + 1) * WEEK_MS).toISOString(),
+      week: window.key,
+      previousWeek: previousWeekKey(nowMs),
+      startsAt: window.startsAt,
+      endsAt: window.endsAt,
       nowMs,
     };
   }
@@ -314,8 +312,7 @@ export class Quota {
       actor: `product:${caller.product}`,
       request: { items },
       prepare: () => this.refuseUnknown(context, caller, "reservation.settled", operationId, items),
-      load: async () =>
-        context.week > 0 ? ((await this.readWeek(accountId, context.week - 1))?.value ?? null) : null,
+      load: async () => (await this.readWeek(accountId, context.previousWeek))?.value ?? null,
       apply: (current, _nowMs, at, previous) => {
         let hold = current?.holds[reservationId];
         const fromPriorWeek = !hold && !current?.closedFromPriorWeek[reservationId];
@@ -362,8 +359,7 @@ export class Quota {
       operationId,
       actor: `product:${caller.product}`,
       request: {},
-      load: async () =>
-        context.week > 0 ? ((await this.readWeek(accountId, context.week - 1))?.value ?? null) : null,
+      load: async () => (await this.readWeek(accountId, context.previousWeek))?.value ?? null,
       apply: (current, _nowMs, at, previous) => {
         let hold = current?.holds[reservationId];
         const fromPriorWeek = !hold && !current?.closedFromPriorWeek[reservationId];
