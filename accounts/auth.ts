@@ -21,6 +21,8 @@ export interface ProductRegistration {
   capabilities: Operation[];
   enabled: boolean;
   accountDirectory?: true;
+  /** A product whose server role may reserve, settle and release the shared quota (`/v1/quota/...`). */
+  quota?: true;
   /** A Papyrus site that only signs readers in: no capabilities, no directory, no delegation. */
   audience?: "public-reader";
   googleFederation?: {

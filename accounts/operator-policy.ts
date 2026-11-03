@@ -15,6 +15,7 @@ export const operatorPermissions = [
   "accounts:admin:read",
   "accounts:admin:entitlements",
   "accounts:admin:billing",
+  "accounts:admin:quota",
 ] as const;
 export type OperatorPermission = (typeof operatorPermissions)[number];
 /** Deployment-owned operator grants. Never derive these from email, CRM groups or memberships. */
@@ -108,3 +109,12 @@ export const billingAdministrationGrant = (context: Context, grants: readonly Op
   );
 export const canAdministerBilling = (context: Context, grants: readonly OperatorGrant[]) =>
   hasOperatorPermission(context, grants, "accounts:admin:billing");
+/** The reviewed grant that lets this operator set an account's quota allowance, if any. Its review ID is the actor. */
+export const quotaAdministrationGrant = (context: Context, grants: readonly OperatorGrant[]) =>
+  grants.find(
+    (grant) =>
+      grant.product === context.product &&
+      grant.issuer === context.human.issuer &&
+      grant.subjectHash === operatorSubjectHash(context.human.subject) &&
+      grant.permission === "accounts:admin:quota",
+  );

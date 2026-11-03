@@ -38,6 +38,13 @@ export const ANTHUS_APPS: readonly AnthusApp[] = [
     blurb: "Every page on your site, read aloud on demand.",
   },
   {
+    id: "babulus",
+    name: "Babulus",
+    swatch: "var(--s4)",
+    url: "https://babul.us",
+    blurb: "Voiceover and video made on your own machine first, in the cloud only when it is allowed.",
+  },
+  {
     id: "kanbus",
     name: "Kanbus",
     swatch: "var(--s5)",

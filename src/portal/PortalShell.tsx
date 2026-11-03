@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { DirectoryAccount } from "../../packages/accounts-client/src/directory";
+import type { QuotaView } from "../../packages/accounts-client/src/quota";
+
 import { appForProduct, productUrl } from "../apps";
 import { initials } from "../shared/initials";
 import { BrandMark, Eyebrow, Icon, Wordmark, type IconName } from "../shared/ui";
@@ -41,6 +43,7 @@ export function PortalShell({
   page,
   workspaces,
   workspace,
+  quota,
   personId,
   onNavigate,
   onWorkspace,
@@ -51,6 +54,8 @@ export function PortalShell({
   page: PortalPage;
   workspaces: DirectoryAccount[];
   workspace: DirectoryAccount;
+  /** The workspace's quota once its detail has loaded. */
+  quota?: QuotaView;
   personId: string;
   onNavigate: (page: PortalPage) => void;
   onWorkspace: (id: string) => void;
@@ -58,6 +63,7 @@ export function PortalShell({
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const shown = quota ?? null;
   const activeApps = workspace.products.filter((product) => product.status === "active");
   return (
     <div className="one portal" data-theme={theme}>
@@ -95,8 +101,20 @@ export function PortalShell({
               onNavigate("usage");
             }}
           >
-            <span className="portal-quota-bar" aria-hidden="true" />
-            <span>Quota not yet metered</span>
+            <span className="portal-quota-bar" aria-hidden="true">
+              {shown?.state === "set" && (
+                <span className="portal-quota-fill" style={{ width: `${shown.percentUsed}%` }} />
+              )}
+            </span>
+            <span>
+              {!shown
+                ? "Loading quota"
+                : shown.state === "set"
+                  ? `${shown.percentUsed}% of weekly quota used`
+                  : shown.state === "none"
+                    ? "No quota yet"
+                    : "Quota unavailable"}
+            </span>
           </a>
           <div className="one-person-menu">
             <button

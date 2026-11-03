@@ -19,6 +19,10 @@
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js"
     },
+    "./quota": {
+      "types": "./dist/quota.d.ts",
+      "default": "./dist/quota.js"
+    },
     "./directory": {
       "types": "./dist/directory.d.ts",
       "default": "./dist/directory.js"

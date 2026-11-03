@@ -12,7 +12,13 @@ export function createOnlySecretInitializerSource(secret: {
   description: string;
   /** The physical resource id used before the parameter name is known. */
   fallbackId: string;
+  /** A fixed first value instead of random bytes, for a parameter whose real value an operator sets afterwards. */
+  initialValue?: string;
+  /** Parameter Store tier; Advanced allows values up to 8 KB. */
+  tier?: "Advanced";
 }): string {
+  const { initialValue, tier, ...text } = secret;
+  secret = text;
   for (const value of Object.values(secret))
     if (!/^[A-Za-z0-9 .,:'-]+$/.test(value)) throw new Error("Secret initializer text must be plain.");
   return `"use strict";
@@ -26,8 +32,8 @@ async function create(name) {
     await ssm.send(new PutParameterCommand({
       Name: name,
       Type: "SecureString",
-      Value: randomBytes(48).toString("base64"),
-      Overwrite: false,
+      Value: ${initialValue === undefined ? 'randomBytes(48).toString("base64")' : JSON.stringify(initialValue)},
+      Overwrite: false,${tier ? `\n      Tier: ${JSON.stringify(tier)},` : ""}
       Description: "${secret.description}",
     }));
   } catch (error) {
@@ -79,4 +85,15 @@ export const NEWSLETTER_TOKEN_SECRET_INITIALIZER_SOURCE = createOnlySecretInitia
   description:
     "Prospectus newsletter token key v1. Never replace: it would invalidate every unsubscribe link already sent.",
   fallbackId: "newsletter-token-key",
+});
+
+/** The quota rate table's initializer. It creates the parameter once with a placeholder that the service refuses as
+ * unparseable, so quota is unavailable until an operator sets the real table outside Git. */
+export const QUOTA_RATE_TABLE_INITIALIZER_SOURCE = createOnlySecretInitializerSource({
+  label: "quota rate table",
+  description:
+    "Prospectus quota rate table v1. A deployment writes the value from private config, never by hand, and it is never in Git.",
+  fallbackId: "quota-rate-table",
+  initialValue: '{"version":"unset"}',
+  tier: "Advanced",
 });
