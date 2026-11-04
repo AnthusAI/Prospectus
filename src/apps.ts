@@ -86,3 +86,18 @@ export function appForProduct(product: string): AnthusApp {
 export function appById(id: string): AnthusApp | undefined {
   return ANTHUS_APPS.find((app) => app.id === id);
 }
+
+/**
+ * Products an operator can turn on or off for an Account. There is no registry the UI can read yet, so this
+ * is the list registered centrally today (Cyclotron, Babulus and the Papyrus sites of accounts/papyrus-sites.json).
+ * A product missing here still shows when the Account already holds it, and central refuses an unregistered one.
+ */
+export const OPERATOR_PRODUCTS: readonly string[] = [
+  "babulus",
+  "cyclotron",
+  "papyrus-dataparade",
+  "papyrus-machines-on-machines",
+  "papyrus-p-apyr-us",
+  "papyrus-pilobol-us",
+  "papyrus-shipped",
+];

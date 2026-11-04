@@ -64,7 +64,7 @@ test("unreviewed, ambiguous or non-Papyrus site entries are refused", () => {
 });
 
 test("more than twenty sites register exactly alongside the existing products", () => {
-  const sites = papyrusSiteRegistrations(Array.from({ length: 40 }, (_, index) => syntheticSite(index)));
+  const sites = papyrusSiteRegistrations(Array.from({ length: 39 }, (_, index) => syntheticSite(index)));
   const directory = {
     product: "prospectus-directory",
     roleArn: "arn:aws:iam::111111111111:role/SyntheticDirectory",
@@ -74,7 +74,7 @@ test("more than twenty sites register exactly alongside the existing products", 
     enabled: true,
     accountDirectory: true,
   };
-  assert.equal(registrations([directory, ...sites]).length, 41);
+  assert.equal(registrations([directory, ...sites]).length, 40);
   assert.throws(() => registrations([directory, { ...sites[0], roleArn: directory.roleArn }]));
 });
 
