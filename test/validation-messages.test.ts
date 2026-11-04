@@ -240,8 +240,8 @@ const rejectsSite = (value: unknown, message: string) =>
 test("Papyrus site failures name the broken site rule", () => {
   rejectsSite(null, "Reviewed Papyrus site registrations are required.");
   rejectsSite(
-    Array.from({ length: 41 }, () => siteEntry()),
-    "Reviewed Papyrus site registrations exceed the maximum of 40.",
+    Array.from({ length: 40 }, () => siteEntry()),
+    "Reviewed Papyrus site registrations exceed the maximum of 39.",
   );
   const cases: Array<[(entry: any) => void, string]> = [
     [(entry) => (entry.email = "x"), "A Papyrus site entry must have exactly the reviewed fields."],

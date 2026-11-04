@@ -1,6 +1,7 @@
 import { getAccessToken } from "./auth";
 import type {
   OperatorReader,
+  OperatorEntitlementWriter,
   OperatorDetail,
   OperatorList,
   DirectoryReader,
@@ -21,7 +22,11 @@ export interface AccountsChallenge {
   nonce: string;
   challengeToken?: string;
 }
-export interface AccountsBrowser extends DirectoryReader, DirectoryCreator, OperatorReader {
+export interface AccountsBrowser
+  extends DirectoryReader,
+    DirectoryCreator,
+    OperatorReader,
+    OperatorEntitlementWriter {
   configured: boolean;
   challenge(): Promise<AccountsChallenge>;
   loginChallenge(loginStateDigest: string): Promise<AccountsChallenge>;
@@ -98,6 +103,19 @@ export function accountsBrowser(
       )
         throw new DirectoryError(503, "Invalid operator response.");
       return value as OperatorDetail;
+    },
+    setEntitlement: async (accountId, product, status) => {
+      const value = (
+        await request(
+          `/operator/accounts/${encodeURIComponent(accountId)}/entitlements/${encodeURIComponent(product)}`,
+          "POST",
+          { status },
+          token(),
+          true,
+        )
+      )?.entitlement;
+      if (value?.product !== product || value.status !== status)
+        throw new DirectoryError(503, "Invalid entitlement response.");
     },
     list: async () => {
       const value = await request("/accounts");

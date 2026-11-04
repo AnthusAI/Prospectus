@@ -188,7 +188,10 @@ test(
     try {
       const page = await browser.newPage();
       let mode = "allowed",
-        operatorReads = 0;
+        operatorReads = 0,
+        cyclotron: "active" | "disabled" | null = null,
+        refuseChanges = false;
+      const changes: Array<{ path: string; body: unknown }> = [];
       const id = "22222222-2222-4222-8222-222222222222",
         person = { id: "synthetic-operator", createdAt: "2030-01-01" };
       const account = {
@@ -203,6 +206,24 @@ test(
         const path = new URL(route.request().url()).pathname;
         if (path === "/directory-fixture/accounts") {
           await route.fulfill({ json: { person, accounts: [], operatorAccess: mode !== "denied" } });
+          return;
+        }
+        if (route.request().method() === "POST") {
+          changes.push({ path, body: route.request().postDataJSON() });
+          if (refuseChanges) {
+            await route.fulfill({
+              status: 403,
+              json: {
+                error: "operator_forbidden",
+                message: "Your staff account does not hold the entitlements permission.",
+              },
+            });
+            return;
+          }
+          cyclotron = route.request().postDataJSON().status;
+          await route.fulfill({
+            json: { entitlement: { accountId: id, product: "cyclotron", status: cyclotron } },
+          });
           return;
         }
         operatorReads++;
@@ -222,6 +243,16 @@ test(
                   ...account,
                   entitlements: [
                     { accountId: id, product: "papyrus", status: "active", capabilities: ["console:read"] },
+                    ...(cyclotron
+                      ? [
+                          {
+                            accountId: id,
+                            product: "cyclotron",
+                            status: cyclotron,
+                            capabilities: ["console:read"],
+                          },
+                        ]
+                      : []),
                   ],
                   memberships: [
                     { accountId: id, personId: "synthetic-owner", role: "owner", status: "active" },
@@ -252,7 +283,27 @@ test(
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
       await expect(page.getByLabel("Internal usage")).toContainText("1040 units");
       await expect(page.getByText(/The quota is used up/)).toBeVisible();
-      await expect(page.getByText(/read-only and does not make you a member/)).toBeVisible();
+      await expect(page.getByText(/does not make you a member/)).toBeVisible();
+      // An operator turns a product on from the Account page, one button per product, and the page refreshes.
+      const turnOn = page.getByRole("button", { name: /^Turn on Cyclotron/ });
+      await expect(page.getByRole("button", { name: /^Turn on|^Turn off/ })).toHaveCount(8);
+      await turnOn.click();
+      await expect(page.getByRole("button", { name: /^Turn off Cyclotron/ })).toBeVisible();
+      assert.deepEqual(changes, [
+        {
+          path: `/directory-fixture/operator/accounts/${id}/entitlements/cyclotron`,
+          body: { status: "active" },
+        },
+      ]);
+      await page.getByRole("button", { name: /^Turn off Cyclotron/ }).click();
+      await expect(page.getByRole("button", { name: /^Turn on Cyclotron/ })).toBeVisible();
+      assert.equal(changes[1].body && (changes[1].body as any).status, "disabled");
+      // Without the entitlements permission the server's own message is shown, and nothing changes.
+      refuseChanges = true;
+      await page.getByRole("button", { name: /^Turn on Cyclotron/ }).click();
+      await expect(page.getByRole("alert")).toContainText("does not hold the entitlements permission");
+      await expect(page.getByRole("button", { name: /^Turn on Cyclotron/ })).toBeVisible();
+      refuseChanges = false;
       await page
         .getByRole("navigation", { name: "Breadcrumb" })
         .getByRole("button", { name: "Accounts" })

@@ -87,7 +87,7 @@ Before changing `enabled` or any role pair, get action-time approval for the exa
 
 ### Granting a product to an account
 
-Only a reviewed operator turns a product on or off for an account. The writable route is merged but unreachable until the directory BFF policy allows it, and no one holds the grant yet.
+Only a reviewed operator turns a product on or off for an account. The staff admin site's Account page has a "Turn on" or "Turn off" button for each registered product. It calls the staff BFF at `POST /api/saas/operator/accounts/<accountId>/entitlements/<product>` with the body `{"status":"active"}` or `{"status":"disabled"}`, which forwards to the central route. Only the staff BFF role can reach that central route; the Anthus One customer portal and every product role cannot. The grant that allows a person to use it is the reviewed `accounts:admin:entitlements` entry in `accounts/operator-grants.json`.
 
 ### Membership index
 
@@ -119,7 +119,7 @@ The public URL answers only `/start` and `/poll`; `describe`, `bind`, `complete`
 
 An account starts with only the product it was created from. An operator can grant or disable another registered product with `POST /v1/account-directory/operator/accounts/<accountId>/entitlements/<product>` and the body `{"status":"active"}` or `{"status":"disabled"}`. A grant gives the product its registered capabilities, which members still use only within their role. Disabling denies that product's authorize calls and keeps memberships and all account data. Each change is an `entitlement.changed` audit event under the same revision check as membership changes.
 
-Only a person holding a reviewed `accounts:admin:entitlements` grant in `accounts/operator-grants.json` can call the route. Operator read access is not enough, and account owners cannot grant products to themselves. No such grant exists yet. The directory BFF's API Gateway policy still allows only `GET` on the account directory, so making the route reachable also needs that policy change, which is held for approval.
+Only a person holding a reviewed `accounts:admin:entitlements` grant in `accounts/operator-grants.json` can call the route. Operator read access is not enough, and account owners cannot grant products to themselves. The route is reachable through the staff BFF: its IAM policy and the central API's resource policy allow exactly `POST /v1/account-directory/operator/accounts/*/entitlements/*` for that one role. The grant comes from `accounts/operator-grants.json`, so a person without a reviewed entry is refused and the Account page shows the server's message. The list of products on the Account page is fixed in the admin code (`OPERATOR_PRODUCTS` in `src/apps.ts`); central refuses a product that is not registered.
 
 ### Quota
 

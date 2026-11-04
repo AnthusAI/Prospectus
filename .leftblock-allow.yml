@@ -1,0 +1,12 @@
+# LeftBlock overrides: each entry approves one reviewed value (one rule
+# matching one exact value in one file). Changing the matched value re-blocks
+# it; unrelated edits to the line do not. `kind` is the rule's category,
+# shown for reviewers; it is not part of matching.
+version: 1
+allow:
+  - id: "dbb73400b5a0fdea"
+    rule: "leftblock-aws-resource-id"
+    file: "accounts/operator-grants.json"
+    kind: "AWS resource id (Amplify app, AppSync API, API Gateway API, Cognito user pool, C"
+    reason: "Operator grant must name the exact Cognito issuer; the same pool id is already on line 4 of this file. Removal belongs to the repo-wide AWS ID cleanup. Approved operator grant, Ryan 2026-11-03."
+    added: 2026-11-04

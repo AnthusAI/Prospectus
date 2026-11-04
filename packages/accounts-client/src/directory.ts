@@ -50,6 +50,10 @@ export interface OperatorDetail extends OperatorAccount {
   memberships: DirectoryMembership[];
   quota: OperatorQuotaView;
 }
+export interface OperatorEntitlementWriter {
+  /** Turn a registered product on (`active`) or off (`disabled`) for an account. Central refuses non-holders. */
+  setEntitlement(accountId: string, product: string, status: "active" | "disabled"): Promise<void>;
+}
 export interface OperatorReader {
   operatorList(): Promise<OperatorList>;
   operatorDetail(id: string): Promise<OperatorDetail>;

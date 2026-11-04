@@ -83,7 +83,26 @@ Feature: Anthus One admin workspace for Prospectus
     Then the page shows its apps with capability codes, its memberships with roles and statuses
     And its account ID can be copied and its record version is shown
     And quota, services engagements and history show as not yet available
-    And the page states that staff access is read-only and not a membership
+    And the page states that staff access is not a membership
+
+  Scenario: An operator turns a product on from the Account page
+    Given the member holds the central Accounts administrator permission and the reviewed entitlements permission
+    When the member opens an Account that does not yet have Cyclotron
+    Then each registered product shows one button, "Turn on" or "Turn off", and no dropdown
+    When the member chooses "Turn on" for Cyclotron
+    Then the Account page refreshes and shows Cyclotron on with a "Turn off" button
+    And choosing "Turn off" shows it off again
+
+  Scenario: An operator without the entitlements permission is refused on the Account page
+    Given the member holds the central Accounts administrator permission but not the entitlements permission
+    When the member chooses "Turn on" for a product
+    Then the page shows the server's message that the entitlements permission is missing
+    And the product stays as it was
+
+  Scenario: The customer portal cannot turn products on or off
+    Given a person signed in to the Anthus One customer portal
+    Then the portal shows no "Turn on" or "Turn off" button for any Account
+    And its service refuses a product change request
 
   Scenario: Areas without a backend say so
     When the member opens Engagements, Usage and billing, Anthus team or Settings

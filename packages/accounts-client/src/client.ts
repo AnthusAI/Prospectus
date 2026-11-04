@@ -65,6 +65,18 @@ export class AccountsClient {
       "GET",
     ) as Promise<{ account: OperatorDetail }>;
   }
+  /** Staff only: turn a registered product on or off for an account. Central requires the entitlements grant. */
+  setEntitlement(
+    accountId: string,
+    product: string,
+    status: "active" | "disabled",
+  ): Promise<{ entitlement: { accountId: string; product: string; status: "active" | "disabled" } }> {
+    return this.transport(
+      `/v1/account-directory/operator/accounts/${encodeURIComponent(accountId)}/entitlements/${encodeURIComponent(product)}`,
+      "POST",
+      { status },
+    ) as Promise<{ entitlement: { accountId: string; product: string; status: "active" | "disabled" } }>;
+  }
   directoryList(): Promise<DirectoryList> {
     return this.transport("/v1/account-directory", "GET") as Promise<DirectoryList>;
   }

@@ -9,6 +9,9 @@ const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
 const CREATE_ACCOUNT_PATH = "/api/saas/accounts";
 const ACCOUNT_NAME_MINIMUM = 2;
 const ACCOUNT_NAME_MAXIMUM = 80;
+// The same patterns as the central route, so a malformed account or product never reaches it.
+const OPERATOR_ENTITLEMENT_PATH =
+  /^\/api\/saas\/operator\/accounts\/([a-f0-9-]{36})\/entitlements\/([a-z][a-z0-9-]{0,39})$/;
 const LOGIN_STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const LOGIN_STATE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const CHALLENGE_TOKEN_PATTERN = /^v1\.[a-z0-9]{1,16}\.[A-Za-z0-9_-]{1,1500}\.[A-Za-z0-9_-]{1,100}$/;
@@ -92,6 +95,20 @@ const createAccountRequestRules: ValidationRule<Record<string, any>>[] = [
   ),
 ];
 
+const entitlementRequestRules: ValidationRule<Record<string, any>>[] = [
+  rule((body) => Object.keys(body).join(",") === "status", "Only a status is accepted."),
+  rule(
+    (body) => body.status === "active" || body.status === "disabled",
+    "The status must be active or disabled.",
+  ),
+];
+function entitlementMessage(error: AccountsClientError) {
+  if (error.status === 403) return "Your staff account does not hold the entitlements permission.";
+  if (error.status === 404) return "That Account or product is not registered.";
+  if (error.status === 409) return "The Account changed at the same time. Reload it and try again.";
+  return "That product change was refused.";
+}
+
 export interface BffEvent {
   rawPath: string;
   requestContext: { http: { method: string } };
@@ -154,6 +171,29 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         if (event.rawPath === "/api/saas/accounts") return jsonResponse(200, await client.directoryList());
         const match = /^\/api\/saas\/accounts\/([a-f0-9-]{36})$/.exec(event.rawPath);
         if (match) return jsonResponse(200, await client.directoryDetail(match[1]));
+      }
+      const entitlementMatch =
+        !customer && method === "POST" ? OPERATOR_ENTITLEMENT_PATH.exec(event.rawPath) : null;
+      if (entitlementMatch) {
+        // Staff only. Central decides: it requires the reviewed accounts:admin:entitlements grant.
+        requireRules(
+          body,
+          entitlementRequestRules,
+          failWith(400, "invalid_entitlement", 'Send exactly {"status":"active"} or {"status":"disabled"}.'),
+        );
+        try {
+          return jsonResponse(
+            200,
+            await options
+              .client(access!)
+              .setEntitlement(entitlementMatch[1], entitlementMatch[2], body.status),
+          );
+        } catch (error) {
+          // Say what central said: the operator needs to know whether it was permission, product or account.
+          if (error instanceof AccountsClientError && [400, 403, 404, 409].includes(error.status))
+            fail(error.status, error.code, entitlementMessage(error));
+          throw error;
+        }
       }
       if (method === "POST" && event.rawPath === CREATE_ACCOUNT_PATH) {
         // The only account write a customer session can make: a new account the caller owns.

@@ -41,7 +41,7 @@ export const papyrusSiteRoutes: readonly string[] = [
   "GET/v1/account-directory/*",
 ];
 const siteRolePattern = /^arn:aws:iam::\d{12}:role\/(?:[A-Za-z0-9+=,.@_-]+\/)*[A-Za-z0-9+=,.@_-]+$/;
-const MAXIMUM_PAPYRUS_SITES = 40;
+const MAXIMUM_PAPYRUS_SITES = 39;
 const siteEntryKeys = [
   "audience",
   "clientId",
@@ -106,7 +106,7 @@ const siteEntryRules: ValidationRule<PapyrusSiteEntry>[] = [
 export function papyrusSiteRegistrations(value: unknown): ProductRegistration[] {
   if (!Array.isArray(value)) throw new Error("Reviewed Papyrus site registrations are required.");
   if (value.length > MAXIMUM_PAPYRUS_SITES)
-    throw new Error("Reviewed Papyrus site registrations exceed the maximum of 40.");
+    throw new Error("Reviewed Papyrus site registrations exceed the maximum of 39.");
   const products = new Set<string>(),
     roles = new Set<string>();
   return value.map((site: PapyrusSiteEntry) => {

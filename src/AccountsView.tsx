@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountsBrowser } from "./accounts-client";
-import { appForProduct } from "./apps";
+import { OPERATOR_PRODUCTS, appForProduct } from "./apps";
 import type {
   DirectoryList,
   DirectoryMembership,
@@ -9,7 +9,7 @@ import type {
 } from "../packages/accounts-client/src/directory";
 import { initials } from "./shared/initials";
 import { QuotaPanel, formatReset, quotaOf } from "./shared/quota";
-import { Eyebrow, ProductSwatch, Stat, Unavailable } from "./shared/ui";
+import { Eyebrow, Icon, ProductSwatch, Stat, Unavailable } from "./shared/ui";
 
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
 
@@ -175,6 +175,13 @@ export function AccountsView({
       .finally(() => sequence === request.current && setDetailLoading(false));
   }, [account, client, operatorAllowed]);
 
+  // Re-read the open Account after a product change, without blanking the page.
+  async function refreshDetail(id: string) {
+    const value = await client.operatorDetail(id);
+    if (id === account) setDetail(value);
+    setOperatorReload((count) => count + 1);
+  }
+
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
     return (operator?.accounts ?? [])
@@ -200,7 +207,7 @@ export function AccountsView({
         </nav>
         {(loading || detailLoading) && <p role="status">Loading account details…</p>}
         {detailError && <p role="alert">{detailError}</p>}
-        {detail && <AccountPage detail={detail} />}
+        {detail && <AccountPage detail={detail} client={client} onChanged={() => refreshDetail(detail.id)} />}
       </main>
     );
 
@@ -411,8 +418,38 @@ export function AccountsView({
   );
 }
 
-function AccountPage({ detail }: { detail: OperatorDetail }) {
+function AccountPage({
+  detail,
+  client,
+  onChanged,
+}: {
+  detail: OperatorDetail;
+  client: AccountsBrowser;
+  onChanged: () => Promise<void>;
+}) {
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [changeError, setChangeError] = useState("");
+  async function setProduct(product: string, status: "active" | "disabled") {
+    if (busy) return;
+    setBusy(product);
+    setChangeError("");
+    try {
+      await client.setEntitlement(detail.id, product, status);
+      await onChanged();
+    } catch (error) {
+      setChangeError(error instanceof Error ? error.message : "The product could not be changed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+  // Every product an operator can change, then any other product the Account already holds.
+  const productNames = [
+    ...OPERATOR_PRODUCTS,
+    ...detail.entitlements
+      .map((entitlement) => entitlement.product)
+      .filter((name) => !OPERATOR_PRODUCTS.includes(name)),
+  ];
   const activeApps = detail.entitlements.filter((entitlement) => entitlement.status === "active").length;
   const activeMembers = detail.memberships.filter((member) => member.status === "active");
   const owner = activeMembers.find((member) => member.role === "owner");
@@ -485,30 +522,45 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
               </h2>
               <span>What this account is entitled to</span>
             </div>
-            {detail.entitlements.length === 0 && <p className="one-empty">No product entitlements.</p>}
-            {detail.entitlements.map((entitlement) => {
-              const app = appForProduct(entitlement.product);
-              const on = entitlement.status === "active";
+            {changeError && (
+              <p role="alert" className="one-alert">
+                {changeError}
+              </p>
+            )}
+            {productNames.map((product) => {
+              const entitlement = detail.entitlements.find((item) => item.product === product);
+              const app = appForProduct(product);
+              const on = entitlement?.status === "active";
               return (
-                <div className="one-entitlement" key={entitlement.product}>
+                <div className="one-entitlement" key={product}>
                   <span className="one-appmark" style={{ background: app.swatch }} aria-hidden="true">
                     {app.name.charAt(0)}
                   </span>
                   <span className="one-cellstack" style={{ minWidth: 140 }}>
                     <strong>{app.name}</strong>
-                    <small className="one-mono">{entitlement.product}</small>
+                    <small className="one-mono">{product}</small>
                   </span>
                   <span className="one-capabilities">
-                    {entitlement.capabilities.length ? (
+                    {entitlement?.capabilities.length ? (
                       entitlement.capabilities.map((capability) => <code key={capability}>{capability}</code>)
                     ) : (
-                      <span className="one-muted">No capabilities</span>
+                      <span className="one-muted">{entitlement ? "No capabilities" : "Not granted"}</span>
                     )}
                   </span>
-                  <span className="one-switch" title="Read-only: staff access does not change entitlements">
+                  <span className="one-switch">
                     <span className={`one-switch-track${on ? " on" : ""}`} aria-hidden="true" />
                     {on ? "On" : "Off"}
                   </span>
+                  <button
+                    type="button"
+                    className="one-button small"
+                    disabled={busy !== null}
+                    aria-label={`${on ? "Turn off" : "Turn on"} ${app.name} (${product})`}
+                    onClick={() => void setProduct(product, on ? "disabled" : "active")}
+                  >
+                    <Icon name={on ? "power-off" : "power"} size={14} />
+                    {on ? "Turn off" : "Turn on"}
+                  </button>
                 </div>
               );
             })}
@@ -578,8 +630,8 @@ function AccountPage({ detail }: { detail: OperatorDetail }) {
               <dd>{detail.revision}</dd>
             </dl>
             <p className="one-note">
-              You’re viewing as Anthus staff. Administrator access is read-only and does not make you a member
-              of this account.
+              You’re viewing as Anthus staff. Administrator access does not make you a member of this account.
+              Turning a product on or off needs the reviewed entitlements permission.
             </p>
           </section>
         </aside>

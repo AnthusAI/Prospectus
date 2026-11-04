@@ -131,7 +131,7 @@ test("Accounts additive synthesis preserves every existing CRM resource and adds
   const invokeText = JSON.stringify(invoke);
   assert.ok(invokeText.includes("account-directory"));
   assert.ok(!invokeText.includes("account-directory*"));
-  assert.equal(invoke[0].Resource.length, 5);
+  assert.equal(invoke[0].Resource.length, 6);
   assert.ok(invokeText.includes("identities/google/resolve"));
   // The only account write: POST on exactly /v1/accounts, never a wildcard or an account sub-route.
   const accountRoutes = invoke[0].Resource.map((value: any) => JSON.stringify(value)).filter(
@@ -356,7 +356,7 @@ test("reviewed Papyrus sites may call only read and authorize routes and leave e
 });
 
 test("the largest reviewed Papyrus site registry keeps the deployed API access policy within the API Gateway size limit", () => {
-  const after = template(true, true, true, syntheticPapyrusSites(40));
+  const after = template(true, true, true, syntheticPapyrusSites(39));
   const policy = (Object.values(after.Resources) as any[]).find(
     (value) => value.Type === "AWS::ApiGateway::RestApi",
   ).Properties.Policy;
@@ -368,7 +368,7 @@ test("the largest reviewed Papyrus site registry keeps the deployed API access p
     deployedPolicyText.length < 8192,
     `Deployed API resource policy would be ${deployedPolicyText.length} bytes`,
   );
-  assert.throws(() => syntheticPapyrusSites(41));
+  assert.throws(() => syntheticPapyrusSites(40));
 });
 
 test("the login challenge MAC key is an HMAC_256 generate-verify key and only the central runtime may use it", () => {
@@ -682,7 +682,66 @@ test("Anthus One adds a Google-direct customer API with no Cognito pool, secret 
   ) as any;
   const policyText = JSON.stringify(restApi.Properties.Policy);
   assert.ok(policyText.includes("AnthusOneBffRuntime"));
-  assert.ok(!policyText.includes("operator"));
+  // Only the staff BFF's statement names an operator route; the portal's statements never do.
+  const portalStatements = restApi.Properties.Policy.Statement.filter((statement: any) =>
+    JSON.stringify(statement.Principal ?? {}).includes("AnthusOneBffRuntime"),
+  );
+  assert.ok(portalStatements.length > 0);
+  assert.ok(!JSON.stringify(portalStatements).includes("operator"));
+});
+
+const ENTITLEMENT_RESOURCE = "execute-api:/api/POST/v1/account-directory/operator/accounts/*/entitlements/*";
+
+test("only the staff BFF may reach the operator entitlement route; the customer portal and product roles may not", () => {
+  const built = template(
+    true,
+    true,
+    true,
+    [],
+    parameterStoreSigner,
+    true,
+    undefined,
+    [syntheticQuotaProduct("example-renderer")],
+    undefined,
+    syntheticBabulus(),
+  );
+  const statements = (Object.values(built.Resources) as any[]).find(
+    (value) => value.Type === "AWS::ApiGateway::RestApi",
+  ).Properties.Policy.Statement as any[];
+  const holders = statements.filter(
+    (item) => item.Effect === "Allow" && item.Resource.includes(ENTITLEMENT_RESOURCE),
+  );
+  assert.equal(holders.length, 1, "exactly one resource policy statement allows the route");
+  assert.ok(
+    JSON.stringify(holders[0].Principal).includes("BffRuntime"),
+    "and its principal is the staff BFF",
+  );
+  assert.ok(!JSON.stringify(holders[0].Principal).includes("AnthusOneBffRuntime"));
+  // Only that one POST: the staff BFF gains no other operator write.
+  const writes = holders[0].Resource.filter((value: string) => value.includes("/POST/"));
+  assert.deepEqual(
+    writes.filter((value: string) => value.includes("operator")),
+    [ENTITLEMENT_RESOURCE],
+  );
+  assert.ok(!holders[0].Resource.some((value: string) => value.includes("/quota")));
+  // The staff BFF's own identity policy lists it too, and no other identity policy does.
+  const invokeStatements = (Object.values(built.Resources) as any[])
+    .filter((value) => value.Type === "AWS::IAM::Policy")
+    .flatMap((value) => value.Properties.PolicyDocument.Statement)
+    .filter((item: any) => JSON.stringify(item.Action).includes("execute-api:Invoke"));
+  const identityHolders = invokeStatements.filter((item: any) =>
+    JSON.stringify(item.Resource).includes("/entitlements/"),
+  );
+  assert.equal(identityHolders.length, 1);
+  assert.ok(
+    JSON.stringify(identityHolders[0].Resource).includes(
+      "POST/v1/account-directory/operator/accounts/*/entitlements/*",
+    ),
+  );
+  // Neither the customer portal, the quota product, Babulus, nor the other roles hold it.
+  const others = statements.filter((item) => item !== holders[0]);
+  assert.ok(others.length > 0);
+  assert.ok(!JSON.stringify(others).includes("/entitlements/"));
 });
 
 test("Anthus One is off unless activated, leaving the Accounts plane unchanged", () => {
