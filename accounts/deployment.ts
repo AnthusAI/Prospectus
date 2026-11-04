@@ -6,6 +6,7 @@ import { accountCreationLimits, membershipLookupMode } from "./durable-accounts"
 import { loginChallengeSignerConfiguration } from "./challenge-signer";
 import { babulusFromEnvironment } from "./babulus";
 import { siteSubjectSecretConfiguration } from "./site-subjects";
+import { rateTableConfiguration } from "../quota/rate-table";
 import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
 import { PORTAL_GOOGLE_CLIENT_ID } from "../infra/lib/scope";
 
@@ -44,6 +45,10 @@ export function accountsDeployment() {
     config.siteSubjectSecret === undefined
       ? undefined
       : siteSubjectSecretConfiguration(config.siteSubjectSecret);
+  // Creates the parameter with a refusing placeholder; the real table is written later, outside Git. Without it
+  // every quota call is refused as unavailable.
+  const quotaRateTable =
+    config.quotaRateTable === undefined ? undefined : rateTableConfiguration(config.quotaRateTable);
   const consoleConfig = JSON.parse(
     readFileSync(new URL("./console-deployment.json", import.meta.url), "utf8"),
   );
@@ -65,6 +70,7 @@ export function accountsDeployment() {
     googlePolicyReviewId: config.googlePolicyReviewId as string,
     loginChallengeSigner,
     ...(siteSubjectSecret ? { siteSubjectSecret } : {}),
+    ...(quotaRateTable ? { quotaRateTable } : {}),
     labVerifier: reviewedLabVerifierEntry(
       JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
     ),

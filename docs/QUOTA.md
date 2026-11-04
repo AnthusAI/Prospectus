@@ -105,15 +105,21 @@ The account directory detail carries a `quota` view. Customers get `{state:"set"
 
 ## New infrastructure
 
-Nothing is deployed by this change. Each item needs the owner's concrete approval first:
+The owner approved these permissions on 2026-11-02. Production's `accounts/deployment.json` now passes `quotaRateTable`, so the next deploy of `main` creates them:
 
 - The central accounts runtime role gains `s3:GetObject` and `s3:PutObject` on `prospectus-central/quota/*` and `_virtuus/prospectus-central/quota/*`, and the `s3:ListBucket` prefix condition gains the same two prefixes (`infra/lib/accounts-plane.ts`).
-- When `quotaRateTable` is configured: one retained SSM SecureString (Advanced tier) created once by a create-only custom resource with a placeholder value; the central runtime role gains `ssm:GetParameter` on that one parameter; a new initializer Lambda `prospectus-quota-rate-table-init` with its own role (`ssm:PutParameter` on that one parameter, with an explicit deny when `ssm:Overwrite` is true, and its log group). A deployment from private configuration then writes the real value; nobody sets it by hand.
+- One retained SSM SecureString (Advanced tier) named `/prospectus/central-accounts/quota-rate-table/v1`, created once by a create-only custom resource with the placeholder `{"version":"unset"}`, which the service refuses as unparseable. The central runtime role gains `ssm:GetParameter` on that one parameter, and the Lambda environment variable `PROSPECTUS_QUOTA_RATE_TABLE` names it.
+- A new initializer Lambda `prospectus-quota-rate-table-init` with its own role (`ssm:PutParameter` on that one parameter, with an explicit deny when `ssm:Overwrite` is true, and its log group), so it can create the parameter and never replace its value.
 - A third warm bridge process in the central Lambda for the `quota` project.
-- `AccountsPlaneOptions.quotaProducts`: reviewed registrations carrying `quota: true`. Each role is added to the API resource policy for exactly the five routes and to the permitted principals. Nothing passes any product today.
-- The new operator permission `accounts:admin:quota` and its first grant, and the held directory BFF policy change for operator writes.
+- The new operator permission `accounts:admin:quota` (its first grant and the held directory BFF policy change for operator writes are still separate approvals).
 
-Registering a product (for example Babulus) is a separate reviewed change.
+Not configured: `AccountsPlaneOptions.quotaProducts` (reviewed registrations carrying `quota: true`; nothing passes any today besides the Babulus registration when its options are supplied). Registering a product (for example Babulus) is a separate reviewed change.
+
+Until a real table is written, every quota call answers `503 quota_unavailable` and the Account views show `unavailable`. Once a valid table is written, an Account with no operator-chosen plan uses the table's `defaultPlan`, so the operator route is not needed for the default plan. An Account is refused with `403 no_allowance` only if the table has no `defaultPlan` and the Account has neither a plan nor an override.
+
+## How a real table reaches the parameter
+
+Never by hand, never from Git. The parameter is `/prospectus/central-accounts/quota-rate-table/v1`. A deployment step that runs from private configuration (kept outside this repository) writes the table JSON to it as a SecureString with overwrite, using a deployment identity that is separate from the initializer role, which cannot overwrite. This repository does not define that step yet: it holds the engine, the create-only parameter and the placeholder only. The service reads the parameter at runtime and caches the parsed table for a minute. Rates, plans and allowances never appear in this repository, its tests (which use made-up tables), logs or API responses.
 
 ## Decisions for the owner
 
