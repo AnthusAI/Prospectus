@@ -30,3 +30,18 @@ Feature: Activate the approved Accounts directory without changing CRM authority
     Then CDK grants only ssm:GetParameter on the named parameters, or creates the kms key and its two permissions, and never both
     And a missing or malformed signer configuration stops the build
     And no secret value is stored in the repository, the template or the Lambda environment
+
+  Scenario: Production configures the quota rate table parameter
+    Given the production deployment configuration names the reviewed v1 quota rate table parameter
+    When the deployment options are read
+    Then they carry the quota rate table, so a deploy creates the SecureString once with a refusing placeholder
+    And the central runtime role may read only that parameter and the initializer may only create it
+    And a malformed parameter name stops the build
+    And the configuration holds no rates, allowances or amounts
+
+  Scenario: Quota refuses until a real rate table is written
+    Given the quota rate table parameter still holds its placeholder
+    When a product checks, records or reserves quota for an Account
+    Then the answer is 503 quota_unavailable and nothing is charged
+    And once a valid table with a default plan is written, an Account with no operator-chosen plan gets that plan's allowance
+    And an Account gets no_allowance only when the table has no default plan and the Account has no plan or override

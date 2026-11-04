@@ -88,7 +88,8 @@ if (siteSubjectSecret) {
   const initializerPolicy = resources.find(
     (resource) =>
       resource.Type === "AWS::IAM::Policy" &&
-      JSON.stringify(resource.Properties.PolicyDocument).includes("ssm:PutParameter"),
+      JSON.stringify(resource.Properties.PolicyDocument).includes("ssm:PutParameter") &&
+      JSON.stringify(resource.Properties.PolicyDocument).includes(siteSubjectSecret.parameterName),
   );
   const putStatements = initializerPolicy.Properties.PolicyDocument.Statement.filter((statement: any) =>
     JSON.stringify(statement.Action).includes("ssm:"),
@@ -107,10 +108,28 @@ if (siteSubjectSecret) {
   assert.equal(
     resources.filter((resource) => JSON.stringify(resource.Properties ?? {}).includes("ssm:PutParameter"))
       .length,
-    1,
-    "Only the initializer may put the parameter",
+    1 + (accountsDeployment()!.quotaRateTable ? 1 : 0),
+    "Only the two create-only initializers may put a parameter",
   );
 } else assert.equal(secretResources.length, 0);
+// The quota rate table: when configured, one retained create-only custom resource and the runtime env names it.
+const quotaRateTable = accountsDeployment()!.quotaRateTable;
+const rateResources = resources.filter((resource) => resource.Type === "Custom::ProspectusQuotaRateTable");
+if (quotaRateTable) {
+  assert.equal(rateResources.length, 1);
+  assert.equal(rateResources[0].Properties.ParameterName, quotaRateTable.parameterName);
+  assert.equal(rateResources[0].DeletionPolicy, "Retain");
+  assert.equal(rateResources[0].UpdateReplacePolicy, "Retain");
+  assert.ok(
+    resources.some(
+      (resource) =>
+        resource.Type === "AWS::Lambda::Function" &&
+        resource.Properties.Environment?.Variables?.PROSPECTUS_QUOTA_RATE_TABLE ===
+          JSON.stringify(quotaRateTable),
+    ),
+    "the central runtime is told the parameter name",
+  );
+} else assert.equal(rateResources.length, 0);
 assert.ok(
   !resources.some(
     (resource) =>
