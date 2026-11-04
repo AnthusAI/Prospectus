@@ -9,6 +9,10 @@
     "parameterPrefix": "/prospectus/central-accounts/login-challenge-mac/",
     "currentKeyId": "v1"
   },
+  "quotaRateTable": {
+    "version": "v1",
+    "parameterName": "/prospectus/central-accounts/quota-rate-table/v1"
+  },
   "siteSubjectSecret": {
     "version": "v1",
     "parameterName": "/prospectus/central-accounts/site-subject/v1"
