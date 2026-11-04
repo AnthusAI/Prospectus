@@ -19,12 +19,13 @@ const grant = {
   permission: "accounts:admin:read",
   reviewedGrantId: "synthetic-approval-v1",
 };
-test("operator permission requires an exact deployment-owned human grant and the approved production grant is read-only", () => {
-  assert.equal(deployedGrants.length, 1);
-  assert.equal(deployedGrants[0].permission, "accounts:admin:read");
-  assert.equal(
-    deployedGrants[0].subjectHash,
-    "3354c9f139ef4d2e872245b1af080140816a95954c4e54aa596f2106c86cf95c",
+test("operator permission requires an exact deployment-owned human grant and production holds only the approved read and entitlements grants", () => {
+  assert.deepEqual(
+    deployedGrants.map((deployed) => [deployed.permission, deployed.subjectHash]),
+    ["accounts:admin:read", "accounts:admin:entitlements"].map((permission) => [
+      permission,
+      "3354c9f139ef4d2e872245b1af080140816a95954c4e54aa596f2106c86cf95c",
+    ]),
   );
   operatorGrants(deployedGrants);
   assert.equal(canReadOperatorDirectory(context, operatorGrants([])), false);
