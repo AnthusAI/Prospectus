@@ -75,6 +75,21 @@ const ICON_PATHS = {
     </>
   ),
   external: <path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" />,
+  // Lucide "power" and "power-off" (ISC license), the Turn on and Turn off buttons on an Account.
+  power: (
+    <>
+      <path d="M12 2v10" />
+      <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+    </>
+  ),
+  "power-off": (
+    <>
+      <path d="M18.36 6.64A9 9 0 0 1 20.77 15" />
+      <path d="M6.16 6.16a9 9 0 1 0 12.68 12.68" />
+      <path d="M12 2v4" />
+      <path d="m2 2 20 20" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

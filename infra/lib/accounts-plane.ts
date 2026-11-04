@@ -402,6 +402,9 @@ export class AccountsPlane extends Construct {
       api.arnForExecuteApi("POST", "/v1/identities/google/resolve", "api"),
       // Self-service account creation: exactly this path, never /v1/accounts/*.
       api.arnForExecuteApi("POST", "/v1/accounts", "api"),
+      // Staff only: an operator turning a product on or off. Central still requires the reviewed
+      // accounts:admin:entitlements grant. Never add this to customerRoutes or any other role.
+      api.arnForExecuteApi("POST", "/v1/account-directory/operator/accounts/*/entitlements/*", "api"),
     ];
     bffRole.addToPolicy(new iam.PolicyStatement({ actions: ["execute-api:Invoke"], resources: invoke }));
     api.addToResourcePolicy(
@@ -414,6 +417,7 @@ export class AccountsPlane extends Construct {
           "execute-api:/api/POST/v1/identities/google/challenge",
           "execute-api:/api/POST/v1/identities/google/resolve",
           "execute-api:/api/POST/v1/accounts",
+          "execute-api:/api/POST/v1/account-directory/operator/accounts/*/entitlements/*",
         ],
       }),
     );
