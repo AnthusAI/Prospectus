@@ -27,7 +27,7 @@ Feature: Anthus One admin workspace for Prospectus
   Scenario: Completing a follow-up asks for the next one
     Given a follow-up on Today
     When the member marks it done
-    Then its prospect opens in Pipeline with the next action and follow-up date ready to change
+    Then its lead page opens with the next action and follow-up date ready to change
     And nothing is saved until the member saves a new next step
 
   Scenario: New website inquiries can be taken from Today
@@ -36,6 +36,27 @@ Feature: Anthus One admin workspace for Prospectus
     Then the prospect is reassigned to the member with its current revision
     And a competing edit is reported as a conflict instead of overwriting it
 
+  Scenario: Every lead on Today and in Pipeline links to its own page
+    Given new inquiries and follow-ups on Today, including leads owned by someone else
+    Then the company or name on every New inquiries card and every follow-up row is a link to /pipeline/ followed by the lead's issue ID
+    And Take it is still offered on leads that are not the member's
+    And a plain click opens the lead page inside the application
+    And a click with a modifier key or a middle click opens the same address in a new tab
+    And every card on the Pipeline board and every row in the list links the same way
+
+  Scenario: Every console page has its own address
+    Then the pages are addressed /today, /pipeline, /accounts, /engagements, /billing, /team and /settings
+    And an account is addressed /accounts/ followed by its account ID
+    And every such address loads directly on a fresh visit, keeps the page after sign-in and works with back and forward
+    And each account row and account breadcrumb is a real link to its address
+    And the tab title names the page, the lead or the account
+    And an unknown account ID says the account could not be found
+
+  Scenario: Older links keep working
+    When the member opens /?view=pipeline, /?view=accounts, /?view=accounts&account= followed by an account ID or the older ?view=followups and ?view=customers
+    Then the matching page opens and the address is replaced with its path
+    And back does not return to the older address
+
   Scenario: Pipeline uses the shared Kanbus board with the Anthus One theme
     When the member opens Pipeline
     Then the shared Kanbus board shows one column per configured stage
@@ -43,17 +64,17 @@ Feature: Anthus One admin workspace for Prospectus
     And search in the header filters prospects by the shared Kanbus query
     And collapsed columns survive switching between board and list and reloading
 
-  Scenario: The prospect drawer edits stage, owner, next step and interests
+  Scenario: The lead page edits stage, owner, next step and interests
     Given a prospect in the Proposal stage
     When the member selects it on the board
-    Then the shared detail surface opens with its reference, source, company and contact
+    Then its lead page opens with its reference, source, company and contact
     And the stage bar shows every configured stage, allowing only the configured transitions
     When the member chooses Customer success, changes the next action and adds Papyrus as an interest
     And saves changes
     Then the same issue ID keeps the new stage, next action and interests after reload
 
   Scenario: Mark lost closes a prospect in one step
-    Given an active prospect open in the drawer
+    Given an active prospect open on its lead page
     When the member chooses Mark lost
     Then the prospect moves to the closed stage without requiring a follow-up date
 

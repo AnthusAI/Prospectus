@@ -43,8 +43,9 @@ test("synthetic CTA inquiry persists through private follow-up and customer hand
     .getByRole("button", { name: "List" })
     .click();
   await expect(page.getByText(name, { exact: true })).toHaveCount(1);
-  await page.getByText(name, { exact: true }).click();
-  const identifier = await page.locator("aside .kb-detail-id").textContent();
+  await page.getByRole("link", { name: `Open ${name}` }).click();
+  await expect(page).toHaveURL(/\/pipeline\/prsp-/);
+  const identifier = await page.locator(".lead-page .lead-id").textContent();
   await expect(page.getByLabel("Next action", { exact: true })).toHaveValue("Respond to demo request");
   await expect(page.getByRole("region", { name: "Conversation" })).toContainText("prospectus-web-review");
   await expect(page.getByRole("region", { name: "Conversation" })).toContainText(
@@ -66,13 +67,7 @@ test("synthetic CTA inquiry persists through private follow-up and customer hand
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator(".notice")).toHaveText("Saved.");
   await page.reload();
-  await page
-    .getByRole("group", { name: "Layout", exact: true })
-    .getByRole("button", { name: "List" })
-    .click();
-  await page.getByRole("searchbox", { name: "Search" }).fill(name);
-  await page.getByRole("heading", { name, exact: true }).click();
-  await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
+  await expect(page.locator(".lead-page .lead-id")).toHaveText(identifier!);
   await page.getByText("Contact details", { exact: true }).click();
   await expect(page.getByLabel("Email", { exact: true })).toHaveValue("corrected-review@example.invalid");
   await expect(page.getByLabel("Owner", { exact: true })).toHaveValue("customer-success");

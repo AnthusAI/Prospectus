@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { issueIdFromPath } from "../deep-links";
+import {
+  legacyLocation,
+  opensElsewhere,
+  pathFor,
+  routeFromPath,
+  type PageKey,
+  type RouteLocation,
+} from "../deep-links";
 import { initials } from "../shared/initials";
 import { BrandMark, Icon, Wordmark, type IconName } from "../shared/ui";
 
-export type Page = "today" | "pipeline" | "accounts" | "engagements" | "billing" | "team" | "settings";
+export type Page = PageKey;
 
 export const PAGES: Record<Page, { label: string; icon: IconName; group: "Sell" | "Serve" | "Admin" }> = {
   today: { label: "Today", icon: "today", group: "Sell" },
@@ -15,25 +22,19 @@ export const PAGES: Record<Page, { label: string; icon: IconName; group: "Sell" 
   settings: { label: "Settings", icon: "settings", group: "Admin" },
 };
 
-const LEGACY_VIEWS: Record<string, Page> = { followups: "today", customers: "pipeline" };
-
-/** Reads the page, open account and open issue from the address; `?view=` keeps the links the CRM already issued working. */
+/**
+ * Reads the page, open account and open lead from the address. The older `/?view=` links the CRM already
+ * issued still resolve; the application replaces them with the path (see `pathFor`).
+ */
 export function readLocation(
   search = window.location.search,
   pathname = window.location.pathname,
-): { page: Page; account: string | null; issueId: string | null } {
-  const issueId = issueIdFromPath(pathname);
-  if (issueId) return { page: "pipeline", account: null, issueId };
-  const parameters = new URLSearchParams(search);
-  const view = parameters.get("view") ?? "";
-  const page = view in PAGES ? (view as Page) : (LEGACY_VIEWS[view] ?? "today");
-  return { page, account: page === "accounts" ? parameters.get("account") : null, issueId: null };
+): RouteLocation {
+  return routeFromPath(pathname) ?? legacyLocation(pathname === "/" ? search : "");
 }
 
 export function pageHref(page: Page, account?: string | null): string {
-  const parameters = new URLSearchParams({ view: page });
-  if (account) parameters.set("account", account);
-  return `/?${parameters}`;
+  return pathFor({ page, account: account ?? null, issueId: null });
 }
 
 export function AdminShell({
@@ -87,6 +88,7 @@ export function AdminShell({
             className="one-brand"
             href={pageHref("today")}
             onClick={(event) => {
+              if (opensElsewhere(event)) return;
               event.preventDefault();
               onNavigate("today");
             }}
@@ -154,6 +156,7 @@ export function AdminShell({
                   href={pageHref(key)}
                   aria-current={page === key ? "page" : undefined}
                   onClick={(event) => {
+                    if (opensElsewhere(event)) return;
                     event.preventDefault();
                     onNavigate(key);
                   }}

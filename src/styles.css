@@ -1386,6 +1386,44 @@ body:has(.one) {
   font-size: 14px;
   color: var(--ink-2);
 }
+/* A link covering each shared Kanbus card, so a lead's card is a real link to its page. */
+.issue-card > a.one-card-link {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.lead-page form,
+.lead-page fieldset:not(.one-stagebar-wrap) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.lead-page fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.lead-page .one-columns > .primary {
+  flex-basis: 520px;
+}
+.lead-page .one-columns > .secondary {
+  flex-basis: 360px;
+}
+.lead-page h1:focus {
+  outline: none; /* Focus moves to the title when the page opens, for screen readers. */
+}
+.lead-owner {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.lead-id {
+  font-size: 12px;
+  color: var(--ink-2);
+}
 .one-drawer-actions {
   display: flex;
   gap: 10px;
@@ -1480,6 +1518,7 @@ body:has(.one) {
   gap: 6px;
   align-items: center;
 }
+.one-breadcrumb a,
 .one-breadcrumb button {
   padding: 0;
   border: 0;

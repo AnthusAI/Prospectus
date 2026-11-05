@@ -60,7 +60,8 @@ test("likely spam is hidden behind a visible toggle, explained in the detail vie
   await expect(hidden).toContainText(/\d+ hidden as likely spam or spam\./);
   await expect(page.getByText(title, { exact: true })).toHaveCount(0);
   await hidden.getByRole("button", { name: "Show" }).click();
-  await page.getByText(title, { exact: true }).click();
+  await page.getByRole("link", { name: `Open ${title}` }).click();
+  await expect(page).toHaveURL(new RegExp(`/pipeline/${identifier}$`));
 
   const check = page.getByRole("region", { name: "Spam check", exact: true });
   await expect(check).toContainText("Likely spam");
@@ -89,11 +90,9 @@ test("likely spam is hidden behind a visible toggle, explained in the detail vie
   expect(record.custom.spam_review.machine.verdict).toBe("likely_spam");
   expect(record.custom.spam_corrections).toHaveLength(1);
 
-  // Once restored it is no longer hidden, and the detail view shows the review.
-  await hidden
-    .getByRole("button", { name: "Hide" })
-    .click()
-    .catch(() => undefined);
-  await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
+  // The lead page shows the review; once restored the lead is no longer hidden in Pipeline.
   await expect(page.getByText("Reviewed as Not spam", { exact: false })).toBeVisible();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Pipeline" }).click();
+  await expect(page).toHaveURL(/\/pipeline$/);
+  await expect(page.getByRole("link", { name: `Open ${title}` })).toBeVisible();
 });
