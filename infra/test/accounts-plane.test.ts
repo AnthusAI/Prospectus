@@ -1064,14 +1064,14 @@ test("with the billing ledger flag off, the synthesized output is byte for byte 
   assert.ok(!reference.includes("prospectus-central/billing"), "no billing prefix without the flag");
   assert.ok(!reference.includes("/operator/billing"), "no billing route without the flag");
   assert.ok(!reference.includes("/invoices"), "no billing route without the flag");
-  // The committed deployment flag is off, so the production synthesis carries none of it.
+  // Ryan approved the flag on 2026-11-05, so the production synthesis carries the additions proved below.
   assert.deepEqual(
     JSON.parse(readFileSync(new URL("../../billing/deployment.json", import.meta.url), "utf8")),
     {
-      ledger: { enabled: false },
+      ledger: { enabled: true },
     },
   );
-  assert.equal("billingLedger" in accountsDeployment()!, false);
+  assert.equal(accountsDeployment()!.billingLedger, true);
 });
 
 test("with the billing ledger flag on, exactly the billing prefixes and the ten write routes are added", () => {
