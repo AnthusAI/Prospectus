@@ -49,6 +49,22 @@ export interface BillingRouteDependencies {
   maximumPdfBytes?: number;
 }
 
+/** The ledger's entry for an already-sent invoice: its number and issue date, then the raised invoice's fields. */
+function sentInvoice(alreadySent: unknown, rest: Record<string, unknown>) {
+  const sent = alreadySent as { number?: unknown; issueDate?: unknown } | null;
+  if (
+    !sent ||
+    typeof sent !== "object" ||
+    Object.keys(sent).some((key) => key !== "number" && key !== "issueDate")
+  )
+    fail(
+      400,
+      "invalid_invoice",
+      "Invoice refused: an already-sent invoice needs only its number and issue date.",
+    );
+  return { ...rest, number: sent.number, issueDate: sent.issueDate };
+}
+
 const accountRoute = (suffix: string) => new RegExp(`${OPERATOR}/accounts/${ID}/${suffix}$`);
 
 /**
@@ -294,7 +310,12 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
       if (method === "POST") {
         await summary(accountId);
         const { operationId, input } = write(event, ["accountId"]);
-        const { invoice } = await ledger.raise(context, accountId, input, operationId);
+        const { alreadySent, draft, ...rest } = input as Record<string, unknown>;
+        // An invoice already sent outside Prospectus keeps the number and issue date it was sent with.
+        const { invoice } =
+          alreadySent === undefined
+            ? await ledger.raise(context, accountId, { ...rest, draft }, operationId)
+            : await ledger.enterIssued(context, accountId, sentInvoice(alreadySent, rest), operationId);
         return jsonResponse(200, { invoice: invoiceView((await ledger.invoice(invoice.id))!) });
       }
     }
