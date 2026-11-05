@@ -111,14 +111,14 @@ test(
         ],
       );
       await page.reload();
-      await page.getByRole("button", { name: /Persisted Papyrus account/ }).click();
+      await page.getByRole("link", { name: /Persisted Papyrus account/ }).click();
       await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(environment.account.id, { exact: true })).toBeVisible();
       await page
         .getByRole("navigation", { name: "Breadcrumb" })
-        .getByRole("button", { name: "Accounts" })
+        .getByRole("link", { name: "Accounts" })
         .click();
-      await expect(page.getByRole("button", { name: /Persisted Papyrus account/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /Persisted Papyrus account/ })).toBeVisible();
       activeCentral = environment.handler();
       await page.getByRole("button", { name: "Refresh directory" }).click();
       await expect(page.getByRole("alert")).toContainText("permission may have changed");
