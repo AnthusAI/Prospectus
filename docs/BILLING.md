@@ -144,7 +144,7 @@ Every write carries a client-generated operation id and uses revision compare-an
 
 ## Ledger implementation
 
-Built for kanbus-ffdad5 and kanbus-0f125f. Everything below is tested in memory and through the Rust bridge, and is off: `billing/deployment.json` is committed as `{ "ledger": { "enabled": false } }`. While it is, `canonical-lambda.ts` opens no billing storage and every operator billing route answers 404. Domain calls (`billing/ledger.ts`, `BillingLedger`; `billing/issuer.ts`, `BillingIssuer`) take a context, an input and an operation ID, so the routes and the future CLI call the same functions.
+Built for kanbus-ffdad5 and kanbus-0f125f. Everything below is tested in memory and through the Rust bridge, and is on since Ryan's approval on 2026-11-05: `billing/deployment.json` is committed as `{ "ledger": { "enabled": true } }`. While it is off, `canonical-lambda.ts` opens no billing storage and every operator billing route answers 404. Domain calls (`billing/ledger.ts`, `BillingLedger`; `billing/issuer.ts`, `BillingIssuer`) take a context, an input and an operation ID, so the routes and the future CLI call the same functions.
 
 **One serialized ledger per account.** `ledgers/<accountUUID>.json` is the account's head: a revision, the ids of its invoices and payments, its recent journal events and at most one pending operation. An operation is validated at one head revision, accepted by a compare-and-set of the head, then writes its records, each idempotent by operation ID, writes its one journal event and releases the head. A lost race re-reads and re-validates. If a process stops part-way, the pending operation stays in the head and the next operation on the account (or a replay of the same one) finishes it first. This is what makes over-allocation, a second period invoice and a void-versus-allocate race refusals rather than races. Only the number claims and counters are global.
 
@@ -174,7 +174,7 @@ Built for kanbus-ffdad5 and kanbus-0f125f. Everything below is tested in memory 
 
 ### Turning the ledger on
 
-Nothing here is done; the code is ready for review and each step still needs Ryan's approval, in this order.
+Ryan approved these steps on 2026-11-05 ("Approve and deploy"), with the ledger on the central runtime role for now and a separate billing role as hardening before customer billing or Stripe. In order:
 
 1. **Review and merge** the ledger, then the routes branch.
 2. **Grant.** Add one entry to `accounts/operator-grants.json` (`product` `prospectus-directory`, the Cognito issuer, the operator's `subjectHash`, `permission` `accounts:admin:billing`, a `reviewedGrantId`), after the same private profile confirmation as `accounts:admin:read`. `accounts:admin:billing` already exists as a permission.
