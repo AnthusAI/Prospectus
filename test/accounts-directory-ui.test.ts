@@ -278,7 +278,7 @@ test(
         });
       });
       await page.goto(`${server.resolvedUrls!.local[0]}test/accounts-directory-fixture/index.html`);
-      await page.getByRole("button", { name: /Synthetic customer account/ }).click();
+      await page.getByRole("link", { name: /Synthetic customer account/ }).click();
       await expect(page.getByRole("heading", { name: "Account memberships" })).toBeVisible();
       await expect(page.getByText(/synthetic-revoked/)).toBeVisible();
       await expect(page.getByLabel("Internal usage")).toContainText("1040 units");
@@ -306,9 +306,9 @@ test(
       refuseChanges = false;
       await page
         .getByRole("navigation", { name: "Breadcrumb" })
-        .getByRole("button", { name: "Accounts" })
+        .getByRole("link", { name: "Accounts" })
         .click();
-      await expect(page.getByRole("button", { name: /Synthetic customer account/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /Synthetic customer account/ })).toBeVisible();
       await expect(page.getByRole("button", { name: "My memberships" })).toHaveCount(0);
       mode = "error";
       await page.getByRole("button", { name: "Refresh directory" }).click();
