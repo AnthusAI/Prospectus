@@ -65,9 +65,10 @@ async function central(permissions: OperatorPermission[], enabled: boolean) {
 }
 const lines = [{ description: "Example site, November", quantity: 1, unitAmountCents: 120000 }];
 
-test("the committed deployment flag is disabled, and only its exact shape is accepted", () => {
-  assert.deepEqual(reviewedDeployment, { ledger: { enabled: false } });
-  assert.equal(billingDeployment(reviewedDeployment).ledgerEnabled, false);
+test("the committed deployment flag is on by Ryan's approval, and only its exact shape is accepted", () => {
+  assert.deepEqual(reviewedDeployment, { ledger: { enabled: true } });
+  assert.equal(billingDeployment(reviewedDeployment).ledgerEnabled, true);
+  assert.equal(billingDeployment({ ledger: { enabled: false } }).ledgerEnabled, false);
   assert.equal(billingDeployment({ ledger: { enabled: true } }).ledgerEnabled, true);
   for (const bad of [
     null,
@@ -184,6 +185,40 @@ test("billing runs end to end through the central handler over real files, with 
     draft: false,
   });
   assert.equal(again.body.invoice.id, invoice.id, "a replay returns the same invoice");
+  // An invoice already sent outside Prospectus keeps its number and issue date, through the same route.
+  const sent = await call(operator, "POST", `/accounts/${accountId}/invoices`, {
+    ...operation(),
+    accountId,
+    lineItems: lines,
+    netTermsDays: 30,
+    issuedVia: "manual",
+    draft: false,
+    alreadySent: { number: "202610-001", issueDate: "2026-10-31" },
+  });
+  assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  assert.equal(sent.body.invoice.number, "202610-001");
+  assert.equal(sent.body.invoice.status, "issued");
+  assert.equal(sent.body.invoice.issuedAt, "2026-10-31");
+  assert.equal(sent.body.invoice.dueAt, "2026-11-30");
+  for (const alreadySent of [
+    { number: "202611-002", issueDate: "2026-10-31" },
+    { number: "202610-001", issueDate: "2026-10-31" },
+    { number: "202610-009", issueDate: "2026-10-31", extra: 1 },
+  ])
+    assert.equal(
+      (
+        await call(operator, "POST", `/accounts/${accountId}/invoices`, {
+          ...operation(),
+          accountId,
+          lineItems: lines,
+          issuedVia: "manual",
+          draft: false,
+          alreadySent,
+        })
+      ).status,
+      alreadySent.number === "202610-001" ? 409 : 400,
+      JSON.stringify(alreadySent),
+    );
   assert.equal(
     (
       await call(operator, "POST", `/accounts/${accountId}/invoices`, {
@@ -294,7 +329,8 @@ test("billing runs end to end through the central handler over real files, with 
 
   const listed = await call(operator, "GET", "/billing/payments");
   assert.equal(listed.body.payments.length, 1);
-  assert.equal((await call(operator, "GET", `/billing/payments/${payment.id}`)).body.openInvoices.length, 1);
+  // The November invoice and the already-sent October one are both open.
+  assert.equal((await call(operator, "GET", `/billing/payments/${payment.id}`)).body.openInvoices.length, 2);
 
   const reversed = await call(operator, "POST", `/billing/payments/${payment.id}/reversal`, {
     ...operation(),
@@ -323,7 +359,10 @@ test("billing runs end to end through the central handler over real files, with 
   assert.equal(written.body.invoice.status, "uncollectible");
 
   // Listings and the journal.
-  assert.equal((await call(operator, "GET", "/billing/invoices")).body.invoices.length, 1);
+  assert.deepEqual(
+    (await call(operator, "GET", "/billing/invoices")).body.invoices.map((entry: any) => entry.number).sort(),
+    ["202610-001", invoice.number].sort(),
+  );
   assert.equal(
     (await call(operator, "GET", "/billing/accounts")).body.accounts.find(
       (entry: any) => entry.id === accountId,

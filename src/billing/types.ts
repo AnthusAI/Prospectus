@@ -226,6 +226,8 @@ export interface RaiseInvoiceInput {
   issuedVia: IssuedVia;
   /** Keeps it a draft: no number, not sent. */
   draft: boolean;
+  /** An invoice already sent outside Prospectus, recorded with the number and issue date it was sent with. */
+  alreadySent?: { number: string; issueDate: string };
 }
 
 export interface AllocationInput {

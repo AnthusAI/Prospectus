@@ -39,6 +39,10 @@ export function RaiseInvoiceView() {
   );
   const [terms, setTerms] = useState<number | null>(null);
   const [via, setVia] = useState<"manual" | "stripe">("manual");
+  // An invoice already sent outside Prospectus: recorded with the number and issue date it went out with.
+  const [sent, setSent] = useState(false);
+  const [sentNumber, setSentNumber] = useState("");
+  const [sentDate, setSentDate] = useState("");
   const [lines, setLines] = useState<Draft[]>([]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
@@ -120,8 +124,24 @@ export function RaiseInvoiceView() {
     total += amount;
     return { line, unit, amount, error };
   });
-  const blocked = busy || !selected || lines.length === 0 || invalid || total === 0 || Boolean(existing);
-  const due = addDays(today, termDays);
+  const sentProblem = !sent
+    ? ""
+    : !/^\d{6}-\d{3}$/.test(sentNumber.trim())
+      ? "Enter the number it was sent with, such as 202610-001."
+      : !/^\d{4}-\d{2}-\d{2}$/.test(sentDate)
+        ? "Enter the date it was issued."
+        : sentNumber.slice(0, 6) !== sentDate.slice(0, 4) + sentDate.slice(5, 7)
+          ? "The number's year and month must match the issue date."
+          : "";
+  const blocked =
+    busy ||
+    !selected ||
+    lines.length === 0 ||
+    invalid ||
+    total === 0 ||
+    Boolean(existing) ||
+    Boolean(sentProblem);
+  const due = addDays(sent && sentDate ? sentDate : today, termDays);
   const change = (key: number, patch: Partial<Draft>) =>
     setLines((previous) => previous.map((line) => (line.key === key ? { ...line, ...patch } : line)));
 
@@ -142,8 +162,9 @@ export function RaiseInvoiceView() {
         period: kind === "period" ? period : undefined,
         lineItems,
         netTermsDays: termDays,
-        issuedVia: via,
-        draft,
+        issuedVia: sent ? "manual" : via,
+        draft: sent ? false : draft,
+        ...(sent ? { alreadySent: { number: sentNumber.trim(), issueDate: sentDate } } : {}),
       });
       setResult(invoice);
       refresh();
@@ -178,7 +199,9 @@ export function RaiseInvoiceView() {
             {result.number
               ? result.issuedVia === "stripe"
                 ? "Stripe has emailed the client a payment page."
-                : "Download the PDF and send it to the client."
+                : sent
+                  ? "It is recorded as already sent."
+                  : "Download the PDF and send it to the client."
               : "It has no number yet and has not been sent."}
           </span>
           <div className="one-toolbar">
@@ -348,30 +371,62 @@ export function RaiseInvoiceView() {
                 <span>Due</span>
                 <b>{longDate(due)}</b>
               </div>
-              <fieldset>
-                <legend>Who sends it</legend>
-                <label className="one-checkline">
-                  <input
-                    type="radio"
-                    name="via"
-                    checked={via === "manual"}
-                    onChange={() => setVia("manual")}
-                  />
-                  Anthus, by PDF
-                </label>
-                <label className="one-checkline">
-                  <input
-                    type="radio"
-                    name="via"
-                    checked={via === "stripe" && stripeConnected}
-                    disabled={!stripeConnected}
-                    onChange={() => setVia("stripe")}
-                  />
-                  {stripeConnected
-                    ? "Stripe, with a payment page"
-                    : "Stripe, with a payment page (not connected yet)"}
-                </label>
-              </fieldset>
+              <label className="one-checkline">
+                <input type="checkbox" checked={sent} onChange={(event) => setSent(event.target.checked)} />
+                Already sent outside Prospectus
+              </label>
+              {sent && (
+                <>
+                  <label>
+                    Number it was sent with
+                    <input
+                      type="text"
+                      value={sentNumber}
+                      placeholder="202610-001"
+                      onChange={(event) => setSentNumber(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Issued
+                    <input
+                      type="date"
+                      value={sentDate}
+                      onChange={(event) => setSentDate(event.target.value)}
+                    />
+                  </label>
+                  {sentProblem && (
+                    <p role="alert" className="billing-error">
+                      {sentProblem}
+                    </p>
+                  )}
+                </>
+              )}
+              {!sent && (
+                <fieldset>
+                  <legend>Who sends it</legend>
+                  <label className="one-checkline">
+                    <input
+                      type="radio"
+                      name="via"
+                      checked={via === "manual"}
+                      onChange={() => setVia("manual")}
+                    />
+                    Anthus, by PDF
+                  </label>
+                  <label className="one-checkline">
+                    <input
+                      type="radio"
+                      name="via"
+                      checked={via === "stripe" && stripeConnected}
+                      disabled={!stripeConnected}
+                      onChange={() => setVia("stripe")}
+                    />
+                    {stripeConnected
+                      ? "Stripe, with a payment page"
+                      : "Stripe, with a payment page (not connected yet)"}
+                  </label>
+                </fieldset>
+              )}
               <div className="one-cellstack">
                 <small className="one-eyebrow">Printed on it</small>
                 <span>Bill to {selected?.name ?? "the account"}.</span>
@@ -382,7 +437,11 @@ export function RaiseInvoiceView() {
                     .join(", ") || "No payment method"}{" "}
                   from <BillingLink href={billingHref.settings()}>billing settings</BillingLink>
                 </span>
-                <span>Number assigned when issued, next is {settings?.nextInvoiceNumber ?? "—"}</span>
+                <span>
+                  {sent
+                    ? "Recorded with the number it was sent with"
+                    : `Number assigned when issued, next is ${settings?.nextInvoiceNumber ?? "—"}`}
+                </span>
               </div>
               {problem && (
                 <p role="alert" className="one-alert">
@@ -395,19 +454,21 @@ export function RaiseInvoiceView() {
                 disabled={blocked}
                 onClick={() => void submit(false)}
               >
-                Issue {formatCents(total)}
+                {sent ? `Record ${sentNumber.trim() || "the invoice"}` : `Issue ${formatCents(total)}`}
               </button>
               <span className="one-note">
                 An issued invoice can&rsquo;t be edited. Corrections are a credit or a new invoice.
               </span>
-              <button
-                type="button"
-                className="one-button"
-                disabled={blocked}
-                onClick={() => void submit(true)}
-              >
-                Save as draft
-              </button>
+              {!sent && (
+                <button
+                  type="button"
+                  className="one-button"
+                  disabled={blocked}
+                  onClick={() => void submit(true)}
+                >
+                  Save as draft
+                </button>
+              )}
               <button
                 type="button"
                 className="one-button"
