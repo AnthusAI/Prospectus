@@ -140,6 +140,7 @@ test("the corrections history is bounded", () => {
 test("the pipeline hides likely spam behind a visible toggle and Today leaves it out of new leads", () => {
   const pipeline = readFileSync("src/admin/PipelineView.tsx", "utf8");
   assert.match(pipeline, /hidden as likely spam or spam/);
-  assert.match(pipeline, /<SpamReview /);
+  // The spam check and its decisions live on the lead page, which opens for any direct link.
+  assert.match(readFileSync("src/admin/LeadPage.tsx", "utf8"), /<SpamReview /);
   assert.match(readFileSync("src/admin/TodayView.tsx", "utf8"), /!hiddenAsSpam\(record\.issue\)/);
 });

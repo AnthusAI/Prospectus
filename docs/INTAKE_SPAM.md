@@ -1,6 +1,6 @@
 # Intake spam: classify after capture, never reject
 
-Status: layer 1 implemented (kanbus-2e713ce2), deployed in **shadow** mode. Ryan approved the decisions below on 2026-10-21. Layer 2 (Jev through Cyclotron) stays off.
+Status: layer 1 implemented (kanbus-2e713ce2), in **label** mode with `intake-spam-rules-2` since Ryan's approval on 2026-11-05. Ryan approved the decisions below on 2026-10-21. Layer 2 (Jev through Cyclotron) stays off.
 
 ## The rule this design serves
 
@@ -48,17 +48,18 @@ After the inbox write succeeds, intake runs a pure, local scoring function over 
 
 All rules are local string checks. They need no network, no paid service and no new AWS resource. They run in microseconds.
 
-The rule table is `config/intake-spam-rules.json`, version `intake-spam-rules-1`. Changing a weight, threshold or phrase is a reviewed change that bumps the version, and every stored result names the version that produced it. The combined score is a noisy-OR, `1 - Π(1 - weight)` over the rules that fire, rounded to three places, so it stays between 0 and 1 and no single weak rule can reach the label threshold.
+The rule table is `config/intake-spam-rules.json`, version `intake-spam-rules-2`. Changing a weight, threshold or phrase is a reviewed change that bumps the version, and every stored result names the version that produced it. The combined score is a noisy-OR, `1 - Π(1 - weight)` over the rules that fire, rounded to three places, so it stays between 0 and 1 and no single weak rule can reach the label threshold.
 
 | Code | Fires when | Weight | Strength | False-positive risk | 2026-10-20 example |
 | --- | --- | --- | --- | --- | --- |
-| `gibberish_name` | A Latin-script token of 12 or more letters with no space has 3 or more lower-to-upper switches inside it, and either its vowel share (a, e, i, o, u, y, accents folded) is below 0.25 or it has a run of 6 or more consonants | 0.55 | Strong | Low with these guards. McDonald, DeAndre, O'Neil, Krzysztof, Szczepański, Xu Zhengqi and Nguyen have at most 1 switch. Non-Latin scripts, tokens with punctuation and tokens under 12 letters never fire | Fires (22 letters, 6 switches, run 11, vowels 0.23) |
+| `gibberish_name` | A Latin-script token of 12 or more letters with no space has 4 or more lower-to-upper switches inside it, or 3 switches and either a vowel share (a, e, i, o, u, y, accents folded) below 0.25 or a run of 6 or more consonants | 0.55 | Strong | Low with these guards. McDonald, DeAndre, O'Neil, Krzysztof, Szczepański, Xu Zhengqi and Nguyen have at most 1 switch. Non-Latin scripts, tokens with punctuation and tokens under 12 letters never fire | Fires (22 letters, 6 switches, run 11, vowels 0.23) |
 | `gibberish_company` | The same test on the company field | 0.35 | Strong | Low, as above. "PayPal" has 1 switch | Does not fire (the stem is 6 letters) |
 | `template_only_message` | The message contains at least one of the engage form's prompts and, after removing the four prompts, the "(Came from: …)" line and a single-word solution the link filled in, has fewer than 3 letters left | 0.40 | Strong | Medium on its own: a real person can press send without typing. That is why it is not enough alone | Fires (4 prompts, 0 letters) |
 | `markup_or_links` | BBCode `[url=` or `[url]`, an HTML `<a href`, or 3 or more URLs in the message | 0.55 | Strong | Low for a B2B form. One or two URLs (often the sender's own site) never fire | Does not fire |
 | `gmail_dot_scatter` | A `gmail.com` or `googlemail.com` local part with 4 or more dots, or at least 2 dots and a dot share of 0.25 or more, or 3 or more one-character segments | 0.20 | Medium | Medium. Real people write first.m.last (2 dots). Gmail ignores dots, so heavy scattering is a bot signature, but only medium alone. Other domains, including Google Workspace, never fire | Fires (21 characters, 8 dots, share 0.38, 9 segments) |
 | `honeypot` | The hidden `website` field is filled | 0.90 | Strong | Low (`autocomplete="off"`, `tabindex="-1"`, hidden). Not zero: some autofill and accessibility tools fill hidden fields | Does not fire (the bot evaded it) |
-| `fast_submit` | The form reports `elapsed_ms` below 1,500 | 0.20 | Weak | Medium on waitlists, where autofill can complete a one-field form in about a second | Not available (no timing then) |
+| `fast_submit` | The form reports `elapsed_ms` below 1,500 and `instant_submit` does not apply | 0.20 | Weak | Medium on waitlists, where autofill can complete a one-field form in about a second | Not available (no timing then) |
+| `instant_submit` | A form with a message reports `elapsed_ms` below 1,000 | 0.50 | Strong | Low: nobody reads a form and sends a note that fast, and 40 letters of their own text still cap the verdict at `uncertain`. Never applies to waitlists or newsletters | Not available (no timing then) |
 
 **Vendor pitches are a hint, not a reason** (decision 6). Fixed phrases such as "SEO services", "backlinks", "guest post", "rank your website", "web design services" or "lead generation services" add the hint `vendor_pitch`, shown in the CRM next to the **Vendor** button. A hint has no weight and never changes the verdict. There is no automatic vendor label: a real client may ask about SEO, and no phrase list separates a buyer from a seller reliably. A fluent pitch with three or more links still fires `markup_or_links`.
 
@@ -230,11 +231,17 @@ The `contact-v1` notice shown next to the button says details are "used only to 
 - Waitlist notices (`babulus-waitlist-v1`) need the same wording check per form.
 - External spam services were considered and are not proposed. StopForumSpam is free only for non-commercial use and needs the email or IP sent out, and an MD5 of an email is easily reversed. Akismet's free tier excludes commercial use and paid plans start at about $10 a month. OOPSpam has 40 free checks a month. Cloudflare Turnstile is free but adds a third-party script to the page and can show a visible challenge, which is friction.
 
+## What shadow mode showed
+
+By 2026-11-05 there were 16 prospects: 10 from one bot campaign, 5 tests and 1 probable test. Of 8 scored bot inquiries, `intake-spam-rules-1` called 5 `likely_spam`, all correct, and 3 `uncertain` at 0.616. Those 3 had random names whose letter y broke the consonant runs. Bots reported 59 to 418 ms from render to send; the scored people and tests took 11 to 228 seconds. `intake-spam-rules-2` adds `instant_submit` and lets 4 switches alone mark a gibberish token. Ryan approved label mode then, ahead of the 20-verdict review below, so people stop clearing obvious spam by hand.
+
+`scripts/label-stored-spam.ts` labels stored prospects with the current rules (dry run by default). It leaves anything a person has reviewed, anything past the initial stage and any prospect with an inquiry that does not score `likely_spam`, and it never changes inquiries.
+
 ## Rollout
 
 1. **Specification.** `features/intake-spam.feature`, with made-up data and `@example.com` addresses only. Done.
 2. **Shadow mode.** Deploy with `"spamLabelling": "shadow"`: compute and store the result, add no label (except for a filled honeypot), change no follow-up. Ryan reviews the shadow verdicts in the prospect detail for two weeks or 20 `likely_spam` verdicts, whichever is later.
-3. **Label.** Change `spamLabelling` to `"label"` in a reviewed pull request only if shadow mode had no false positives among `likely_spam`.
+3. **Label.** Done 2026-11-05 on Ryan's approval. There were no false positives among `likely_spam`.
 4. **Timing.** Server first (this change), then the engage form (AnthusAI/Anth.us-web) and app waitlists.
 5. **Later rules versions** from corrections, and the deferred rules above if shadow data shows they are needed.
 

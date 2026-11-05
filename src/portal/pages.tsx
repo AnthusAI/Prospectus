@@ -1,9 +1,9 @@
 import { useState, type CSSProperties } from "react";
 import type { DirectoryAccount, DirectoryDetail } from "../../packages/accounts-client/src/directory";
-import { ANTHUS_APPS, appForProduct, productUrl } from "../apps";
+import { ANTHUS_APPS, appForProduct, byAppOrder, productUrl } from "../apps";
 import { initials } from "../shared/initials";
 import { QuotaPanel, formatReset, quotaOf } from "../shared/quota";
-import { Eyebrow, Icon, Stat, Unavailable } from "../shared/ui";
+import { AppMark, Eyebrow, Icon, Stat, Unavailable } from "../shared/ui";
 import { PORTAL_PAGES, type PortalPage } from "./PortalShell";
 import type { PortalTheme } from "./theme";
 
@@ -34,7 +34,10 @@ export function HomePage({
   detail: DirectoryDetail | null;
   onNavigate: (page: PortalPage) => void;
 }) {
-  const active = workspace.products.filter((product) => product.status === "active");
+  const active = byAppOrder(
+    workspace.products.filter((product) => product.status === "active"),
+    (product) => product.product,
+  );
   return (
     <main className="one-main narrow portal-home" aria-label="Home">
       <section className="one-hero">
@@ -78,9 +81,7 @@ export function HomePage({
             const url = productUrl(product.product);
             return (
               <article className="portal-tile" key={product.product}>
-                <span className="one-appmark" style={{ background: app.swatch }} aria-hidden="true">
-                  {app.name.charAt(0)}
-                </span>
+                <AppMark app={app} large />
                 <h3>{app.name}</h3>
                 {url && <span className="one-muted one-mono portal-domain">{hostOf(url)}</span>}
                 {app.blurb && <p>{app.blurb}</p>}
@@ -187,9 +188,7 @@ export function AppsPage({
       <section className="portal-applist" aria-label="App list">
         {visible.map(({ app, on, has, capabilities, url }) => (
           <article className="one-entitlement portal-approw" key={app.id}>
-            <span className="one-appmark" style={{ background: app.swatch }} aria-hidden="true">
-              {app.name.charAt(0)}
-            </span>
+            <AppMark app={app} large />
             <span className="one-cellstack portal-appname">
               <h2>{app.name}</h2>
               {app.blurb && <small>{app.blurb}</small>}

@@ -14,7 +14,8 @@ export type SpamReason =
   | "markup_or_links"
   | "gmail_dot_scatter"
   | "honeypot"
-  | "fast_submit";
+  | "fast_submit"
+  | "instant_submit";
 export type SpamHint = "vendor_pitch";
 export type SpamVerdict = "clean" | "uncertain" | "likely_spam" | "unscored";
 export type SpamStrength = "strong" | "medium" | "weak";
@@ -35,6 +36,8 @@ export interface SpamRules {
     min_case_switches: number;
     max_vowel_share: number;
     min_consonant_run: number;
+    /** This many switches mark a token on their own, whatever its vowels. */
+    min_case_switches_alone: number;
   };
   template: {
     prompts: string[];
@@ -51,6 +54,8 @@ export interface SpamRules {
     min_single_character_segments: number;
   };
   fast_submit: { max_elapsed_ms: number };
+  /** Applies only to forms with a message: autofill can complete a one-field signup about this fast. */
+  instant_submit: { max_elapsed_ms: number };
   vendor_pitch: { phrases: string[] };
 }
 
@@ -136,7 +141,9 @@ function gibberish(field: string, rules: SpamRules): TokenShape | null {
       shape &&
       shape.length >= g.min_token_length &&
       shape.case_switches >= g.min_case_switches &&
-      (shape.vowel_share < g.max_vowel_share || shape.longest_consonant_run >= g.min_consonant_run) &&
+      (shape.case_switches >= g.min_case_switches_alone ||
+        shape.vowel_share < g.max_vowel_share ||
+        shape.longest_consonant_run >= g.min_consonant_run) &&
       (!found || shape.case_switches > found.case_switches)
     )
       found = shape;
@@ -225,7 +232,10 @@ export function scoreInquiry(input: SpamInput, rules: SpamRules = SPAM_RULES): S
     input.elapsed_ms >= 0 &&
     input.elapsed_ms < rules.fast_submit.max_elapsed_ms
   )
-    fired.set("fast_submit", { elapsed_ms: input.elapsed_ms });
+    fired.set(
+      hasMessage && input.elapsed_ms < rules.instant_submit.max_elapsed_ms ? "instant_submit" : "fast_submit",
+      { elapsed_ms: input.elapsed_ms },
+    );
 
   const hints: SpamHint[] = [];
   const evidence: SpamEvidence = Object.fromEntries(fired);

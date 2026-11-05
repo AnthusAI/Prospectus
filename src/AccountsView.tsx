@@ -1,17 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AccountsBrowser } from "./accounts-client";
-import { OPERATOR_PRODUCTS, appForProduct } from "./apps";
+import { DirectoryError, type AccountsBrowser } from "./accounts-client";
+import { AppLink } from "./admin/AppLink";
+import { accountPath, PAGE_PATHS } from "./deep-links";
+import { OPERATOR_PRODUCTS, appForProduct, byAppOrder } from "./apps";
 import type {
   DirectoryList,
   DirectoryMembership,
   OperatorDetail,
   OperatorList,
 } from "../packages/accounts-client/src/directory";
+import { AccountBillingSection, AccountTabs, BillingSummaryCard } from "./admin/AccountBilling";
+import { useBilling } from "./admin/BillingProvider";
+import { owedBy } from "./billing/derive";
+import { formatCents } from "./billing/money";
+import { billingHref } from "./billing/routes";
+import { BillingLink } from "./shared/billing";
 import { initials } from "./shared/initials";
 import { QuotaPanel, formatReset, quotaOf } from "./shared/quota";
-import { Eyebrow, Icon, ProductSwatch, Stat, Unavailable } from "./shared/ui";
+import { AppMark, Eyebrow, Icon, ProductSwatch, Stat, Unavailable } from "./shared/ui";
 
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
+const OWED_UNAVAILABLE_NOTE = "Not yet available: needs billing data";
 
 /**
  * The staff account directory. It requires the central Accounts administrator permission, which its
@@ -24,6 +33,9 @@ export function AccountsView({
   search = "",
   account: controlledAccount,
   onAccountChange,
+  tab = "overview",
+  onOverview,
+  onTitle,
 }: {
   client: AccountsBrowser;
   onConnect: () => Promise<void>;
@@ -31,7 +43,14 @@ export function AccountsView({
   search?: string;
   account?: string | null;
   onAccountChange?: (id: string | null) => void;
+  /** Which section of the open account to show. The Billing section has its own address. */
+  tab?: "overview" | "billing";
+  onOverview?: () => void;
+  /** Reports the open account's name for the tab title; null when no account is open. */
+  onTitle?: (name: string | null) => void;
 }) {
+  const billing = useBilling();
+  const [pastDueOnly, setPastDueOnly] = useState(false);
   // The open account follows the address when the host routes it, otherwise it is local state.
   const [localAccount, setLocalAccount] = useState<string | null>(null);
   const account = controlledAccount === undefined ? localAccount : controlledAccount;
@@ -168,12 +187,19 @@ export function AccountsView({
       .operatorDetail(account)
       .then((value) => sequence === request.current && setDetail(value))
       .catch(
-        () =>
+        (cause: unknown) =>
           sequence === request.current &&
-          setDetailError("Account details are unavailable or administrator access has changed."),
+          setDetailError(
+            cause instanceof DirectoryError && cause.status === 404
+              ? "This account could not be found. It may have been removed, or the link may be wrong."
+              : "Account details are unavailable or administrator access has changed.",
+          ),
       )
       .finally(() => sequence === request.current && setDetailLoading(false));
   }, [account, client, operatorAllowed]);
+
+  const openName = account ? (detail?.name ?? null) : null;
+  useEffect(() => onTitle?.(openName), [onTitle, openName]);
 
   // Re-read the open Account after a product change, without blanking the page.
   async function refreshDetail(id: string) {
@@ -182,32 +208,50 @@ export function AccountsView({
     setOperatorReload((count) => count + 1);
   }
 
+  const ledger = billing.overview.status === "ready" ? billing.overview.data : null;
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
     return (operator?.accounts ?? [])
       .filter((item) => !term || item.name.toLowerCase().includes(term))
       .map((item) => ({
+        owed: ledger ? owedBy(item.id, ledger.invoices, ledger.payments, billing.today) : null,
         id: item.id,
         name: item.name,
         members: `${item.activeMembers} active ${item.activeMembers === 1 ? "member" : "members"}`,
         products: item.products as DirectoryList["accounts"][number]["products"],
         status: item.products.some((product) => product.status === "active") ? "Active" : "No active apps",
       }));
-  }, [operator, search]);
+  }, [operator, search, ledger, billing.today]);
+  const shown = pastDueOnly ? rows.filter((row) => (row.owed?.pastDueCents ?? 0) > 0) : rows;
+  const pastDueCount = rows.filter((row) => (row.owed?.pastDueCents ?? 0) > 0).length;
 
   if (account)
     return (
       <main className="one-main narrow" aria-label="Account">
         <nav className="one-breadcrumb" aria-label="Breadcrumb">
-          <button type="button" onClick={() => openAccount(null)}>
+          <AppLink href={PAGE_PATHS.accounts} onNavigate={() => openAccount(null)}>
             Accounts
-          </button>
+          </AppLink>
           <span aria-hidden="true">/</span>
           <span>{detail?.name ?? "Account"}</span>
+          {tab === "billing" && (
+            <>
+              <span aria-hidden="true">/</span>
+              <span>Billing</span>
+            </>
+          )}
         </nav>
         {(loading || detailLoading) && <p role="status">Loading account details…</p>}
         {detailError && <p role="alert">{detailError}</p>}
-        {detail && <AccountPage detail={detail} client={client} onChanged={() => refreshDetail(detail.id)} />}
+        {detail && (
+          <AccountPage
+            detail={detail}
+            client={client}
+            tab={tab}
+            onOverview={onOverview ?? (() => openAccount(detail.id))}
+            onChanged={() => refreshDetail(detail.id)}
+          />
+        )}
       </main>
     );
 
@@ -326,8 +370,17 @@ export function AccountsView({
             <Stat value={null} label="SERVICES ENGAGEMENTS" note="Not yet recorded" hot />
           </div>
           <div className="one-filters" role="group" aria-label="Show">
-            <button type="button" aria-pressed="true">
+            <button type="button" aria-pressed={!pastDueOnly} onClick={() => setPastDueOnly(false)}>
               All <span>{rows.length}</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={pastDueOnly}
+              disabled={!ledger}
+              title={ledger ? undefined : OWED_UNAVAILABLE_NOTE}
+              onClick={() => setPastDueOnly(true)}
+            >
+              Past due <span>{ledger ? pastDueCount : "—"}</span>
             </button>
             {UNAVAILABLE_FILTERS.map((label) => (
               <button key={label} type="button" disabled title="Not yet available: needs billing data">
@@ -344,7 +397,10 @@ export function AccountsView({
           {operator?.accounts.length === 0 && (
             <p role="status">No accounts have been created in the central account directory.</p>
           )}
-          {rows.length > 0 && (
+          {rows.length > 0 && shown.length === 0 && (
+            <p role="status">No accounts have an invoice past due.</p>
+          )}
+          {shown.length > 0 && (
             <>
               <div className="one-table-wrap">
                 <table className="one-table">
@@ -355,22 +411,23 @@ export function AccountsView({
                       <th scope="col">Apps</th>
                       <th scope="col">Quota this month</th>
                       <th scope="col">Services</th>
+                      <th scope="col">Owed</th>
                       <th scope="col">Anthus owner</th>
                       <th scope="col">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row) => (
+                    {shown.map((row) => (
                       <tr key={row.id}>
                         <th scope="row">
                           <span className="one-cellstack">
-                            <button
-                              type="button"
+                            <AppLink
                               className="one-linkbutton"
-                              onClick={() => openAccount(row.id)}
+                              href={accountPath(row.id)}
+                              onNavigate={() => openAccount(row.id)}
                             >
                               {row.name}
-                            </button>
+                            </AppLink>
                             <small>{row.members}</small>
                           </span>
                         </th>
@@ -380,7 +437,7 @@ export function AccountsView({
                         <td>
                           <span className="one-apps">
                             {row.products.length ? (
-                              row.products.map((product) => (
+                              byAppOrder(row.products, (product) => product.product).map((product) => (
                                 <ProductSwatch
                                   key={product.product}
                                   product={product.product}
@@ -399,6 +456,24 @@ export function AccountsView({
                           <span className="one-na">Not yet available</span>
                         </td>
                         <td>
+                          {row.owed ? (
+                            <span className="one-cellstack">
+                              <BillingLink href={billingHref.accountBilling(row.id)}>
+                                {formatCents(row.owed.owedCents)}
+                              </BillingLink>
+                              <small className={row.owed.pastDueCents > 0 ? "one-warn" : undefined}>
+                                {row.owed.pastDueCents > 0
+                                  ? `${formatCents(row.owed.pastDueCents)} past due`
+                                  : row.owed.owedCents > 0
+                                    ? "Not yet due"
+                                    : "Paid up"}
+                              </small>
+                            </span>
+                          ) : (
+                            <span className="one-na">Not yet available</span>
+                          )}
+                        </td>
+                        <td>
                           <span className="one-na">Not yet available</span>
                         </td>
                         <td className={row.status === "Active" ? "one-ok" : "one-muted"}>{row.status}</td>
@@ -408,7 +483,7 @@ export function AccountsView({
                 </table>
               </div>
               <span className="one-muted" style={{ fontSize: 13 }}>
-                Showing {rows.length} of {total}.
+                Showing {shown.length} of {total}.
               </span>
             </>
           )}
@@ -421,10 +496,14 @@ export function AccountsView({
 function AccountPage({
   detail,
   client,
+  tab,
+  onOverview,
   onChanged,
 }: {
   detail: OperatorDetail;
   client: AccountsBrowser;
+  tab: "overview" | "billing";
+  onOverview: () => void;
   onChanged: () => Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
@@ -444,12 +523,15 @@ function AccountPage({
     }
   }
   // Every product an operator can change, then any other product the Account already holds.
-  const productNames = [
-    ...OPERATOR_PRODUCTS,
-    ...detail.entitlements
-      .map((entitlement) => entitlement.product)
-      .filter((name) => !OPERATOR_PRODUCTS.includes(name)),
-  ];
+  const productNames = byAppOrder(
+    [
+      ...OPERATOR_PRODUCTS,
+      ...detail.entitlements
+        .map((entitlement) => entitlement.product)
+        .filter((name) => !OPERATOR_PRODUCTS.includes(name)),
+    ],
+    (name) => name,
+  );
   const activeApps = detail.entitlements.filter((entitlement) => entitlement.status === "active").length;
   const activeMembers = detail.memberships.filter((member) => member.status === "active");
   const owner = activeMembers.find((member) => member.role === "owner");
@@ -460,6 +542,20 @@ function AccountPage({
     year: "numeric",
     timeZone: "UTC",
   });
+  useEffect(() => {
+    if (tab === "overview" && window.location.hash === "#apps-heading")
+      document.getElementById("apps-heading")?.scrollIntoView();
+  }, [tab]);
+  if (tab === "billing")
+    return (
+      <>
+        <section className="one-account-head">
+          <h1>{detail.name}</h1>
+        </section>
+        <AccountTabs accountId={detail.id} current="billing" onOverview={onOverview} />
+        <AccountBillingSection accountId={detail.id} />
+      </>
+    );
   return (
     <>
       <section className="one-account-head">
@@ -485,6 +581,7 @@ function AccountPage({
           </button>
         </div>
       </section>
+      <AccountTabs accountId={detail.id} current="overview" onOverview={onOverview} />
       <div className="one-stats">
         {quota.state === "set" ? (
           <Stat
@@ -533,9 +630,7 @@ function AccountPage({
               const on = entitlement?.status === "active";
               return (
                 <div className="one-entitlement" key={product}>
-                  <span className="one-appmark" style={{ background: app.swatch }} aria-hidden="true">
-                    {app.name.charAt(0)}
-                  </span>
+                  <AppMark app={app} large />
                   <span className="one-cellstack" style={{ minWidth: 140 }}>
                     <strong>{app.name}</strong>
                     <small className="one-mono">{product}</small>
@@ -588,6 +683,7 @@ function AccountPage({
           </section>
         </div>
         <aside className="secondary">
+          <BillingSummaryCard accountId={detail.id} />
           <section className="one-card">
             <Eyebrow>•••• Relationship</Eyebrow>
             <dl className="one-dl">

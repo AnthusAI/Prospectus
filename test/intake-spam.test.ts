@@ -24,7 +24,7 @@ const demo = (changes: Partial<SpamInput> = {}): SpamInput => ({
 
 test("the shipped rules file is versioned and only Gmail addresses are dot-insensitive", () => {
   const file = JSON.parse(readFileSync("config/intake-spam-rules.json", "utf8"));
-  assert.equal(file.rules_version, "intake-spam-rules-1");
+  assert.equal(file.rules_version, "intake-spam-rules-2");
   assert.deepEqual(SPAM_RULES.gmail.domains, ["gmail.com", "googlemail.com"]);
   assert.deepEqual(
     Object.fromEntries(Object.entries(SPAM_RULES.rules).map(([code, rule]) => [code, rule.weight])),
@@ -36,6 +36,7 @@ test("the shipped rules file is versioned and only Gmail addresses are dot-insen
       gmail_dot_scatter: 0.2,
       honeypot: 0.9,
       fast_submit: 0.2,
+      instant_submit: 0.5,
     },
   );
   assert.equal(SPAM_RULES.thresholds.likely_spam, 0.7);
@@ -96,7 +97,7 @@ test("one signal alone is never likely_spam, and the strong pairs match the desi
   assert.equal(pair.score, 0.73);
   assert.equal(pair.verdict, "likely_spam");
   // Medium and weak reasons alone never reach likely_spam: 0.36 here.
-  const weak = verdict(demo({ email: BOT_SHAPED.email, elapsed_ms: 400 }));
+  const weak = verdict(demo({ email: BOT_SHAPED.email, elapsed_ms: 1200 }));
   assert.deepEqual(weak.reasons, ["gmail_dot_scatter", "fast_submit"]);
   assert.equal(weak.verdict, "uncertain");
 });
@@ -175,8 +176,8 @@ test("a vendor pitch is a hint for a person, never a spam reason", () => {
 });
 
 test("timing is a weak signal only when present and in range", () => {
-  assert.deepEqual(scoreInquiry(demo({ elapsed_ms: 900 })).reasons, ["fast_submit"]);
-  assert.deepEqual(scoreInquiry(demo({ elapsed_ms: 900 })).evidence, { fast_submit: { elapsed_ms: 900 } });
+  assert.deepEqual(scoreInquiry(demo({ elapsed_ms: 1200 })).reasons, ["fast_submit"]);
+  assert.deepEqual(scoreInquiry(demo({ elapsed_ms: 1200 })).evidence, { fast_submit: { elapsed_ms: 1200 } });
   for (const elapsed_ms of [1500, 60_000, undefined, -1, 1.5])
     assert.deepEqual(scoreInquiry(demo({ elapsed_ms })).reasons, [], String(elapsed_ms));
 });
@@ -234,5 +235,39 @@ test("the labelling flag accepts only shadow and label, and defaults to shadow",
   assert.equal(spamLabellingForMode("label"), "label");
   assert.throws(() => spamLabellingForMode("off"), /Unknown spam labelling/);
   const deployment = JSON.parse(readFileSync("evaluation-deployment.json", "utf8"));
-  assert.equal(deployment.spamLabelling, "shadow", "the rollout starts in shadow mode");
+  assert.equal(deployment.spamLabelling, "label", "Ryan approved label mode on 2026-11-05");
+});
+
+test("rules 2 catch random names whose vowels hid them from rules 1", () => {
+  // Made-up tokens of the same shape as the campaign: 4 or 5 switches, y breaking the consonant runs.
+  for (const name of ["vqUTrGyfbTxyokSUXEM", "usyktHJkilNHXqYvhcOpA"]) {
+    const shape = tokenShape(name)!;
+    assert.ok(shape.case_switches >= 4, name);
+    assert.ok(shape.longest_consonant_run < 6 && shape.vowel_share >= 0.25, name);
+    const result = scoreInquiry(demo({ name, message: TEMPLATE_ONLY }));
+    assert.ok(result.reasons.includes("gibberish_name"), name);
+    assert.equal(result.verdict, "likely_spam", name);
+  }
+  for (const name of ["McDonald", "MacArthur-Lee", "DeAndreMcKenzie", "VanDerBerg"])
+    assert.equal(scoreInquiry(demo({ name })).reasons.includes("gibberish_name"), false, name);
+});
+
+test("a blank form sent in under a second is likely spam, and a real note is not", () => {
+  const blank = scoreInquiry(demo({ message: TEMPLATE_ONLY, elapsed_ms: 400 }));
+  assert.deepEqual(blank.reasons, ["template_only_message", "instant_submit"]);
+  assert.equal(blank.score, 0.7);
+  assert.equal(blank.verdict, "likely_spam");
+  const slower = scoreInquiry(demo({ message: TEMPLATE_ONLY, elapsed_ms: 1000 }));
+  assert.deepEqual(slower.reasons, ["template_only_message", "fast_submit"]);
+  assert.equal(slower.verdict, "uncertain");
+  const real = scoreInquiry(demo({ elapsed_ms: 400 }));
+  assert.deepEqual(real.reasons, ["instant_submit"]);
+  assert.equal(real.verdict, "uncertain");
+  const humanBlank = scoreInquiry(demo({ message: TEMPLATE_ONLY, elapsed_ms: 20_000 }));
+  assert.equal(humanBlank.verdict, "uncertain");
+});
+
+test("signups without a message are never instant", () => {
+  for (const kind of ["waitlist", "newsletter"] as const)
+    assert.deepEqual(scoreInquiry(demo({ kind, message: "", elapsed_ms: 100 })).reasons, ["fast_submit"]);
 });

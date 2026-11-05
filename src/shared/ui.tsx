@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { appById, appForProduct } from "../apps";
+import { appById, appForProduct, type AnthusApp } from "../apps";
 
 const ICON_PATHS = {
   today: (
@@ -90,6 +90,34 @@ const ICON_PATHS = {
       <path d="m2 2 20 20" />
     </>
   ),
+  // Lucide "download", "lock", "receipt" and "banknote" (ISC license), for the billing pages.
+  download: (
+    <>
+      <path d="M12 15V3" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </>
+  ),
+  receipt: (
+    <>
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" />
+      <path d="M12 17.5v-11" />
+    </>
+  ),
+  banknote: (
+    <>
+      <rect width="20" height="12" x="2" y="6" rx="2" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M6 12h.01M18 12h.01" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
@@ -161,7 +189,7 @@ export function Stat({
       className={className}
       href={href}
       onClick={(event) => {
-        if (!onClick) return;
+        if (!onClick || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
         event.preventDefault();
         onClick();
       }}
@@ -185,11 +213,34 @@ export function Unavailable({ title, children }: { title: string; children?: Rea
   );
 }
 
+/** The product's own logo in the current theme, or a neutral mark (never a product color) when it has none. */
+export function AppMark({ app, large, off }: { app: AnthusApp; large?: boolean; off?: boolean }) {
+  const size = `one-mark${large ? " lg" : ""}${off ? " off" : ""}${app.logo?.plate ? " plate" : ""}`;
+  if (!app.logo)
+    return (
+      <span className={`${size} neutral`} aria-hidden="true">
+        {app.name.charAt(0)}
+      </span>
+    );
+  return (
+    <span className={size} aria-hidden="true">
+      {app.logo.dark === app.logo.light ? (
+        <img src={app.logo.light} alt="" />
+      ) : (
+        <>
+          <img className="light" src={app.logo.light} alt="" />
+          <img className="dark" src={app.logo.dark} alt="" />
+        </>
+      )}
+    </span>
+  );
+}
+
 export function AppChip({ id }: { id: string }) {
-  const app = appById(id) ?? { name: id, swatch: "var(--panel-2)" };
+  const app = appById(id) ?? { id, name: id };
   return (
     <span className="one-chip">
-      <span className="one-swatch" style={{ background: app.swatch }} aria-hidden="true" />
+      <AppMark app={app} />
       {app.name}
     </span>
   );
@@ -199,11 +250,8 @@ export function ProductSwatch({ product, status }: { product: string; status: st
   const app = appForProduct(product);
   const label = `${app.name}${status === "active" ? "" : ` (${status})`}`;
   return (
-    <span
-      className="one-swatch square"
-      title={label}
-      style={{ background: status === "active" ? app.swatch : "var(--surface)" }}
-    >
+    <span className="one-productmark" title={label}>
+      <AppMark app={app} off={status !== "active"} />
       <span className="sr-only">{label}</span>
     </span>
   );

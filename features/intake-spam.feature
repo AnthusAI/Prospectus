@@ -5,7 +5,7 @@ Feature: Intake spam is scored after capture and never rejected
   All examples use made-up values and @example.com addresses only.
 
   Background:
-    Given the shipped rules in config/intake-spam-rules.json with rules version "intake-spam-rules-1"
+    Given the shipped rules in config/intake-spam-rules.json with rules version "intake-spam-rules-2"
 
   Scenario: Score the 2026-10-20 bot submission from its feature vector
     Given a synthetic demo inquiry shaped like the 2026-10-20 bot submission
@@ -20,8 +20,38 @@ Feature: Intake spam is scored after capture and never rejected
     And the score is 0.784 and the verdict is likely_spam
     And the stored evidence holds counts and lengths only, never the measured text
 
+  Scenario: Bots with vowel-heavy random names are caught
+    Given a demo inquiry whose name is one long token with 4 or more lower-to-upper switches and no long consonant run
+    And its message is only the prefilled prompts and its Gmail address has scattered dots
+    When it is scored
+    Then the reasons include gibberish_name and the verdict is likely_spam
+
+  Scenario: A blank form sent in under a second is likely spam
+    Given a demo inquiry whose message is only the prefilled prompts, with an ordinary name and email
+    When it is submitted with elapsed_ms under 1000
+    Then the reasons are template_only_message and instant_submit and the verdict is likely_spam
+    But the same blank form sent after 1000 milliseconds or more is at most uncertain
+
+  Scenario: A real note sent instantly is never labelled
+    Given a demo inquiry with 40 or more letters of the visitor's own text
+    When it is submitted with elapsed_ms under 1000
+    Then the verdict is at most uncertain
+
+  Scenario: Fast signups are not treated as instant
+    When a waitlist or newsletter signup has elapsed_ms under 1000
+    Then it adds only the weak fast_submit reason, because autofill can complete a one-field form that fast
+
+  Scenario: Label stored prospects with the current rules
+    Given a prospect in the initial stage whose every inquiry scores likely_spam under the current rules
+    And no person has reviewed it
+    When an operator runs scripts/label-stored-spam.ts with --apply
+    Then it gains the likely-spam label and loses its next action and follow-up date, and its inquiries are unchanged
+    And the same run without --apply writes nothing and prints counts and ids only
+    But a prospect with a person's spam decision, an inquiry that does not score likely_spam, or a later stage is left alone
+    And running it again changes nothing
+
   Scenario: One signal alone is never enough
-    When a demo inquiry fires only gmail_dot_scatter, only template_only_message or only gibberish_name
+    When a demo inquiry fires only gmail_dot_scatter, only template_only_message, only instant_submit or only gibberish_name
     Then the verdict is clean or uncertain, never likely_spam
 
   Scenario: Protect a real visitor who writes a real note
@@ -58,7 +88,7 @@ Feature: Intake spam is scored after capture and never rejected
 
   Scenario: Accept an optional submission timing
     When a submission includes elapsed_ms between 0 and 86400000
-    Then it is accepted and a value under 1500 adds the weak fast_submit reason
+    Then it is accepted and a value under 1500 adds the weak fast_submit reason, or instant_submit under 1000 on a form with a message
     And an absent, non-integer or out-of-range elapsed_ms is ignored, never a 400 and never a reason
     And elapsed_ms is not part of the submission fingerprint, so a retry with another timing is the same inquiry
 

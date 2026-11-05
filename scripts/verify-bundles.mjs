@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 // Literal strings that live only in the named staff console modules and survive minification.
 const STAFF_ONLY = {
-  "src/App.tsx": "Workspace settings for Prospectus will live here.",
+  "src/App.tsx": "Anthus staff and their CRM roles will be managed here.",
   "src/AccountsView.tsx": "Needs billing data",
   "src/admin/PipelineView.tsx": "Reply and book an intro call",
   "src/admin/TodayView.tsx": "ACCOUNTS TO WATCH",
@@ -48,6 +48,13 @@ function expectPresent(directory, markers) {
 expectPresent("dist", STAFF_ONLY);
 expectPresent("dist-portal", PORTAL_ONLY);
 expectAbsent("dist-portal", STAFF_ONLY, "staff console module");
+// The synthetic review fixture of fictional clients must never ship in a production bundle.
+for (const directory of ["dist", "dist-portal"])
+  expectAbsent(
+    directory,
+    { "src/billing/synthetic.ts": "Harbor Lantern Media" },
+    "synthetic billing fixture in",
+  );
 expectAbsent("dist", PORTAL_ONLY, "portal module");
 if (bundle("dist").some(({ file, text }) => file.endsWith(".html") && text.includes("/src/portal/")))
   failures.push("dist has a portal entry page");
