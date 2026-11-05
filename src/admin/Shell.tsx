@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { billingRouteFromPath, type BillingRoute } from "../billing/routes";
 import { issueIdFromPath } from "../deep-links";
 import { initials } from "../shared/initials";
 import { BrandMark, Icon, Wordmark, type IconName } from "../shared/ui";
@@ -21,9 +22,21 @@ const LEGACY_VIEWS: Record<string, Page> = { followups: "today", customers: "pip
 export function readLocation(
   search = window.location.search,
   pathname = window.location.pathname,
-): { page: Page; account: string | null; issueId: string | null } {
+): { page: Page; account: string | null; issueId: string | null; billing?: BillingRoute } {
   const issueId = issueIdFromPath(pathname);
   if (issueId) return { page: "pipeline", account: null, issueId };
+  // Billing pages have their own paths; they are not reachable by `?view=` alone.
+  const billing = billingRouteFromPath(pathname);
+  if (billing) {
+    const page: Page =
+      billing.kind === "account-billing" ? "accounts" : billing.kind === "settings" ? "settings" : "billing";
+    return {
+      page,
+      account: billing.kind === "account-billing" ? billing.accountId : null,
+      issueId: null,
+      billing,
+    };
+  }
   const parameters = new URLSearchParams(search);
   const view = parameters.get("view") ?? "";
   const page = view in PAGES ? (view as Page) : (LEGACY_VIEWS[view] ?? "today");

@@ -5,6 +5,7 @@ import "@kanbus/ui/styles/kanban.css";
 import "@kanbus/ui/styles/organizer.css";
 import "./fonts.css";
 import "./styles.css";
+import "./billing.css";
 import { App } from "./App";
 
 const root = createRoot(document.getElementById("root")!);

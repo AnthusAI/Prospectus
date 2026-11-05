@@ -7,6 +7,7 @@ import "@kanbus/ui/styles/kanban.css";
 import "@kanbus/ui/styles/organizer.css";
 import "../../src/fonts.css";
 import "../../src/styles.css";
+import "../../src/billing.css";
 const mode = new URLSearchParams(location.search).get("mode");
 const client = accountsBrowser(
   mode === "unconfigured" ? undefined : "/directory-fixture",

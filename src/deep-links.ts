@@ -1,3 +1,4 @@
+import { billingRouteFromPath } from "./billing/routes";
 const ISSUE_PATH = /^\/pipeline\/([A-Za-z0-9_-]{1,100})\/?$/;
 const CALLBACK_PATH = "/auth/callback";
 const PLACEHOLDER_ORIGIN = "https://return-target.invalid";
@@ -31,7 +32,8 @@ export function safeReturnPath(value: unknown): string | null {
     return null;
   }
   if (target.origin !== PLACEHOLDER_ORIGIN || target.pathname === CALLBACK_PATH) return null;
-  if (target.pathname !== "/" && !issueIdFromPath(target.pathname)) return null;
+  if (target.pathname !== "/" && !issueIdFromPath(target.pathname) && !billingRouteFromPath(target.pathname))
+    return null;
   if (["code", "error", "state"].some((name) => target.searchParams.has(name))) return null;
   return `${target.pathname}${target.search}`;
 }
