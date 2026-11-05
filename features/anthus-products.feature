@@ -29,9 +29,11 @@ Feature: Anthus products are listed in one order and shown with their own brandi
     And intake validation never depends on the product catalog
 
   Scenario: Products show their own logo
-    Given a product whose logo is published in a public MIT-licensed Anthus repository
-    When it is shown in a chip, list, tile or navigation link
-    Then its real logo image is shown, with a light and a dark variant
-    And a product without a vetted logo shows a neutral mark with no product color
-    And no logo is invented, redrawn or copied from a private repository or a GPL repository
-    And every shipped logo file records its source repository, path and license
+    Given Ryan approved on 2026-11-05 copying Anthus's own logos from private repositories into this public one
+    When a product is shown in a chip, list, tile or navigation link
+    Then its real logo image is shown
+    And Babulus, which has no logo of its own, shows the Auritus mascot
+    And a product with no logo file, Apricity, shows a neutral mark with no product color
+    And no logo is invented or redrawn, and nothing but logo files is copied from those repositories
+    And every shipped logo file carries no private metadata and records its source in public/brand/SOURCES.md
+    And a logo is legible in both light and dark mode

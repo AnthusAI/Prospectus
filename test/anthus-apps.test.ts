@@ -60,7 +60,7 @@ test("byAppOrder follows the catalog order, groups Papyrus sites, keeps unknown 
   assert.ok(sorted.indexOf("papyrus-shipped") < sorted.indexOf("papyrus-dataparade"), "stable within an app");
 });
 
-test("every shipped logo exists and has a recorded source; products without one get no logo", () => {
+test("every shipped logo exists and has a recorded source; only Apricity and services lack one", () => {
   const sources = readFileSync("public/brand/SOURCES.md", "utf8");
   const files = readdirSync("public/brand").filter((name) => name !== "SOURCES.md");
   for (const file of files) assert.ok(sources.includes(file), `${file} has no recorded source`);
@@ -76,11 +76,17 @@ test("every shipped logo exists and has a recorded source; products without one 
     files.sort(),
     "every file is used and every logo is a shipped file",
   );
-  assert.ok(ANTHUS_APPS.find((app) => app.id === "papyrus")!.logo);
-  assert.ok(ANTHUS_APPS.find((app) => app.id === "chatticus")!.logo);
-  // Apricity is GPL-2.0 with a private site repository; Cyclotron, Babulus and Kanbus logos live only in private repositories.
-  for (const id of ["apricity", "cyclotron", "babulus", "kanbus", "services"])
+  // Apricity has no logo file in its web repository; Professional services is not a product with a logo.
+  for (const id of ["papyrus", "cyclotron", "chatticus", "babulus", "kanbus"])
+    assert.ok(ANTHUS_APPS.find((app) => app.id === id)!.logo, id);
+  for (const id of ["apricity", "services"])
     assert.equal(ANTHUS_APPS.find((app) => app.id === id)!.logo, undefined, id);
+  for (const file of files)
+    assert.doesNotMatch(
+      readFileSync(`public/brand/${file}`).toString("latin1"),
+      /eXIf|tEXt|iTXt|\/Users\//,
+      `${file} carries metadata`,
+    );
 });
 
 test("intake validation never depends on the product catalog", () => {

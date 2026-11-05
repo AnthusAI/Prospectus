@@ -187,7 +187,7 @@ export function Unavailable({ title, children }: { title: string; children?: Rea
 
 /** The product's own logo in the current theme, or a neutral mark (never a product color) when it has none. */
 export function AppMark({ app, large, off }: { app: AnthusApp; large?: boolean; off?: boolean }) {
-  const size = `one-mark${large ? " lg" : ""}${off ? " off" : ""}`;
+  const size = `one-mark${large ? " lg" : ""}${off ? " off" : ""}${app.logo?.plate ? " plate" : ""}`;
   if (!app.logo)
     return (
       <span className={`${size} neutral`} aria-hidden="true">

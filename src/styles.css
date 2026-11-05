@@ -1905,6 +1905,9 @@ body:has(.one) {
 .one-mark.lg.neutral {
   font-size: 16px;
 }
+.one-mark.plate {
+  background: #f7f7f4;
+}
 .one-mark.off {
   opacity: 0.45;
 }

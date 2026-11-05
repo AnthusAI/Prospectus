@@ -1,9 +1,9 @@
-/** Anthus apps as customers and staff see them. Logos are real product logos copied from public MIT repositories (public/brand/SOURCES.md). */
+/** Anthus apps as customers and staff see them. Logos are the products' own, with sources recorded in public/brand/SOURCES.md. */
 export interface AnthusApp {
   id: string;
   name: string;
   /** The product's own logo, one file per theme. Absent when none may be shipped; a neutral mark shows instead. */
-  logo?: { light: string; dark: string };
+  logo?: { light: string; dark: string; plate?: boolean };
   /** Public address customers open, when the app has one. */
   url?: string;
   blurb?: string;
@@ -23,13 +23,14 @@ export const ANTHUS_APPS: readonly AnthusApp[] = [
   {
     id: "papyrus",
     name: "Papyrus",
-    logo: { light: "/brand/papyrus-light.png", dark: "/brand/papyrus-dark.png" },
+    logo: { light: "/brand/papyrus.svg", dark: "/brand/papyrus.svg" },
     url: "https://p.apyr.us",
     blurb: "An automated newsroom: agents watch your beat, your editors decide what publishes.",
   },
   {
     id: "cyclotron",
     name: "Cyclotron",
+    logo: { light: "/brand/cyclotron.svg", dark: "/brand/cyclotron.svg" },
     url: "https://lab.cyclotron.anth.us",
     blurb: "One AI decision that learns from your team’s corrections.",
   },
@@ -43,12 +44,15 @@ export const ANTHUS_APPS: readonly AnthusApp[] = [
   {
     id: "babulus",
     name: "Babulus",
+    // Babulus has no logo of its own; Ryan chose the Auritus mascot on 2026-11-05. Transparent art, so it sits on a plate.
+    logo: { light: "/brand/babulus.png", dark: "/brand/babulus.png", plate: true },
     url: "https://babul.us",
     blurb: "Voiceover and video made on your own machine first, in the cloud only when it is allowed.",
   },
   {
     id: "kanbus",
     name: "Kanbus",
+    logo: { light: "/brand/kanbus.svg", dark: "/brand/kanbus.svg" },
     url: "https://kanb.us",
     blurb: "Durable task boards for teams of people and agents.",
   },
