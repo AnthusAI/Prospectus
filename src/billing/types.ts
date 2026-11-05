@@ -8,12 +8,13 @@ export const BILLING_PERMISSION = "accounts:admin:billing";
 
 export type InvoiceStatus = "draft" | "issued" | "partially_paid" | "paid" | "void" | "uncollectible";
 export type IssuedVia = "stripe" | "manual";
-export type ExternalPaymentMethod = "bank_transfer" | "check" | "venmo" | "cash" | "other";
+export type ExternalPaymentMethod = "bank_transfer" | "check" | "venmo" | "melio" | "cash" | "other";
 export type PaymentMethod = ExternalPaymentMethod | "stripe_card" | "stripe_bank";
 export const EXTERNAL_METHODS: readonly ExternalPaymentMethod[] = [
   "check",
   "bank_transfer",
   "venmo",
+  "melio",
   "cash",
   "other",
 ];

@@ -7,6 +7,8 @@ import { AccountsError, fail, roleOperations } from "./model";
 import { DurableAccountsService, type AccountDocument } from "./durable-accounts";
 import { canReadOperatorDirectory, hasOperatorPermission, type OperatorGrant } from "./operator-policy";
 import type { Quota } from "../quota/service";
+import { isBillingPath } from "../billing/routes";
+import type { billingOperatorRoutes } from "../billing/routes";
 import type { OperatorQuotaView, QuotaView } from "../quota/model";
 import type {
   OperatorAccount,
@@ -24,6 +26,8 @@ export function accountDirectoryHandler(
   clock = () => Date.now() / 1000,
   grants: readonly OperatorGrant[] = [],
   quota?: Quota,
+  /** Absent while the ledger flag is off: every billing path then answers 404. */
+  billing?: ReturnType<typeof billingOperatorRoutes>,
 ) {
   const customerQuota = (accountId: string): Promise<QuotaView> =>
     quota ? quota.customerView(accountId) : Promise.resolve({ state: "unavailable" });
@@ -59,6 +63,12 @@ export function accountDirectoryHandler(
       const product = products.find((item) => item.enabled && item.product === authenticated.product);
       if (product && isGoogleDirect(product) && event.path.startsWith("/v1/account-directory/operator/"))
         fail(403, "operator_forbidden", "This product cannot use operator routes.");
+      if (isBillingPath(event.path)) {
+        if (!billing) fail(404, "route", "Operator directory route not found.");
+        // The same canonical session proof as every operator route, then the billing routes decide by grant.
+        await service.person(authenticated);
+        return (await billing(event, authenticated))!;
+      }
       const quotaRoute = /^\/v1\/account-directory\/operator\/accounts\/([a-f0-9-]{36})\/quota$/.exec(
         event.path,
       );

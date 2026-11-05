@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { IdentityFiles } from "../../accounts/identity-files";
 import { roleOperations, type Context } from "../../accounts/model";
 import { operatorSubjectHash, type OperatorGrant } from "../../accounts/operator-policy";
+import { BillingIssuer } from "../issuer";
+import { BillingLedger } from "../ledger";
 import { BillingLines } from "../lines";
 import { BillingProfiles } from "../profile";
 import { reviewedBillingPlans } from "../plans";
@@ -56,6 +58,25 @@ export const profileInput = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+export const issuerFields = (overrides: Record<string, unknown> = {}) => ({
+  issuer: {
+    legalName: "Example Issuer LLC",
+    billingEmail: "billing@issuer.example.invalid",
+    addressLines: ["100 Placeholder Street", "Exampleville, EX 00000"],
+    footerNote: "Thank you.",
+  },
+  paymentMethods: [
+    { label: "Bank transfer", instructions: "Account 000000, routing 000000 (placeholder)", offered: true },
+    { label: "Venmo", instructions: "@example-issuer (placeholder)", offered: true },
+  ],
+  defaultNetTermsDays: 30,
+  ...overrides,
+});
+export const lineItems = (overrides: Record<string, unknown>[] = []) =>
+  overrides.length
+    ? overrides
+    : [{ description: "Example site, November", quantity: 1, unitAmountCents: 120000 }];
+
 export function billingFixture(storage?: IdentityFiles) {
   const files = new MemoryBillingFiles();
   const store = storage ?? files;
@@ -78,5 +99,21 @@ export function billingFixture(storage?: IdentityFiles) {
   };
   const profiles = new BillingProfiles(store, grants, () => FIXED_NOW);
   const lines = new BillingLines(store, grants, reviewedBillingPlans(), ports, () => FIXED_NOW);
-  return { files, store, accountId, entitlements, entitlementReads, ports, profiles, lines };
+  /** Tests move this to put the ledger's clock on another day. */
+  const clock = { now: FIXED_NOW };
+  const issuer = new BillingIssuer(store, grants, () => clock.now);
+  const ledger = new BillingLedger(store, grants, () => clock.now);
+  return {
+    files,
+    store,
+    clock,
+    accountId,
+    entitlements,
+    entitlementReads,
+    ports,
+    profiles,
+    lines,
+    issuer,
+    ledger,
+  };
 }

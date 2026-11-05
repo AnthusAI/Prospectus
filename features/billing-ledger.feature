@@ -64,12 +64,22 @@ Feature: Invoice ledger with partial payments
     Then its status is void, its balance is zero and its number is not reused
 
   Scenario: Issuer details and payment methods come from data
-    Given an admin set the issuer record with a legal name, an address, and bank transfer and Venmo payment methods
+    Given an admin set the issuer record with a legal name, an address, and bank transfer and Melio payment methods
+    And the Melio instructions hold an https payment link
     When an invoice is issued
     Then the invoice record carries a copy of that issuer block and those payment methods, and its PDF shows them
+    And the PDF makes the https payment link clickable
     When the admin later changes the issuer address
     Then the issued invoice and its PDF still show the address it was issued with
-    And no issuer name, address or payment detail appears in the repository
+    And no issuer name, address, payment detail or payment link appears in the repository
+
+  Scenario: Payment links are https only
+    When an admin sets payment instructions that contain an http, javascript, data, mailto or other non-https link
+    Then the issuer record is refused and nothing is written
+
+  Scenario: Melio payments are recorded like any external payment
+    When an admin records a payment with method melio
+    Then it is recorded, and a payment with method venmo recorded earlier stays valid
 
   Scenario: Issued invoices are immutable
     Given an issued invoice
@@ -170,3 +180,68 @@ Feature: Invoice ledger with partial payments
     Given any billing mutation
     Then exactly one journal event exists for it with actor, operation id, record kind and revisions
     And every balance can be rebuilt from the journal
+
+  Scenario: Enter an invoice that was issued outside Prospectus
+    Given the issuer record is set
+    When the admin enters an issued invoice with the number 202610-001, an issue date in October 2026 and its line items
+    Then the invoice is issued with that number and a due date of net terms after its issue date
+    And the October sequence counter moves past 001, so the next October invoice is 202610-002
+    When the admin enters another invoice with the number 202610-001
+    Then it is refused as a taken number and nothing is written
+    When the admin enters an invoice whose number month differs from its issue date
+    Then it is refused
+
+  Scenario: A draft can be voided and frees its period
+    Given a draft period invoice for November 2026
+    When the admin voids the draft
+    Then its status is void, it has no number, and the admin can raise a new invoice for November
+
+  Scenario: Credits reduce an invoice balance
+    Given an issued invoice of 120000 with a payment of 50000 allocated
+    When the admin records a credit of 20000 with a reason
+    Then a credit record names the invoice and the balance is 50000
+    When the credit exceeds the balance
+    Then it is refused and nothing is written
+    And a credited invoice cannot be voided
+
+  Scenario: Written-off balances stay separate from outstanding
+    Given a written-off invoice with 70000 unpaid
+    Then it keeps its unpaid figure, is not counted as open, and is listed as uncollectible
+    And no allocation, credit or second write-off is accepted for it
+
+  Scenario: A voided invoice's allocations must be reversed first
+    Given an invoice with a reversed payment
+    Then it has no net allocations and can be voided
+    Given an invoice with a live allocation
+    Then voiding it is refused
+
+  Scenario: Different request, same operation id
+    Given an operation id already used for one request
+    When it is sent with a different request
+    Then the response is 409 idempotency_conflict and nothing is written
+
+  Scenario: Stale revisions are refused
+    Given an invoice or payment read at revision 3 that has since changed
+    When an admin allocates, reverses, voids, writes off or credits with expectedRevision 3
+    Then the response is 409 revision_conflict and nothing is written
+
+  Scenario: Interrupted operations finish
+    Given an operation that wrote some of its records and then stopped
+    When any other operation on the account starts
+    Then the interrupted operation is completed first, exactly once, and its journal event exists
+
+  Scenario: Read access follows the grants
+    Given an operator holding only accounts:admin:read
+    Then they can read invoices, payments, the journal and the issuer, with the billing contact masked
+    And an account owner or a member without any operator grant can read nothing from the operator billing routes
+    And revealing the billing contact is a write that needs accounts:admin:billing and is journaled
+
+  Scenario: The operator billing routes are off by default
+    Given billing/deployment.json holds ledger.enabled false
+    Then every operator billing route answers 404 and no billing storage is opened
+    And the routes are served only when the flag is true and billing storage is configured
+
+  Scenario: The PDF is rendered from the issued record
+    Given an issued invoice
+    Then its PDF is a valid PDF built without a browser, from the issuer block and payment methods copied at issue
+    And a draft has no PDF
