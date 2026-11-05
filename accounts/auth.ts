@@ -23,6 +23,8 @@ export interface ProductRegistration {
   accountDirectory?: true;
   /** A product whose server role may reserve, settle and release the shared quota (`/v1/quota/...`). */
   quota?: true;
+  /** A second role allowed on the five quota routes only (for example a spending gate), never on identity or account routes. */
+  quotaCaller?: { roleArn: string };
   /** A Papyrus site that only signs readers in: no capabilities, no directory, no delegation. */
   audience?: "public-reader";
   googleFederation?: {
@@ -46,12 +48,14 @@ export type VerifiedCaller =
   | {
       registration: ProductRegistration;
       principal: string;
-      authority: "enrollment" | "execution";
+      authority: "enrollment" | "execution" | "quota";
       verifier?: undefined;
     }
   | { registration?: undefined; principal: string; authority: "verification"; verifier: LabVerifier };
 const roleOf = (arn: string | undefined) =>
   /^arn:aws:iam::(\d{12}):role\/(?:[^/]+\/)*([^/]+)$/.exec(arn ?? "");
+const QUOTA_ROUTE =
+  /^\/v1\/quota\/accounts\/[a-f0-9-]{36}\/(?:reservations|reservations\/[a-f0-9-]{36}\/(?:settle|release)|usage|check)$/;
 /** Session continuation and verification may check one enrolled session and one account decision, nothing else. */
 function sessionChecksOnly(event: RestEvent, code: string, message: string) {
   const account = /^\/v1\/accounts\/([a-f0-9-]{36})\/authorize$/.exec(event.path);
@@ -74,6 +78,7 @@ export function caller(event: RestEvent, products: ValidatedRegistrations): Veri
     for (const [authority, principal] of [
       ["enrollment", registration.roleArn],
       ["execution", registration.executionDelegation?.roleArn],
+      ["quota", registration.quotaCaller?.roleArn],
     ] as const) {
       const role = roleOf(principal);
       if (role?.[1] !== session[1] || role[2] !== session[2]) continue;
@@ -83,6 +88,8 @@ export function caller(event: RestEvent, products: ValidatedRegistrations): Veri
           "execution_route_forbidden",
           "Execution principal may only check its enrolled session and current account authorization.",
         );
+      if (authority === "quota" && !(event.httpMethod === "POST" && QUOTA_ROUTE.test(event.path)))
+        fail(403, "quota_route_forbidden", "The quota caller may only use the quota routes.");
       return { registration, principal: principal!, authority };
     }
   }

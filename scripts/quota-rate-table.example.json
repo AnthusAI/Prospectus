@@ -1,0 +1,10 @@
+{
+  "version": "<a name for this exact table>",
+  "defaultPlan": "<plan name>",
+  "plans": {
+    "<plan name>": { "weeklyAllowanceUnits": "<units>" }
+  },
+  "rates": {
+    "<item kind>": { "units": "<units>", "per": "<quantity>" }
+  }
+}
