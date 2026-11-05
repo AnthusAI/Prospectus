@@ -21,6 +21,7 @@ export const SPAM_REASON_TEXT: Record<string, string> = {
   gmail_dot_scatter: "Gmail address with scattered dots",
   honeypot: "The hidden form field was filled",
   fast_submit: "Sent within 1.5 seconds of opening the form",
+  instant_submit: "Sent within 1 second of opening the form",
   scorer_error: "The spam check failed, so it was treated as clean",
   vendor_pitch: "Reads like a pitch for services",
 };

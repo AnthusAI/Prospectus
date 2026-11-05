@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { appById, appForProduct } from "../apps";
+import { appById, appForProduct, type AnthusApp } from "../apps";
 
 const ICON_PATHS = {
   today: (
@@ -213,11 +213,34 @@ export function Unavailable({ title, children }: { title: string; children?: Rea
   );
 }
 
+/** The product's own logo in the current theme, or a neutral mark (never a product color) when it has none. */
+export function AppMark({ app, large, off }: { app: AnthusApp; large?: boolean; off?: boolean }) {
+  const size = `one-mark${large ? " lg" : ""}${off ? " off" : ""}${app.logo?.plate ? " plate" : ""}`;
+  if (!app.logo)
+    return (
+      <span className={`${size} neutral`} aria-hidden="true">
+        {app.name.charAt(0)}
+      </span>
+    );
+  return (
+    <span className={size} aria-hidden="true">
+      {app.logo.dark === app.logo.light ? (
+        <img src={app.logo.light} alt="" />
+      ) : (
+        <>
+          <img className="light" src={app.logo.light} alt="" />
+          <img className="dark" src={app.logo.dark} alt="" />
+        </>
+      )}
+    </span>
+  );
+}
+
 export function AppChip({ id }: { id: string }) {
-  const app = appById(id) ?? { name: id, swatch: "var(--panel-2)" };
+  const app = appById(id) ?? { id, name: id };
   return (
     <span className="one-chip">
-      <span className="one-swatch" style={{ background: app.swatch }} aria-hidden="true" />
+      <AppMark app={app} />
       {app.name}
     </span>
   );
@@ -227,11 +250,8 @@ export function ProductSwatch({ product, status }: { product: string; status: st
   const app = appForProduct(product);
   const label = `${app.name}${status === "active" ? "" : ` (${status})`}`;
   return (
-    <span
-      className="one-swatch square"
-      title={label}
-      style={{ background: status === "active" ? app.swatch : "var(--surface)" }}
-    >
+    <span className="one-productmark" title={label}>
+      <AppMark app={app} off={status !== "active"} />
       <span className="sr-only">{label}</span>
     </span>
   );

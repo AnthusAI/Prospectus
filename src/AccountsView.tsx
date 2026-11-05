@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountsBrowser } from "./accounts-client";
-import { OPERATOR_PRODUCTS, appForProduct } from "./apps";
+import { OPERATOR_PRODUCTS, appForProduct, byAppOrder } from "./apps";
 import type {
   DirectoryList,
   DirectoryMembership,
@@ -15,7 +15,7 @@ import { billingHref } from "./billing/routes";
 import { BillingLink } from "./shared/billing";
 import { initials } from "./shared/initials";
 import { QuotaPanel, formatReset, quotaOf } from "./shared/quota";
-import { Eyebrow, Icon, ProductSwatch, Stat, Unavailable } from "./shared/ui";
+import { AppMark, Eyebrow, Icon, ProductSwatch, Stat, Unavailable } from "./shared/ui";
 
 const UNAVAILABLE_FILTERS = ["Needs attention", "Self-serve", "With services", "Trials"];
 const OWED_UNAVAILABLE_NOTE = "Not yet available: needs billing data";
@@ -425,7 +425,7 @@ export function AccountsView({
                         <td>
                           <span className="one-apps">
                             {row.products.length ? (
-                              row.products.map((product) => (
+                              byAppOrder(row.products, (product) => product.product).map((product) => (
                                 <ProductSwatch
                                   key={product.product}
                                   product={product.product}
@@ -511,12 +511,15 @@ function AccountPage({
     }
   }
   // Every product an operator can change, then any other product the Account already holds.
-  const productNames = [
-    ...OPERATOR_PRODUCTS,
-    ...detail.entitlements
-      .map((entitlement) => entitlement.product)
-      .filter((name) => !OPERATOR_PRODUCTS.includes(name)),
-  ];
+  const productNames = byAppOrder(
+    [
+      ...OPERATOR_PRODUCTS,
+      ...detail.entitlements
+        .map((entitlement) => entitlement.product)
+        .filter((name) => !OPERATOR_PRODUCTS.includes(name)),
+    ],
+    (name) => name,
+  );
   const activeApps = detail.entitlements.filter((entitlement) => entitlement.status === "active").length;
   const activeMembers = detail.memberships.filter((member) => member.status === "active");
   const owner = activeMembers.find((member) => member.role === "owner");
@@ -615,9 +618,7 @@ function AccountPage({
               const on = entitlement?.status === "active";
               return (
                 <div className="one-entitlement" key={product}>
-                  <span className="one-appmark" style={{ background: app.swatch }} aria-hidden="true">
-                    {app.name.charAt(0)}
-                  </span>
+                  <AppMark app={app} large />
                   <span className="one-cellstack" style={{ minWidth: 140 }}>
                     <strong>{app.name}</strong>
                     <small className="one-mono">{product}</small>
