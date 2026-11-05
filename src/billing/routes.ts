@@ -1,6 +1,6 @@
 /**
  * The shareable addresses of the billing pages. Patterns are strict so a path can safely be a sign-in return target.
- * `/?view=billing` (the Usage and billing list) and the other `?view=` links keep working beside these.
+ * The Usage and billing list itself is the page path `/billing` (src/deep-links.ts).
  */
 export type BillingRoute =
   | { kind: "invoice"; reference: string }

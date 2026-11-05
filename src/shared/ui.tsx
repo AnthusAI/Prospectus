@@ -189,7 +189,7 @@ export function Stat({
       className={className}
       href={href}
       onClick={(event) => {
-        if (!onClick) return;
+        if (!onClick || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
         event.preventDefault();
         onClick();
       }}

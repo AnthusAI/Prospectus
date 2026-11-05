@@ -143,7 +143,7 @@ export function RecordPaymentView() {
     );
   const accounts = overview.data.accounts.filter((account) => account.billable);
   const account = accounts.find((item) => item.id === accountId);
-  const trail = [{ label: "Usage and billing", href: "/?view=billing" }];
+  const trail = [{ label: "Usage and billing", href: "/billing" }];
   if (!canAct)
     return (
       <main className="one-main narrow" aria-label="Record a payment">
@@ -353,7 +353,7 @@ export function RecordPaymentView() {
               <button
                 type="button"
                 className="one-button"
-                onClick={() => go(account ? billingHref.accountBilling(account.id) : "/?view=billing")}
+                onClick={() => go(account ? billingHref.accountBilling(account.id) : "/billing")}
               >
                 Cancel
               </button>
@@ -384,7 +384,7 @@ export function PaymentView({ id }: { id: string }) {
   if (loaded.error || !loaded.data)
     return (
       <main className="one-main narrow" aria-label="Payment">
-        <Breadcrumb trail={[{ label: "Usage and billing", href: "/?view=billing" }]} current="Payment" />
+        <Breadcrumb trail={[{ label: "Usage and billing", href: "/billing" }]} current="Payment" />
         <p role="alert" className="one-alert">
           {loaded.error || "That payment was not found."}
         </p>
@@ -416,7 +416,7 @@ export function PaymentView({ id }: { id: string }) {
     <main className="one-main narrow" aria-label="Payment">
       <Breadcrumb
         trail={[
-          { label: "Usage and billing", href: "/?view=billing" },
+          { label: "Usage and billing", href: "/billing" },
           { label: account.name, href: billingHref.accountBilling(account.id) },
         ]}
         current={`Payment, ${paymentLabel(payment)}`}

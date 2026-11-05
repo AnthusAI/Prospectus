@@ -32,7 +32,7 @@ export function InvoiceView({ reference }: { reference: string }) {
   if (loaded.error || !loaded.data)
     return (
       <main className="one-main narrow" aria-label="Invoice">
-        <Breadcrumb trail={[{ label: "Usage and billing", href: "/?view=billing" }]} current="Invoice" />
+        <Breadcrumb trail={[{ label: "Usage and billing", href: "/billing" }]} current="Invoice" />
         <p role="alert" className="one-alert">
           {loaded.error || "That invoice was not found."}
         </p>
@@ -69,7 +69,7 @@ export function InvoiceView({ reference }: { reference: string }) {
     <main className="one-main narrow" aria-label="Invoice">
       <Breadcrumb
         trail={[
-          { label: "Usage and billing", href: "/?view=billing" },
+          { label: "Usage and billing", href: "/billing" },
           { label: account.name, href: billingHref.accountBilling(account.id) },
         ]}
         current={title}

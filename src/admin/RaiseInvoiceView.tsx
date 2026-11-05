@@ -82,7 +82,7 @@ export function RaiseInvoiceView() {
     );
   const accounts = overview.data.accounts.filter((item) => item.mode === "invoiced");
   const selected = accounts.find((item) => item.id === accountId);
-  const trail = [{ label: "Usage and billing", href: "/?view=billing" }];
+  const trail = [{ label: "Usage and billing", href: "/billing" }];
   if (!canAct)
     return (
       <main className="one-main narrow" aria-label="Raise an invoice">
@@ -411,7 +411,7 @@ export function RaiseInvoiceView() {
               <button
                 type="button"
                 className="one-button"
-                onClick={() => go(selected ? billingHref.accountBilling(selected.id) : "/?view=billing")}
+                onClick={() => go(selected ? billingHref.accountBilling(selected.id) : "/billing")}
               >
                 Cancel
               </button>

@@ -28,7 +28,7 @@ export function AccountTabs({
   onOverview: () => void;
 }) {
   const { go } = useBilling();
-  const overview = `/?view=accounts&account=${encodeURIComponent(accountId)}`;
+  const overview = `/accounts/${encodeURIComponent(accountId)}`;
   return (
     <div className="billing-sections" role="navigation" aria-label="Account sections">
       <a
@@ -171,7 +171,7 @@ export function AccountBillingSection({ accountId }: { accountId: string }) {
           </p>
           <div className="one-toolbar">
             <BillingLink href={billingHref.invoice(late.number!)}>Open invoice</BillingLink>
-            <BillingLink href={`/?view=accounts&account=${encodeURIComponent(accountId)}#apps-heading`}>
+            <BillingLink href={`/accounts/${encodeURIComponent(accountId)}#apps-heading`}>
               Apps and access
             </BillingLink>
           </div>

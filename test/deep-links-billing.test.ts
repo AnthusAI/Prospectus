@@ -63,12 +63,14 @@ test("billing paths that do not match a strict pattern are neither routes nor re
     "/accounts/a.b/billing",
     "/accounts/a/b/billing",
     "/accounts/" + "a".repeat(101) + "/billing",
-    "/settings",
     "/settings/billing/x",
   ]) {
     assert.equal(billingRouteFromPath(bad.split("?")[0]), null, bad);
     assert.equal(safeReturnPath(bad), null, bad);
   }
+  // Settings is a page of its own, not a billing route.
+  assert.equal(billingRouteFromPath("/settings"), null);
+  assert.equal(safeReturnPath("/settings"), "/settings");
   // Sign-in parameters never ride along on a return target.
   assert.equal(safeReturnPath("/invoices/202610-003?code=1"), null);
 });
