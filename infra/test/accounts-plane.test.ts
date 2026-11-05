@@ -1018,6 +1018,54 @@ test("babulus is registered with the quota flag and its role gets the account ro
   );
 });
 
+test("the babulus quota caller role is in the quota statement only, not the account routes", () => {
+  const babulus = babulusRegistration({
+    roleArn: "arn:aws:iam::111122223333:role/synthetic-babulus-runtime",
+    issuer: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_SyntheticBabulus",
+    clientId: "syntheticbabulusclient",
+    federationReviewId: "synthetic-babulus-review-v1",
+    quotaCallerRoleArn: "arn:aws:iam::111122223333:role/synthetic-babulus-gate",
+  });
+  const after = template(
+    true,
+    false,
+    false,
+    [],
+    parameterStoreSigner,
+    false,
+    undefined,
+    [],
+    undefined,
+    babulus,
+  );
+  const policy = (Object.values(after.Resources) as any[]).find(
+    (value) => value.Type === "AWS::ApiGateway::RestApi",
+  ).Properties.Policy.Statement;
+  const allows = policy.filter(
+    (item: any) =>
+      item.Effect === "Allow" && JSON.stringify(item.Principal).includes("synthetic-babulus-gate"),
+  );
+  assert.equal(allows.length, 1, "the quota caller appears in exactly one statement");
+  const resources: string[] = allows[0].Resource;
+  assert.equal(resources.length, 5);
+  assert.ok(resources.every((value) => value.startsWith("execute-api:/api/POST/v1/quota/accounts/")));
+  const accountStatement = policy.find(
+    (item: any) =>
+      item.Effect === "Allow" &&
+      JSON.stringify(item.Resource).includes("/v1/identities/me") &&
+      JSON.stringify(item.Principal).includes("synthetic-babulus-runtime"),
+  );
+  assert.ok(
+    accountStatement && !JSON.stringify(accountStatement.Principal).includes("synthetic-babulus-gate"),
+  );
+  assert.ok(
+    JSON.stringify(policy.find((item: any) => item.Effect === "Deny").Condition).includes(
+      "synthetic-babulus-gate",
+    ),
+    "the deny-all statement exempts the quota caller",
+  );
+});
+
 test("without the babulus option nothing about Babulus is registered", () => {
   const text = JSON.stringify(template(true));
   assert.ok(!text.includes("babulus"));

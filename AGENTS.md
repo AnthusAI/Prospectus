@@ -18,3 +18,7 @@ Git Flow, as in the other Anthus projects. `develop` is the default and integrat
 - Never commit to `develop` or `main` directly. Work lands on `develop` by pull request, merged with a merge commit once CI is green. Kanbus board changes go to `develop` the same way.
 - Promotion is a pull request from `develop` to `main` with a merge commit. Merging it deploys production (docs/OPERATIONS.md, "Deployment"). Promote or merge to `main` only with direction, and coordinate the promotion with any Papyrus release it depends on.
 
+
+## Quota rate table
+
+The real quota rate table (rates and plan allowances) is private and never enters Git. A person writes it with `AWS_PROFILE=<profile> scripts/write-quota-rate-table.sh --account <12-digit id> --values <file>` from a values file kept outside this repository (see docs/QUOTA.md). Agents do not run this script unless told to, and never put real values in the repository, tests or logs; `scripts/quota-rate-table.example.json` holds placeholders only.

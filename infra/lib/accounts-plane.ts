@@ -498,7 +498,10 @@ export class AccountsPlane extends Construct {
       );
       api.latestDeployment?.addToLogicalId({ babulusRole: babulus.roleArn });
     }
-    const quotaRoles = [...quotaProducts, ...(babulus ? [babulus] : [])].map((product) => product.roleArn);
+    const quotaRoles = [...quotaProducts, ...(babulus ? [babulus] : [])].flatMap((product) => [
+      product.roleArn,
+      ...(product.quotaCaller ? [product.quotaCaller.roleArn] : []),
+    ]);
     if (quotaRoles.length) {
       api.addToResourcePolicy(
         new iam.PolicyStatement({

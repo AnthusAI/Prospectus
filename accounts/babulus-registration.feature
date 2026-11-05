@@ -16,6 +16,14 @@ Feature: Register Babulus as a quota product through deployment options
     And its role may reserve, settle, release, record and check quota, and nothing else
     And its role may not create accounts or change memberships
 
+  Scenario: An optional quota caller role
+    Given the deployment options also name a second role, such as a spending gate, as the quota caller
+    When the accounts plane is built
+    Then that role may call the five quota routes as Babulus
+    And it may not call identity or account routes
+    And only the quota statement of the resource policy names it
+    And PROSPECTUS_BABULUS_QUOTA_ROLE_ARN supplies it when set
+
   Scenario Outline: Unreviewed options are refused
     Given the Babulus deployment options have <problem>
     When the accounts plane is built
@@ -28,6 +36,7 @@ Feature: Register Babulus as a quota product through deployment options
       | a client ID that is not an app client     |
       | no federation review ID                   |
       | an unknown extra option                   |
+      | a quota caller that is not an IAM role    |
 
   Scenario: No values are kept in the repository
     Given the Babulus registration

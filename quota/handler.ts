@@ -8,11 +8,15 @@ import type { Quota } from "./service";
 const QUOTA_REQUEST_MAXIMUM_BODY_BYTES = 16000;
 const ACCOUNT = "([a-f0-9-]{36})";
 
-/** The product behind a SigV4 call: a registered, enabled enrollment role carrying the quota flag. Anything else, a
- * missing or non-role caller, an execution role, the lab verifier or a product without the flag, is refused. */
+/** The product behind a SigV4 call: a registered, enabled enrollment role or quota caller role of a product carrying
+ * the quota flag. Anything else, a missing or non-role caller, an execution role, the lab verifier or a product
+ * without the flag, is refused. */
 function quotaProduct(event: RestEvent, products: ValidatedRegistrations): string {
   const authenticated = caller(event, products);
-  if (authenticated.authority !== "enrollment" || authenticated.registration.quota !== true)
+  if (
+    (authenticated.authority !== "enrollment" && authenticated.authority !== "quota") ||
+    authenticated.registration.quota !== true
+  )
     fail(403, "quota_forbidden", "This product is not registered to use quota.");
   return authenticated.registration.product;
 }

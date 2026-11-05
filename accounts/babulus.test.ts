@@ -42,3 +42,35 @@ test("the environment registers Babulus only when switched on, and then needs ev
   });
   assert.equal(registration?.product, "babulus");
 });
+
+test("an optional quota caller role becomes the registration's quota caller", () => {
+  const gate = "arn:aws:iam::111122223333:role/synthetic-babulus-gate";
+  const registration = babulusRegistration({ ...good, quotaCallerRoleArn: gate });
+  assert.deepEqual(registration.quotaCaller, { roleArn: gate });
+  assert.equal(babulusRegistration(good).quotaCaller, undefined);
+  assert.throws(
+    () => babulusRegistration({ ...good, quotaCallerRoleArn: "not-a-role" }),
+    /quota caller role/,
+  );
+  assert.throws(() => babulusRegistration({ ...good, quotaCallerRoleArn: undefined }), /quota caller role/);
+});
+
+test("the environment reads the quota caller role only when it is set", () => {
+  const gate = "arn:aws:iam::111122223333:role/synthetic-babulus-gate";
+  const environment = {
+    PROSPECTUS_BABULUS_ENABLED: "true",
+    PROSPECTUS_BABULUS_ROLE_ARN: good.roleArn,
+    PROSPECTUS_BABULUS_ISSUER: good.issuer,
+    PROSPECTUS_BABULUS_CLIENT_ID: good.clientId,
+    PROSPECTUS_BABULUS_FEDERATION_REVIEW_ID: good.federationReviewId,
+  };
+  assert.equal(babulusFromEnvironment(environment)?.quotaCaller, undefined);
+  assert.deepEqual(
+    babulusFromEnvironment({ ...environment, PROSPECTUS_BABULUS_QUOTA_ROLE_ARN: gate })?.quotaCaller,
+    { roleArn: gate },
+  );
+  assert.throws(
+    () => babulusFromEnvironment({ ...environment, PROSPECTUS_BABULUS_QUOTA_ROLE_ARN: "bad" }),
+    /quota caller role/,
+  );
+});

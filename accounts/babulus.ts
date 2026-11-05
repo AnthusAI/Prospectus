@@ -17,6 +17,8 @@ export interface BabulusOptions {
   issuer: string;
   clientId: string;
   federationReviewId: string;
+  /** Optional: a second role (for example a spending gate) allowed on the quota routes only. */
+  quotaCallerRoleArn?: string;
 }
 export const BABULUS_PRODUCT = "babulus";
 export const babulusCapabilities: readonly Operation[] = ["console:read", "console:write", "members:read"];
@@ -33,13 +35,27 @@ export const babulusRoutes: readonly string[] = [
 ];
 const rolePattern = /^arn:aws:iam::\d{12}:role\/(?:[A-Za-z0-9+=,.@_-]+\/)*[A-Za-z0-9+=,.@_-]+$/;
 const optionNames = ["roleArn", "issuer", "clientId", "federationReviewId"];
+const optionalNames = ["quotaCallerRoleArn"];
 
 export function babulusRegistration(options: unknown): ProductRegistration {
   const value = options as Record<string, unknown> | null;
   const keys = value && typeof value === "object" ? Object.keys(value).sort() : [];
-  if (JSON.stringify(keys) !== JSON.stringify([...optionNames].sort()))
-    throw new Error("Exact reviewed Babulus registration required: exactly the four reviewed options.");
-  const { roleArn, issuer, clientId, federationReviewId } = value as Record<string, string>;
+  const required = [...optionNames].sort();
+  if (
+    !required.every((name) => keys.includes(name)) ||
+    keys.some((name) => !required.includes(name) && !optionalNames.includes(name))
+  )
+    throw new Error(
+      "Exact reviewed Babulus registration required: exactly the four reviewed options, plus optionally the quota caller role.",
+    );
+  const { roleArn, issuer, clientId, federationReviewId, quotaCallerRoleArn } = value as Record<
+    string,
+    string
+  >;
+  if (keys.includes("quotaCallerRoleArn") && !matchesStringPattern(quotaCallerRoleArn, rolePattern))
+    throw new Error(
+      "Exact reviewed Babulus registration required: the quota caller role must be an IAM role ARN.",
+    );
   if (!matchesStringPattern(roleArn, rolePattern))
     throw new Error(
       "Exact reviewed Babulus registration required: the runtime role must be an IAM role ARN.",
@@ -65,6 +81,7 @@ export function babulusRegistration(options: unknown): ProductRegistration {
     enabled: true,
     accountDirectory: true,
     quota: true,
+    ...(quotaCallerRoleArn !== undefined ? { quotaCaller: { roleArn: quotaCallerRoleArn } } : {}),
     googleFederation: { policy: "google-only-unlinked-v1", reviewedPolicyId: federationReviewId, clientId },
   };
 }
@@ -79,5 +96,8 @@ export function babulusFromEnvironment(
     issuer: environment.PROSPECTUS_BABULUS_ISSUER,
     clientId: environment.PROSPECTUS_BABULUS_CLIENT_ID,
     federationReviewId: environment.PROSPECTUS_BABULUS_FEDERATION_REVIEW_ID,
+    ...(environment.PROSPECTUS_BABULUS_QUOTA_ROLE_ARN
+      ? { quotaCallerRoleArn: environment.PROSPECTUS_BABULUS_QUOTA_ROLE_ARN }
+      : {}),
   });
 }

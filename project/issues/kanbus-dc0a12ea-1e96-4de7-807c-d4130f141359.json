@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-dc0a12ea-1e96-4de7-807c-d4130f141359",
+  "title": "Quota caller principal for Babulus and the rate table writer script",
+  "description": "",
+  "type": "task",
+  "status": "in_progress",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-05fc671e-3930-4708-92ad-623137d0da2f",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-11-05T19:07:25.115963Z",
+  "updated_at": "2026-11-05T19:07:29.053367Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "Claude Sonnet 5.5",
+    "name": "Claude Code"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

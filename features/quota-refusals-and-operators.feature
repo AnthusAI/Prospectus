@@ -34,6 +34,22 @@ Feature: Quota fails closed, admins set plans, and customers see one number
     Then it is refused before any Account or quota data is read
     And a reader site, a google-direct product, an execution role and the lab verifier can never hold the quota flag or use the routes
 
+  Scenario: A registered quota caller role may use the five quota routes and nothing else
+    Given a quota product that also names a quota caller role
+    When that role reserves, settles, releases, records or checks quota for the product
+    Then each call is accepted as that product
+    But when that role calls an identity route, an account route, or a quota route with another method
+    Then it is refused with quota_route_forbidden before anything is read
+
+  Scenario: A quota caller role that is not configured is not a caller
+    Given a product with no quota caller role, or a disabled registration
+    When a role that would have been its quota caller calls a quota route
+    Then it is refused as an unregistered caller
+
+  Scenario: A quota caller role needs the quota flag and a role of its own
+    When a registration names a quota caller without the quota flag, or with a role another principal already uses
+    Then the registration is refused
+
   Scenario: Unknown fields, methods and routes are refused
     When a request carries an unknown field, uses a method other than POST, or names an unknown route
     Then it is refused and nothing is written
