@@ -160,7 +160,7 @@ test("label mode: likely spam gets the same reply, is stored with its result and
     assert.equal(inquiry.spam_score, 0.784);
     assert.equal(inquiry.spam_verdict, "likely_spam");
     assert.deepEqual(inquiry.spam_reasons, ["gibberish_name", "template_only_message", "gmail_dot_scatter"]);
-    assert.equal(inquiry.spam_rules_version, "intake-spam-rules-1");
+    assert.equal(inquiry.spam_rules_version, "intake-spam-rules-2");
     assert.equal(inquiry.spam_mode, "label");
     // The inbox keeps the full inquiry with the same result.
     const [item] = controls.inbox();
@@ -168,7 +168,7 @@ test("label mode: likely spam gets the same reply, is stored with its result and
     assert.equal(item.inquiry.message, BOT_SHAPED.message);
     assert.equal(item.inquiry.spam_verdict, "likely_spam");
     assert.deepEqual(item.inquiry.spam_reasons, inquiry.spam_reasons);
-    assert.equal(item.inquiry.spam_rules_version, "intake-spam-rules-1");
+    assert.equal(item.inquiry.spam_rules_version, "intake-spam-rules-2");
   } finally {
     await close();
   }
@@ -313,7 +313,7 @@ test("elapsed_ms is optional, validated without rejecting, and outside the finge
   const { service, crm, controls, close } = await openDemo({ spamLabelling: "label" });
   try {
     const submission_id = randomUUID();
-    const first = contact({ submission_id, elapsed_ms: 800 });
+    const first = contact({ submission_id, elapsed_ms: 1200 });
     assert.deepEqual(await service.submit(first), {
       receipt: submission_id,
       message: "Demo request received.",
@@ -323,7 +323,7 @@ test("elapsed_ms is optional, validated without rejecting, and outside the finge
     const issue = only(crm);
     const inquiries = issue.custom!.inquiries as any[];
     assert.equal(inquiries.length, 1);
-    assert.deepEqual(inquiries[0].form_signals, { elapsed_ms: 800 });
+    assert.deepEqual(inquiries[0].form_signals, { elapsed_ms: 1200 });
     assert.deepEqual(inquiries[0].spam_reasons, ["fast_submit"]);
     assert.equal(inquiries[0].spam_verdict, "clean");
     assert.equal(controls.inbox().length, 1);

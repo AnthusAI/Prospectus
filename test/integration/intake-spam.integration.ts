@@ -122,7 +122,7 @@ test("real Kanbus persistence: spam results, likely-spam filing, honeypot captur
     const inquiry = (record.issue.custom!.inquiries as any[])[0];
     assert.equal(inquiry.spam_score, 0.784);
     assert.equal(inquiry.spam_verdict, "likely_spam");
-    assert.equal(inquiry.spam_rules_version, "intake-spam-rules-1");
+    assert.equal(inquiry.spam_rules_version, "intake-spam-rules-2");
     assert.deepEqual(inquiry.form_signals, { elapsed_ms: 2500 });
 
     const honeypot = contact({ email: "honeypot@example.com", website: "filled-by-a-bot" });

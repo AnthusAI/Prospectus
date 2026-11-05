@@ -1,6 +1,6 @@
 {
-  "rules_version": "intake-spam-rules-1",
-  "approval": "Ryan approved 2026-10-21: likely_spam at score >= 0.70 with at least two reasons, one strong; 40-letter protection; filled honeypot stored and labelled; vendor pitches are a human label, not spam. Changing any value here is a reviewed change that bumps rules_version.",
+  "rules_version": "intake-spam-rules-2",
+  "approval": "Ryan approved 2026-10-21: likely_spam at score >= 0.70 with at least two reasons, one strong; 40-letter protection; filled honeypot stored and labelled; vendor pitches are a human label, not spam. Rules 2 (Ryan, 2026-11-05): instant_submit, and many case switches alone mark a gibberish token. Changing any value here is a reviewed change that bumps rules_version.",
   "thresholds": {
     "likely_spam": 0.7,
     "uncertain": 0.3,
@@ -16,13 +16,15 @@
     "markup_or_links": { "weight": 0.55, "strength": "strong" },
     "gmail_dot_scatter": { "weight": 0.2, "strength": "medium" },
     "honeypot": { "weight": 0.9, "strength": "strong" },
-    "fast_submit": { "weight": 0.2, "strength": "weak" }
+    "fast_submit": { "weight": 0.2, "strength": "weak" },
+    "instant_submit": { "weight": 0.5, "strength": "strong" }
   },
   "gibberish": {
     "min_token_length": 12,
     "min_case_switches": 3,
     "max_vowel_share": 0.25,
-    "min_consonant_run": 6
+    "min_consonant_run": 6,
+    "min_case_switches_alone": 4
   },
   "template": {
     "prompts": [
@@ -44,6 +46,7 @@
     "min_single_character_segments": 3
   },
   "fast_submit": { "max_elapsed_ms": 1500 },
+  "instant_submit": { "max_elapsed_ms": 1000 },
   "vendor_pitch": {
     "phrases": [
       "seo services",
