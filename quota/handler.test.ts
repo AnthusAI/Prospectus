@@ -20,7 +20,10 @@ const registration = (product: string, extra: Record<string, unknown> = {}) => (
   ...extra,
 });
 const products = registrations([
-  registration("example-renderer", { quota: true }),
+  registration("example-renderer", {
+    quota: true,
+    quotaCaller: { roleArn: `arn:aws:iam::${AWS_ACCOUNT}:role/example-gate-runtime` },
+  }),
   registration("example-narrator", { quota: true }),
   registration("example-plain"),
   registration("example-paused", { quota: true, enabled: false }),
@@ -255,5 +258,109 @@ test("only a plain server product may carry the quota flag", () => {
         }),
       ]),
     /Only a server product/,
+  );
+});
+
+test("a quota caller role may use each of the five quota routes as its product", async () => {
+  const { call, base } = await harness();
+  const operationId = randomUUID();
+  const reserved = await call("example-gate", "POST", `${base}/reservations`, { ...request(), operationId });
+  assert.deepEqual([reserved.status, reserved.body.status], [200, "reserved"]);
+  const settled = await call("example-gate", "POST", `${base}/reservations/${operationId}/settle`, {
+    operationId: randomUUID(),
+    items: batch(40),
+  });
+  assert.deepEqual([settled.status, settled.body.status], [200, "settled"]);
+  const second = randomUUID();
+  await call("example-gate", "POST", `${base}/reservations`, { ...request(batch(10)), operationId: second });
+  const released = await call("example-gate", "POST", `${base}/reservations/${second}/release`, {
+    operationId: randomUUID(),
+  });
+  assert.deepEqual([released.status, released.body.status], [200, "released"]);
+  const recorded = await call("example-gate", "POST", `${base}/usage`, {
+    operationId: randomUUID(),
+    items: tokens(500),
+  });
+  assert.deepEqual([recorded.status, recorded.body.status], [200, "recorded"]);
+  assert.equal((await call("example-gate", "POST", `${base}/check`, {})).body.allowed, true);
+});
+
+test("a quota caller role is refused on identity and account routes and on a non-POST quota call", async () => {
+  const { call, base } = await harness();
+  const account = randomUUID();
+  for (const [method, path] of [
+    ["GET", "/v1/identities/me"],
+    ["POST", `/v1/accounts/${account}/authorize`],
+    ["GET", "/v1/accounts"],
+    ["POST", "/v1/accounts"],
+    ["GET", `${base}/check`],
+    ["POST", `${base}/reservations/${randomUUID()}/refund`],
+  ] as const) {
+    const refused = await call("example-gate", method, path, {});
+    assert.deepEqual(
+      [refused.status, refused.body.error],
+      [403, "quota_route_forbidden"],
+      `${method} ${path}`,
+    );
+  }
+});
+
+test("a quota caller role that is not configured, or whose product is paused, is not a caller", async () => {
+  const plainProducts = registrations([registration("example-renderer", { quota: true })]);
+  const fixture = quotaFixture();
+  const handler = quotaHandler(fixture.quota, plainProducts);
+  const unconfigured = await handler(
+    event("example-gate", "POST", `/v1/quota/accounts/${fixture.accountId}/check`, {}),
+  );
+  assert.deepEqual([unconfigured.statusCode, JSON.parse(unconfigured.body).error], [403, "caller_forbidden"]);
+  const paused = registrations([
+    registration("example-renderer", {
+      quota: true,
+      enabled: false,
+      quotaCaller: { roleArn: `arn:aws:iam::${AWS_ACCOUNT}:role/example-gate-runtime` },
+    }),
+  ]);
+  const refused = await quotaHandler(
+    fixture.quota,
+    paused,
+  )(event("example-gate", "POST", `/v1/quota/accounts/${fixture.accountId}/check`, {}));
+  assert.equal(JSON.parse(refused.body).error, "caller_forbidden");
+});
+
+test("a quota caller needs the quota flag and a role no other principal uses", () => {
+  const gate = { roleArn: `arn:aws:iam::${AWS_ACCOUNT}:role/example-gate-runtime` };
+  assert.throws(
+    () => registrations([registration("example-renderer", { quotaCaller: gate })]),
+    /quota caller needs the quota flag/,
+  );
+  assert.throws(
+    () =>
+      registrations([
+        registration("example-renderer", {
+          quota: true,
+          quotaCaller: { roleArn: `arn:aws:iam::${AWS_ACCOUNT}:role/example-renderer-runtime` },
+        }),
+      ]),
+    /unique/,
+  );
+  assert.throws(
+    () =>
+      registrations([
+        registration("example-renderer", { quota: true, quotaCaller: gate }),
+        registration("example-narrator", { quota: true, quotaCaller: gate }),
+      ]),
+    /unique/,
+  );
+  assert.throws(
+    () =>
+      registrations([registration("example-renderer", { quota: true, quotaCaller: { roleArn: "nope" } })]),
+    /IAM role ARN/,
+  );
+  assert.throws(
+    () =>
+      registrations([
+        registration("example-renderer", { quota: true, quotaCaller: { ...gate, extra: "x" } }),
+      ]),
+    /IAM role ARN/,
   );
 });

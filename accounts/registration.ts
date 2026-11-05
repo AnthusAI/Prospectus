@@ -30,6 +30,7 @@ const registrationFields = [
   "quota",
   "audience",
   "executionDelegation",
+  "quotaCaller",
 ];
 const federationFields = ["policy", "reviewedPolicyId", "clientId"];
 const delegationFields = [
@@ -239,6 +240,12 @@ export function registrations(
       )
         throw new Error("A google-direct product may hold only the read capabilities.");
     }
+    const quotaCaller = item.quotaCaller;
+    if (quotaCaller !== undefined) {
+      if (item.quota !== true) throw new Error("A quota caller needs the quota flag.");
+      if (!hasOnlyKeys(quotaCaller, ["roleArn"]) || !isRoleArn(quotaCaller.roleArn))
+        throw new Error("A quota caller must be exactly an IAM role ARN.");
+    }
     const pair = item.executionDelegation;
     if (pair !== undefined)
       requireRules(
@@ -246,7 +253,11 @@ export function registrations(
         delegationRules,
         throwErrorWithPrefix("An exact reviewed enrollment-to-execution binding is required:"),
       );
-    for (const principal of [item.roleArn, ...(pair ? [pair.roleArn] : [])]) {
+    for (const principal of [
+      item.roleArn,
+      ...(pair ? [pair.roleArn] : []),
+      ...(quotaCaller ? [quotaCaller.roleArn] : []),
+    ]) {
       const role = rolePattern.exec(principal)!;
       // STS assumed-role evidence omits IAM paths; reject role-name collisions.
       const key = `${role[1]}:${role[2]}`;

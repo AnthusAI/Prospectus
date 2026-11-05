@@ -39,7 +39,7 @@ Item costs differ wildly, so there are two paths.
 
 ## HTTP contract
 
-Every call is `POST`, signed with SigV4 (service `execute-api`) by a product's server role using runtime temporary credentials, with `Content-Type: application/json`. Only a product registered with `quota: true` may call; execution roles, reader sites, google-direct products and the lab verifier cannot. The product is selected from the verified caller and never named in a body. The base URL is the central accounts API stage URL. Unknown fields are refused with `400 unknown_fields`.
+Every call is `POST`, signed with SigV4 (service `execute-api`) by a product's server role using runtime temporary credentials, with `Content-Type: application/json`. Only a product registered with `quota: true` may call, as its enrollment role or as its optional `quotaCaller` role (a second IAM role, for example a spending gate, that may use these five routes and nothing else: any other route, or another method, is `403 quota_route_forbidden`); execution roles, reader sites, google-direct products and the lab verifier cannot. The product is selected from the verified caller and never named in a body. The base URL is the central accounts API stage URL. Unknown fields are refused with `400 unknown_fields`.
 
 | Route | Body | Success (200) |
 | --- | --- | --- |
@@ -113,13 +113,21 @@ The owner approved these permissions on 2026-11-02. Production's `accounts/deplo
 - A third warm bridge process in the central Lambda for the `quota` project.
 - The new operator permission `accounts:admin:quota` (its first grant and the held directory BFF policy change for operator writes are still separate approvals).
 
+A registration may also carry `quotaCaller: { roleArn }`, allowed only with `quota: true` and a role no other principal uses (role names are unique across enrollment, execution, quota caller and verifier roles). The resource policy lists that role in the quota routes statement only. For Babulus the role comes from the optional deployment option `quotaCallerRoleArn`, read from `PROSPECTUS_BABULUS_QUOTA_ROLE_ARN` when set; the other Babulus options are `PROSPECTUS_BABULUS_ENABLED`, `_ROLE_ARN`, `_ISSUER`, `_CLIENT_ID` and `_FEDERATION_REVIEW_ID`.
+
 Not configured: `AccountsPlaneOptions.quotaProducts` (reviewed registrations carrying `quota: true`; nothing passes any today besides the Babulus registration when its options are supplied). Registering a product (for example Babulus) is a separate reviewed change.
 
 Until a real table is written, every quota call answers `503 quota_unavailable` and the Account views show `unavailable`. Once a valid table is written, an Account with no operator-chosen plan uses the table's `defaultPlan`, so the operator route is not needed for the default plan. An Account is refused with `403 no_allowance` only if the table has no `defaultPlan` and the Account has neither a plan nor an override.
 
 ## How a real table reaches the parameter
 
-Never by hand, never from Git. The parameter is `/prospectus/central-accounts/quota-rate-table/v1`. A deployment step that runs from private configuration (kept outside this repository) writes the table JSON to it as a SecureString with overwrite, using a deployment identity that is separate from the initializer role, which cannot overwrite. This repository does not define that step yet: it holds the engine, the create-only parameter and the placeholder only. The service reads the parameter at runtime and caches the parsed table for a minute. Rates, plans and allowances never appear in this repository, its tests (which use made-up tables), logs or API responses.
+Never by hand, never from Git. The parameter is `/prospectus/central-accounts/quota-rate-table/v1`. A person writes the table JSON to it as a SecureString with overwrite, from private configuration kept outside this repository, using a deployment identity that is separate from the initializer role, which cannot overwrite:
+
+```
+AWS_PROFILE=<profile> scripts/write-quota-rate-table.sh --account <12-digit id> --values <file>
+```
+
+The script refuses (exit 2) unless the signed-in account matches `--account`, unless the file passes this repository's own rate table parser (`parseRateTable`), and if the file still contains `<` placeholders. Then it writes the parameter with `aws ssm put-parameter --tier Advanced --overwrite` and prints only the new version number, never the values. `scripts/quota-rate-table.example.json` shows the shape with placeholders only; copy it outside the repository and fill it in there. Agents do not run the script unless told to. `test/quota-rate-table-script.test.ts` checks the refusals with a fake `aws` on the path. The service reads the parameter at runtime and caches the parsed table for a minute. Rates, plans and allowances never appear in this repository, its tests (which use made-up tables), logs or API responses.
 
 ## Decisions for the owner
 
@@ -129,4 +137,4 @@ Never by hand, never from Git. The parameter is `/prospectus/central-accounts/qu
 - **Maximum reservation lifetime:** 24 hours by default, never above 167 hours.
 - **Overshoot:** pay-after usage may overshoot and is recorded; there is no cap beyond refusing new work.
 - **Table cache:** one minute, so a rate or allowance change applies within about a minute.
-- **Who holds `accounts:admin:quota`,** and which deployment identity writes the rate-table parameter from private configuration.
+- **Who holds `accounts:admin:quota`,** and which deployment identity runs `scripts/write-quota-rate-table.sh` against the rate-table parameter.
