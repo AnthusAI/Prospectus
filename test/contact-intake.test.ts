@@ -391,6 +391,21 @@ test("a contact message is stored first, then filed as a prospect that needs a r
   }
 });
 
+// features/anthus-products.feature: lead capture never rejects older product names.
+test("a contact message that names Auritus is accepted and filed like any other", async () => {
+  const { service, crm, close } = await openContact();
+  try {
+    const input = message({ message: "We used Auritus for page narration. Is Babulus the same thing now?" });
+    assert.deepEqual(await service.submit(input), {
+      receipt: input.submission_id,
+      message: "Message received.",
+    });
+    assert.equal(only(crm).description, input.message);
+  } finally {
+    await close();
+  }
+});
+
 test("a CRM outage keeps the full message pending and the visitor still sees success; a retry files it once", async () => {
   const crm = fakeCrm();
   const { service, controls, close } = await openContact(crm);

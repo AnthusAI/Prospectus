@@ -1,3 +1,4 @@
+import { canonicalAppId } from "./apps";
 import type { Configuration, Issue } from "./client";
 
 export function isActiveStage(stage: string, configuration: Configuration): boolean {
@@ -41,7 +42,10 @@ export function contactChanges(
 /** Interests are app ids from the Anthus app catalog, stored on the prospect as `custom.interests`. */
 export function prospectInterests(issue: Issue): string[] {
   const value = issue.custom?.interests;
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  // An interest stored under a former app id (auritus) reads as the current app; the stored value is left alone.
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item): item is string => typeof item === "string").map(canonicalAppId))]
+    : [];
 }
 
 export function interestChanges(fields: FormData): { interests?: string[] } {
