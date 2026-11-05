@@ -11,6 +11,8 @@ import { babulusRegistration } from "../../accounts/babulus";
 import { papyrusSiteRegistrations } from "../../accounts/papyrus-sites";
 import type { ProductRegistration } from "../../accounts/auth";
 import type { LoginChallengeSignerConfiguration } from "../../accounts/challenge-signer";
+import { accountsDeployment } from "../../accounts/deployment";
+import { readFileSync } from "node:fs";
 const parameterStoreSigner = {
   kind: "parameter-store",
   parameterPrefix: "/prospectus/central-accounts/login-challenge-mac/",
@@ -27,6 +29,7 @@ function template(
   quotaProducts: ProductRegistration[] = [],
   quotaRateTable?: { version: "v1"; parameterName: string },
   babulus?: ProductRegistration,
+  billingLedger?: boolean,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -50,6 +53,7 @@ function template(
           ...(quotaProducts.length ? { quotaProducts } : {}),
           ...(quotaRateTable ? { quotaRateTable } : {}),
           ...(babulus ? { babulus } : {}),
+          ...(billingLedger !== undefined ? { billingLedger } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -1017,4 +1021,178 @@ test("babulus is registered with the quota flag and its role gets the account ro
 test("without the babulus option nothing about Babulus is registered", () => {
   const text = JSON.stringify(template(true));
   assert.ok(!text.includes("babulus"));
+});
+
+const policyOf = (output: any) =>
+  (Object.values(output.Resources) as any[]).find((value) => value.Type === "AWS::ApiGateway::RestApi")
+    .Properties.Policy.Statement as any[];
+const billingWrites = [
+  "accounts/*/invoices",
+  "accounts/*/payments",
+  "accounts/*/billing-profile",
+  "accounts/*/billing-profile/reveal-contact",
+  "billing/payments/*/allocations",
+  "billing/payments/*/reversal",
+  "billing/invoices/*/void",
+  "billing/invoices/*/write-off",
+  "billing/invoices/*/credit",
+  "billing/issuer",
+].map((tail) => `execute-api:/api/POST/v1/account-directory/operator/${tail}`);
+
+test("with the billing ledger flag off, the synthesized output is byte for byte what it was before billing existed", () => {
+  const reference = JSON.stringify(
+    template(true, true, true, deployedLengthSites(20), parameterStoreSigner, true),
+  );
+  assert.equal(
+    JSON.stringify(
+      template(
+        true,
+        true,
+        true,
+        deployedLengthSites(20),
+        parameterStoreSigner,
+        true,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        false,
+      ),
+    ),
+    reference,
+  );
+  assert.ok(!reference.includes("prospectus-central/billing"), "no billing prefix without the flag");
+  assert.ok(!reference.includes("/operator/billing"), "no billing route without the flag");
+  assert.ok(!reference.includes("/invoices"), "no billing route without the flag");
+  // The committed deployment flag is off, so the production synthesis carries none of it.
+  assert.deepEqual(
+    JSON.parse(readFileSync(new URL("../../billing/deployment.json", import.meta.url), "utf8")),
+    {
+      ledger: { enabled: false },
+    },
+  );
+  assert.equal("billingLedger" in accountsDeployment()!, false);
+});
+
+test("with the billing ledger flag on, exactly the billing prefixes and the ten write routes are added", () => {
+  const sites = deployedLengthSites(20);
+  const off = template(true, true, true, sites, parameterStoreSigner, true);
+  const on = template(
+    true,
+    true,
+    true,
+    sites,
+    parameterStoreSigner,
+    true,
+    undefined,
+    [],
+    undefined,
+    undefined,
+    true,
+  );
+  // The central runtime role: two more S3 prefixes for object access and for listing, nothing else.
+  const prefixList = (output: any) =>
+    (Object.values(output.Resources) as any[])
+      .filter((value) => value.Type === "AWS::IAM::Policy")
+      .flatMap((value) => value.Properties.PolicyDocument.Statement)
+      .find((statement: any) =>
+        statement.Condition?.StringLike?.["s3:prefix"]?.includes("prospectus-central/quota/*"),
+      )!.Condition.StringLike["s3:prefix"];
+  assert.deepEqual(prefixList(on).slice(0, prefixList(off).length), prefixList(off));
+  assert.deepEqual(prefixList(on).slice(prefixList(off).length), [
+    "prospectus-central/billing/*",
+    "_virtuus/prospectus-central/billing/*",
+  ]);
+  const objectStatement = (output: any) =>
+    (Object.values(output.Resources) as any[])
+      .filter((value) => value.Type === "AWS::IAM::Policy")
+      .flatMap((value) => value.Properties.PolicyDocument.Statement)
+      .find(
+        (statement: any) =>
+          JSON.stringify(statement.Action) === JSON.stringify(["s3:GetObject", "s3:PutObject"]),
+      )!;
+  assert.equal(objectStatement(on).Resource.length, objectStatement(off).Resource.length + 2);
+  // The API access policy: the staff BFF role gains the ten write routes and no other statement changes.
+  const before = policyOf(off),
+    after = policyOf(on);
+  assert.equal(after.length, before.length);
+  const changed = after.filter(
+    (statement, index) => JSON.stringify(statement) !== JSON.stringify(before[index]),
+  );
+  assert.equal(changed.length, 1);
+  assert.deepEqual(changed[0].Resource.slice(-10), billingWrites);
+  assert.equal(
+    changed[0].Resource.length,
+    before.find((s: any) => s.Resource?.includes?.("execute-api:/api/POST/v1/accounts")).Resource.length + 10,
+  );
+  // The BFF role's own invoke policy lists the same ten and nothing is granted to any other role.
+  const invokeBlocks = (output: any) =>
+    (Object.values(output.Resources) as any[])
+      .filter((value) => value.Type === "AWS::IAM::Policy")
+      .flatMap((value) => value.Properties.PolicyDocument.Statement)
+      .filter((statement: any) => JSON.stringify(statement).includes("/operator/accounts/*/invoices"));
+  assert.equal(invokeBlocks(off).length, 0);
+  assert.equal(invokeBlocks(on).length, 1);
+  // Nothing is created or removed; the API deployment republishes.
+  assert.deepEqual(
+    Object.keys(on.Resources).filter((id) => !id.includes("ApiDeployment")),
+    Object.keys(off.Resources).filter((id) => !id.includes("ApiDeployment")),
+  );
+  // The deny-all-others statement is unchanged: no new principal.
+  assert.deepEqual(
+    after.find((s) => s.Effect === "Deny"),
+    before.find((s) => s.Effect === "Deny"),
+  );
+});
+
+test("the API access policy stays within the API Gateway size limit with the ledger on, and reports how much room it leaves", () => {
+  const build = (sites: number, ledger: boolean) =>
+    template(
+      true,
+      true,
+      true,
+      deployedLengthSites(sites),
+      parameterStoreSigner,
+      true,
+      verifierEntry,
+      [],
+      undefined,
+      undefined,
+      ledger,
+    );
+  const capacity = (ledger: boolean) => {
+    let most = 0;
+    for (let sites = 1; sites <= 39; sites++) {
+      if (deployedPolicySize(build(sites, ledger)) < 8192) most = sites;
+      else break;
+    }
+    return most;
+  };
+  const reviewed = papyrusSiteRegistrations(
+    JSON.parse(readFileSync(new URL("../../accounts/papyrus-sites.json", import.meta.url), "utf8")),
+  );
+  const production = (ledger: boolean) =>
+    deployedPolicySize(
+      template(
+        true,
+        true,
+        true,
+        [...reviewed],
+        parameterStoreSigner,
+        true,
+        verifierEntry,
+        [],
+        undefined,
+        undefined,
+        ledger,
+      ),
+    );
+  const added = production(true) - production(false);
+  console.info(
+    `API policy size with ${reviewed.length} reviewed sites, lab verifier and Anthus One: ${production(false)} bytes off, ${production(true)} bytes on (+${added}); limit 8192. Sites that fit with everything else enabled: ${capacity(false)} off, ${capacity(true)} on.`,
+  );
+  assert.ok(production(true) < 8192, `Deployed API resource policy would be ${production(true)} bytes`);
+  assert.ok(added < 1300, "the ten routes stay small");
+  // The ledger costs room, but the reviewed registry still fits with a wide margin.
+  assert.ok(capacity(true) >= reviewed.length * 2, "room for at least twice the reviewed sites");
 });

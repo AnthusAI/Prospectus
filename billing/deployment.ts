@@ -21,3 +21,12 @@ export function billingDeployment(config: unknown): BillingDeployment {
     throw new Error("Billing deployment must be exactly { ledger: { enabled: boolean } }.");
   return { ledgerEnabled: value.ledger.enabled };
 }
+
+/**
+ * What the console build is told about billing: the same reviewed flag that turns the backend routes on. With the
+ * flag off the build replaces `import.meta.env.VITE_BILLING_ROUTES` with `undefined`, whatever the environment says,
+ * so the console behaves as it did before billing existed; with it on, the console calls the routes.
+ */
+export const consoleBillingDefine = (deployment: BillingDeployment) => ({
+  "import.meta.env.VITE_BILLING_ROUTES": deployment.ledgerEnabled ? '"1"' : "undefined",
+});

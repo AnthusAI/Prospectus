@@ -7,6 +7,7 @@ import { loginChallengeSignerConfiguration } from "./challenge-signer";
 import { babulusFromEnvironment } from "./babulus";
 import { siteSubjectSecretConfiguration } from "./site-subjects";
 import { rateTableConfiguration } from "../quota/rate-table";
+import { billingDeployment } from "../billing/deployment";
 import { GOOGLE_CLIENT_ID_PATTERN } from "./google-direct";
 import { PORTAL_GOOGLE_CLIENT_ID } from "../infra/lib/scope";
 
@@ -60,6 +61,10 @@ export function accountsDeployment() {
     consoleConfig.pairReviewId !== "cyclotron-execution-pair-v1-20261015"
   )
     throw new Error("Console activation requires the exact reviewed client and principal pair.");
+  // billing/deployment.json, committed disabled: true adds the billing storage prefixes and the ten write routes.
+  const billingLedger = billingDeployment(
+    JSON.parse(readFileSync(new URL("../billing/deployment.json", import.meta.url), "utf8")),
+  ).ledgerEnabled;
   const babulus = babulusFromEnvironment();
   return {
     consoleClientEnabled: consoleConfig.clientEnabled,
@@ -71,6 +76,8 @@ export function accountsDeployment() {
     loginChallengeSigner,
     ...(siteSubjectSecret ? { siteSubjectSecret } : {}),
     ...(quotaRateTable ? { quotaRateTable } : {}),
+    // Absent, not false, while the ledger is off, so nothing in the synthesized output can differ.
+    ...(billingLedger ? { billingLedger } : {}),
     labVerifier: reviewedLabVerifierEntry(
       JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
     ),

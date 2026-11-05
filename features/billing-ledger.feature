@@ -245,3 +245,24 @@ Feature: Invoice ledger with partial payments
     Given an issued invoice
     Then its PDF is a valid PDF built without a browser, from the issuer block and payment methods copied at issue
     And a draft has no PDF
+
+  Scenario: The staff BFF forwards the operator billing routes
+    Given the ledger is enabled and a staff session
+    When the console calls a billing route through the BFF
+    Then the BFF checks the origin of writes and the session as for every route, and forwards to central
+    And central's refusal is returned with its code and message
+    And a path the BFF does not list, or a customer session, gets the usual 404
+    And no billing contact and no PDF byte is ever logged
+
+  Scenario: The invoice PDF crosses the BFF as binary
+    Given an issued invoice
+    When the console asks for its PDF through the BFF
+    Then the response is application/pdf, base64 encoded for API Gateway, with a filename and no caching
+    And a PDF above 4,000,000 bytes is refused by central as 413 pdf_too_large, below the 6 MB Lambda response limit once base64 is added
+
+  Scenario: One reviewed flag turns billing on everywhere
+    Given billing/deployment.json holds ledger.enabled false
+    Then the synthesized infrastructure is byte for byte what it was before billing existed
+    And the console build ignores VITE_BILLING_ROUTES and shows billing as not yet available
+    When a reviewed change sets ledger.enabled true
+    Then the central runtime role gains the two billing S3 prefixes, the staff BFF role and the API access policy gain the ten write routes, and the console calls the routes

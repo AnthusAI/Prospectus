@@ -77,6 +77,11 @@ export class AccountsClient {
       { status },
     ) as Promise<{ entitlement: { accountId: string; product: string; status: "active" | "disabled" } }>;
   }
+  /** Staff only: an operator billing route, called with a path the BFF has already matched. Central decides access. */
+  billing(path: string, method: "GET" | "POST", body?: unknown): Promise<any> {
+    if (!path.startsWith("/v1/account-directory/operator/")) throw new Error("Not an operator route.");
+    return this.transport(path, method, body);
+  }
   directoryList(): Promise<DirectoryList> {
     return this.transport("/v1/account-directory", "GET") as Promise<DirectoryList>;
   }
