@@ -8,6 +8,7 @@ import {
   type OperatorPermission,
 } from "../accounts/operator-policy";
 import { jsonResponse, parseJsonRequest } from "../accounts/request";
+import { BILLING_MAXIMUM_BODY_BYTES, MAXIMUM_PDF_BYTES, OPERATOR_PREFIX, isBillingPath } from "./paths";
 import { matchesStringPattern } from "../accounts/validation-rules";
 import { isOpenInvoice } from "./balances";
 import type { BillingIssuer } from "./issuer";
@@ -24,20 +25,11 @@ import { accountSummary, invoiceView, journalView, lineView, paymentView, profil
 import type { InvoiceSequence, JournalEvent, LedgerPayment } from "./model";
 import { sequencePath } from "./ledger-engine";
 
-const MAXIMUM_BODY_BYTES = 40000;
+const PREFIX = OPERATOR_PREFIX;
+const OPERATOR = `^${PREFIX}`;
 const ID = "([a-f0-9-]{36})";
 const REFERENCE = "(\\d{6}-\\d{3}|[a-f0-9-]{36})";
-const PREFIX = "/v1/account-directory/operator";
-const OPERATOR = `^${PREFIX}`;
-
-/** Every path this module serves. When billing is off the directory answers 404 for exactly these. */
-const BILLING_PATHS = [
-  new RegExp(`${OPERATOR}/billing(/.*)?$`),
-  new RegExp(
-    `${OPERATOR}/accounts/${ID}/(billing-profile|billing-lines|invoices|payments|billing-journal)(/.*)?$`,
-  ),
-];
-export const isBillingPath = (path: string) => BILLING_PATHS.some((pattern) => pattern.test(path));
+export { isBillingPath };
 
 export interface BillingRouteDependencies {
   ledger: BillingLedger;
@@ -53,6 +45,8 @@ export interface BillingRouteDependencies {
   /** Appends the one journal event of an audited contact reveal. */
   files: IdentityFiles;
   now: () => string;
+  /** Lower than the default only in tests. */
+  maximumPdfBytes?: number;
 }
 
 const accountRoute = (suffix: string) => new RegExp(`${OPERATOR}/accounts/${ID}/${suffix}$`);
@@ -68,7 +62,7 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
     (["accounts:admin:read", "accounts:admin:billing"] as OperatorPermission[]).some((permission) =>
       hasOperatorPermission(context, deps.grants, permission),
     );
-  const body = (event: RestEvent) => parseJsonRequest(event, MAXIMUM_BODY_BYTES).body;
+  const body = (event: RestEvent) => parseJsonRequest(event, BILLING_MAXIMUM_BODY_BYTES).body;
   /** Splits the operation ID from the rest of a write body. */
   const write = (event: RestEvent, drop: readonly string[] = []) => {
     const { operationId, ...rest } = body(event);
@@ -188,6 +182,8 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
             }
           : undefined,
       );
+      if (bytes.length > (deps.maximumPdfBytes ?? MAXIMUM_PDF_BYTES))
+        fail(413, "pdf_too_large", "The invoice PDF is too large to return.");
       const accept = event.headers?.accept ?? event.headers?.Accept ?? "";
       if (accept.includes("application/pdf"))
         return {

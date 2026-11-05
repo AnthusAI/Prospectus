@@ -3,6 +3,7 @@ import { AccountsError, fail, UUID_PATTERN } from "./model";
 import { googleIdTokenClaims, isGoogleDirect } from "./google-direct";
 import { jsonResponse, lowerCaseHeaders, parseJsonRequest } from "./request";
 import { failWith, matchesStringPattern, requireRules, rule, type ValidationRule } from "./validation-rules";
+import { BILLING_MAXIMUM_BODY_BYTES, MAXIMUM_PDF_BYTES, centralBillingPath } from "../billing/paths";
 import { AccountsClientError, type AccountsClient } from "../packages/accounts-client/src/client";
 const BFF_REQUEST_MAXIMUM_BODY_BYTES = 20000;
 const LOGIN_CHALLENGE_PATH = "/api/saas/identity/login-challenge";
@@ -109,6 +110,31 @@ function entitlementMessage(error: AccountsClientError) {
   return "That product change was refused.";
 }
 
+/** Carries an invoice PDF through as binary. Central sends it as base64 in JSON; this checks it and returns the bytes. */
+function pdfResponse(value: any) {
+  const base64 = value?.base64;
+  const valid =
+    value?.contentType === "application/pdf" &&
+    typeof value.filename === "string" &&
+    /^invoice-\d{6}-\d{3}\.pdf$/.test(value.filename) &&
+    typeof base64 === "string" &&
+    base64.length <= Math.ceil((MAXIMUM_PDF_BYTES * 4) / 3) + 4 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(base64) &&
+    Buffer.from(base64, "base64").subarray(0, 5).toString("latin1") === "%PDF-";
+  if (!valid) fail(502, "pdf_unavailable", "The invoice PDF could not be returned.");
+  return {
+    statusCode: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${value.filename}"`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+    isBase64Encoded: true,
+    body: base64,
+  };
+}
+
 export interface BffEvent {
   rawPath: string;
   requestContext: { http: { method: string } };
@@ -156,9 +182,32 @@ export function accountsBffHandler(options: AccountsBffOptions) {
         : await cognitoClaims(access, options.registration, options.keys, "access", options.nowSeconds?.());
       const method = event.requestContext.http.method;
       if (!["GET", "POST"].includes(method)) fail(405, "method", "Read-only accounts endpoint.");
-      const { body } = parseJsonRequest(event, BFF_REQUEST_MAXIMUM_BODY_BYTES);
+      // Staff only: the operator billing routes are forwarded to central, which decides access by grant.
+      const billingPath = customer ? null : centralBillingPath(event.rawPath);
+      const { body } = parseJsonRequest(
+        event,
+        billingPath ? BILLING_MAXIMUM_BODY_BYTES : BFF_REQUEST_MAXIMUM_BODY_BYTES,
+      );
       if (method === "POST" && !options.origins.includes(headers.origin ?? ""))
         fail(403, "origin", "Request origin is not permitted.");
+      if (billingPath) {
+        if (method === "GET" && Object.keys(body).length) fail(400, "body", "Read payload must be empty.");
+        try {
+          const result = await options
+            .client(access!)
+            .billing(billingPath, method as "GET" | "POST", method === "GET" ? undefined : body);
+          return billingPath.endsWith("/pdf") ? pdfResponse(result) : jsonResponse(200, result);
+        } catch (error) {
+          // Say what central said: its billing refusals name rules and limits, never submitted values or contacts.
+          if (error instanceof AccountsClientError && [400, 403, 404, 409, 413, 415].includes(error.status))
+            return jsonResponse(error.status, {
+              error: error.code,
+              code: error.code,
+              message: error.message,
+            });
+          throw error;
+        }
+      }
       if (method === "GET") {
         if (Object.keys(body).length) fail(400, "body", "Read payload must be empty.");
         const client = options.client(access!);

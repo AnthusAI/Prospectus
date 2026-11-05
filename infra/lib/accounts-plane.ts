@@ -13,6 +13,7 @@ import { papyrusSiteRoutes } from "../../accounts/papyrus-sites";
 import { labVerifierRoutes, type LabVerifierEntry } from "../../accounts/lab-verifier";
 import { babulusRoutes } from "../../accounts/babulus";
 import { quotaRoutes } from "../../quota/routes";
+import { billingStoragePrefixes, billingWriteRoutes } from "../../billing/paths";
 import type { SiteSubjectSecretConfiguration } from "../../accounts/site-subjects";
 import {
   QUOTA_RATE_TABLE_INITIALIZER_SOURCE,
@@ -47,6 +48,10 @@ export interface AccountsPlaneOptions {
   /** The private quota rate table: an SSM SecureString created once with a placeholder, whose real value operators set
    * outside Git. Absent: every quota call is refused as unavailable. */
   quotaRateTable?: RateTableConfiguration;
+  /** `ledger.enabled` in billing/deployment.json. True adds the billing S3 prefixes to the central runtime role and
+   * the ten operator write routes to the staff BFF role and the API access policy. Absent or false: the synthesized
+   * output is exactly what it was before billing existed. */
+  billingLedger?: boolean;
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
@@ -81,6 +86,8 @@ export class AccountsPlane extends Construct {
       // Quota is its own Virtuus project: allowances and a journal, apart from accounts and billing.
       "prospectus-central/quota/*",
       "_virtuus/prospectus-central/quota/*",
+      // Billing is its own Virtuus project. Only while billing/deployment.json enables the ledger.
+      ...(options.billingLedger ? billingStoragePrefixes : []),
     ];
     runtime.addToPolicy(
       new iam.PolicyStatement({
@@ -405,6 +412,10 @@ export class AccountsPlane extends Construct {
       // Staff only: an operator turning a product on or off. Central still requires the reviewed
       // accounts:admin:entitlements grant. Never add this to customerRoutes or any other role.
       api.arnForExecuteApi("POST", "/v1/account-directory/operator/accounts/*/entitlements/*", "api"),
+      // Staff only, and only while the ledger is on. Central still requires accounts:admin:billing for each.
+      ...(options.billingLedger
+        ? billingWriteRoutes.map(([method, path]) => api.arnForExecuteApi(method, path, "api"))
+        : []),
     ];
     bffRole.addToPolicy(new iam.PolicyStatement({ actions: ["execute-api:Invoke"], resources: invoke }));
     api.addToResourcePolicy(
@@ -418,11 +429,15 @@ export class AccountsPlane extends Construct {
           "execute-api:/api/POST/v1/identities/google/resolve",
           "execute-api:/api/POST/v1/accounts",
           "execute-api:/api/POST/v1/account-directory/operator/accounts/*/entitlements/*",
+          ...(options.billingLedger
+            ? billingWriteRoutes.map(([method, path]) => `execute-api:/api/${method}${path}`)
+            : []),
         ],
       }),
     );
     // Resource policy changes must publish to the existing API stage as well.
     api.latestDeployment?.addToLogicalId({ directoryRoutes: "organization-creation-v1" });
+    if (options.billingLedger) api.latestDeployment?.addToLogicalId({ billingRoutes: "ledger-v1" });
     if (options.consolePairEnabled) {
       const consoleBffRoutes = [
         "GET/v1/identities/me",
