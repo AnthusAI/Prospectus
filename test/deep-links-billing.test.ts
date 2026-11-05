@@ -4,8 +4,11 @@ import { safeReturnPath } from "../src/deep-links";
 import { readLocation } from "../src/admin/Shell";
 import { billingHref, billingRouteFromPath } from "../src/billing/routes";
 
+// Built from parts: a made-up identifier, not a real one.
+const PAYMENT_ID = ["5a1b2c3d", "0000", "4000", "8000", "00000000abcd"].join("-");
+
 test("each billing page has its own address that loads directly and survives sign-in", () => {
-  const payment = ["5a1b2c3d", "0000", "4000", "8000", "00000000abcd"].join("-");
+  const payment = PAYMENT_ID;
   const cases: Array<[string, unknown]> = [
     [
       "/invoices/202610-003",
@@ -55,7 +58,7 @@ test("billing paths that do not match a strict pattern are neither routes nor re
     "/invoices/202610-003/extra",
     "/invoices/new/x",
     "/payments/not-a-uuid",
-    `/payments/${payment.slice(0, -1)}`,
+    `/payments/${PAYMENT_ID.slice(0, -1)}`,
     "/accounts//billing",
     "/accounts/a.b/billing",
     "/accounts/a/b/billing",
