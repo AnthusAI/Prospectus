@@ -22,7 +22,7 @@ const grant = {
 test("operator permission requires an exact deployment-owned human grant and production holds only the approved read and entitlements grants", () => {
   assert.deepEqual(
     deployedGrants.map((deployed) => [deployed.permission, deployed.subjectHash]),
-    ["accounts:admin:read", "accounts:admin:entitlements"].map((permission) => [
+    ["accounts:admin:read", "accounts:admin:entitlements", "accounts:admin:billing"].map((permission) => [
       permission,
       "3354c9f139ef4d2e872245b1af080140816a95954c4e54aa596f2106c86cf95c",
     ]),

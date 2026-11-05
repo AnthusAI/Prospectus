@@ -48,7 +48,8 @@ const api = new KanbusClient(
   syntheticReview,
 );
 const directory = accountsBrowser(import.meta.env.VITE_ACCOUNTS_BFF_URL);
-// The billing routes are not deployed yet. Build with VITE_BILLING_ROUTES=1 once they are.
+// The build sets VITE_BILLING_ROUTES from `ledger.enabled` in billing/deployment.json (vite.config.ts), so the pages
+// turn on with the backend routes, as one reviewed change. Off, the console shows billing as not yet available.
 const productionBilling: BillingClient = import.meta.env.VITE_BILLING_ROUTES
   ? billingBrowser(import.meta.env.VITE_ACCOUNTS_BFF_URL)
   : unavailableBilling;

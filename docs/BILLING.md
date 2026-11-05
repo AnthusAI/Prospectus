@@ -1,6 +1,6 @@
 # Billing
 
-Billing charges clients for the products their accounts hold: each Papyrus site deployment, Cyclotron Lab and any later product. Self-serve clients pay through Stripe; larger clients receive invoices from Anthus and may pay in pieces, by any means. This document is the reviewed model that the billing stories implement against. Nothing described here is built or deployed yet. Requirements are Ryan's (2026-10-31); the epic is kanbus-a78bcd and the behavior specifications are `features/billing-*.feature`.
+Billing charges clients for the products their accounts hold: each Papyrus site deployment, Cyclotron Lab and any later product. Self-serve clients pay through Stripe; larger clients receive invoices from Anthus and may pay in pieces, by any means. This document is the reviewed model that the billing stories implement against. The profile, plan catalog and billing lines are built. The invoice and payment ledger (issuer, invoices, numbering, payments, allocations, credits, reversals, journal, PDF and the operator routes) is built and tested but switched off by `billing/deployment.json`; see [Ledger implementation](#ledger-implementation). Stripe, the customer pages, the CLI commands and everything under [New infrastructure](#new-infrastructure) are not built or deployed. Requirements are Ryan's (2026-10-31); the epic is kanbus-a78bcd and the behavior specifications are `features/billing-*.feature`.
 
 ## Principles
 
@@ -23,12 +23,15 @@ Billing charges clients for the products their accounts hold: each Papyrus site 
 | Payment                 | `payments/<paymentUUID>.json`            | Admins (external); Stripe mirror     |
 | Allocation              | `allocations/<allocationUUID>.json`      | Admins; Stripe mirror                |
 | Credit                  | `credits/<creditUUID>.json`              | Admins                               |
-| Invoice number sequence | `sequences/invoice-number.json`          | The invoice issue operation          |
+| Issuer record          | `issuer/0.json`                          | Admins                               |
+| Invoice number counter  | `sequences/<YYYYMM>.json`                | The invoice issue operation          |
+| Invoice number claim    | `numbers/<YYYYMM-NNN>.json`              | The invoice issue operation          |
+| Account ledger head     | `ledgers/<accountUUID>.json`             | Every ledger operation               |
 | Journal event           | `journal/<eventId>.json`                 | Every mutation, including the mirror |
 
 The plan catalog is a reviewed repository file, `accounts/billing-plans.json`, not stored data.
 
-Billing is its own Virtuus project (`billing`) in the Rust bridge, beside `accounts`, so it writes only billing paths. The bridge accepts only hex digits and hyphens after the kind, so a line's product name is stored hex-encoded (`papyrus-example-invalid` is `7061707972...`), as retired site subjects are. A journal `<eventId>` is the SHA-256 of the record and the client operation id.
+Billing is its own Virtuus project (`billing`) in the Rust bridge, beside `accounts`, so it writes only billing paths. The bridge accepts only hex digits and hyphens after the kind, so the issuer record is `issuer/0.json` and a month's counter is `sequences/<YYYYMM>.json` rather than a readable name, and a line's product name is stored hex-encoded (`papyrus-example-invalid` is `7061707972...`), as retired site subjects are. A journal `<eventId>` is the SHA-256 of the record and the client operation id.
 
 ## Billing profile
 
@@ -103,18 +106,18 @@ Prospectus is the system of record. Admins raise invoices.
 
 - Status is one of `draft`, `issued`, `partially_paid`, `paid`, `void` or `uncollectible`.
 - An issued invoice is immutable. Its lines cannot be edited; corrections are a new invoice or a credit that references it.
-- Invoice numbers follow `YYYYMM-NNN`: the year and month of the issue date, then a three-digit counter that starts at `001` each month (`202610-001`, `202610-002`, `202611-001`). Numbers come from one counter file per month (`billing/sequences/invoice-number-<YYYYMM>.json`) advanced by conditional write. A number is assigned at issue and never reused, including after a void. More than 999 invoices in a month is refused. The first invoice, to Data Parade in October 2026, was issued outside Prospectus as `202610-001` and is entered as a manual invoice once the ledger exists.
+- Invoice numbers follow `YYYYMM-NNN`: the year and month of the issue date, then a three-digit counter that starts at `001` each month (`202610-001`, `202610-002`, `202611-001`). Numbers come from one counter file per month (`billing/sequences/<YYYYMM>.json`), a hint advanced by conditional write; the uniqueness itself comes from a claim file per number (`billing/numbers/<YYYYMM-NNN>.json`) created with a conditional write, so two issues can never share a number. A number is assigned at issue and never reused, including after a void. More than 999 invoices in a month is refused. The first invoice, to Data Parade in October 2026, was issued outside Prospectus as `202610-001` and is entered as a manual invoice once the ledger exists.
 - Only an issued invoice with no allocations can be voided. Its balance becomes zero.
 - Only admins may write off an invoice by marking it `uncollectible`. The invoice and its journal entries stay on record. Whether a written-off balance still counts toward what the client owes is open.
 - An invoice whose due date has passed with a balance above zero is past due. Past due is derived from the due date and balance, not stored as a status.
-- Every invoice has a PDF, manual invoices included. Prospectus renders it from the issued record; a Stripe-issued invoice also keeps Stripe's own PDF link. The legal entity name and address printed on it are open.
-- **Issuer details are data, not code.** The seller block (legal name, address, billing email) and the accepted payment methods with their instructions (for example bank transfer, check, Venmo) live in one admin-set issuer record, `billing/issuer.json`, written like every other billing record and never committed to this public repository. An issued invoice copies the issuer block and payment methods into its own record, so a later change to the issuer never alters an issued invoice or its PDF.
+- Every invoice has a PDF, manual invoices included. Prospectus renders it from the issued record (see [Ledger implementation](#ledger-implementation)); a Stripe-issued invoice also keeps Stripe's own PDF link. The legal entity name and address printed on it are open.
+- **Issuer details are data, not code.** The seller block (legal name, address, billing email) and the accepted payment methods with their instructions (for example bank transfer, check, a Melio payment link) live in one admin-set issuer record, `billing/issuer/0.json` (the bridge accepts only hex names; this is the file earlier text calls `billing/issuer.json`), written like every other billing record and never committed to this public repository. An issued invoice copies the issuer block and payment methods into its own record, so a later change to the issuer never alters an issued invoice or its PDF.
 
 ### Payments
 
-`billing/payments/<paymentUUID>.json`: account, amount, currency, `method` (`stripe_card`, `stripe_bank`, `bank_transfer`, `check`, `venmo`, `cash`, `other`), received date, external reference (check number, transfer reference or Stripe payment intent), who recorded it (the admin's operator grant id, or `stripe-webhook`), notes and the unallocated remainder.
+`billing/payments/<paymentUUID>.json`: account, amount, currency, `method` (`stripe_card`, `stripe_bank`, `bank_transfer`, `check`, `venmo`, `melio`, `cash`, `other`; `venmo` stays valid for older records), received date, external reference (check number, transfer reference or Stripe payment intent), who recorded it (the admin's operator grant id, or `stripe-webhook`), notes and the unallocated remainder.
 
-Only admins record external payments (`bank_transfer`, `check`, `venmo`, `cash`, `other`). There is no second-operator confirmation. `stripe_card` and `stripe_bank` payments enter the ledger only through the webhook mirror; recording one by hand is refused.
+Only admins record external payments (`bank_transfer`, `check`, `venmo`, `melio`, `cash`, `other`). There is no second-operator confirmation. `stripe_card` and `stripe_bank` payments enter the ledger only through the webhook mirror; recording one by hand is refused.
 
 ### Allocations
 
@@ -138,6 +141,50 @@ Only admins record external payments (`bank_transfer`, `check`, `venmo`, `cash`,
 ### Concurrency and replay
 
 Every write carries a client-generated operation id and uses revision compare-and-set. A replay of the same operation returns the original result and writes no second revision: the journal event names the storage commit, and Virtuus answers that commit with its original result. A write may carry an `expectedRevision`; a stale one is refused as `409 revision_conflict`, and without one the loser of a race re-reads and is re-evaluated. The record's bounded audit keeps the last 32 entries; the journal keeps every event. Two admins allocating the same payment at once cannot together exceed its remainder: the loser's write fails its revision check and is re-evaluated.
+
+## Ledger implementation
+
+Built for kanbus-ffdad5 and kanbus-0f125f. Everything below is tested in memory and through the Rust bridge, and is on since Ryan's approval on 2026-11-05: `billing/deployment.json` is committed as `{ "ledger": { "enabled": true } }`. While it is off, `canonical-lambda.ts` opens no billing storage and every operator billing route answers 404. Domain calls (`billing/ledger.ts`, `BillingLedger`; `billing/issuer.ts`, `BillingIssuer`) take a context, an input and an operation ID, so the routes and the future CLI call the same functions.
+
+**One serialized ledger per account.** `ledgers/<accountUUID>.json` is the account's head: a revision, the ids of its invoices and payments, its recent journal events and at most one pending operation. An operation is validated at one head revision, accepted by a compare-and-set of the head, then writes its records, each idempotent by operation ID, writes its one journal event and releases the head. A lost race re-reads and re-validates. If a process stops part-way, the pending operation stays in the head and the next operation on the account (or a replay of the same one) finishes it first. This is what makes over-allocation, a second period invoice and a void-versus-allocate race refusals rather than races. Only the number claims and counters are global.
+
+**Operations** (each writes exactly one journal event): draft, issue, enter an already-issued invoice, void, write off, credit, record payment (optionally with allocations), allocate, reverse. A record takes an operation once, so each operation writes an invoice at most once. Replays answer from the storage receipt of the original commit; the same operation ID with another request is `409 idempotency_conflict`; a stale `expectedRevision` is `409 revision_conflict`.
+
+**Rules as built.**
+
+- Raising is draft then issue; a draft may be voided, which frees its period. Issue copies the issuer block and payment methods into the invoice, takes the next free number of the issue date's month and sets the due date (invoice terms, else the profile override, else the issuer default, else 30 days). Stripe issuing is refused as `stripe_unavailable`.
+- An already-issued invoice is entered with its given `YYYYMM-NNN` number, which must match its issue date's month. The number is claimed; a taken one is `409 number_taken`. The month's counter moves only if it was waiting on that number, otherwise the claim makes later issues skip it, so earlier numbers are still handed out in order.
+- Status is derived: `issued`, `partially_paid` (net allocations above zero), `paid` (balance zero), plus `void` and `uncollectible`, which are decisions. Stored balances are recomputed on every write and again on read.
+- A void needs no live allocations or credits; allocations already reversed do not count.
+- A write-off keeps the unpaid figure on the invoice (`writtenOffCents`) and is not open: it is never part of outstanding, and takes no allocation, credit, void or second write-off.
+- A reversal writes a reversing payment (negative amount, `reversal_of`) and reversing allocations (negative, `reversal_of`) and changes no original payment or allocation. A payment is reversed once. In the console's shapes the reversal shows on the original payment and never as a payment of its own.
+- Credits reduce the balance, never below zero, and name the invoice.
+- The journal's `detail` carries ids, integer cents and the stated reason; `rebuildBalancesFromJournal` recomputes every invoice balance from events alone, and the tests check it against the records. No contact data, issuer detail or payment instruction is journaled.
+- Capacity: an account's index holds 300 invoices and 300 payments, and listing across accounts uses the bridge's 256-path listing budget. Hitting either is refused (`billing_capacity`) or fails the listing, never silently truncated.
+
+**Operator routes** (all under `/v1/account-directory/operator`, matching `src/billing/client.ts`, which saves the profile and the issuer with `POST` because the accounts API and its BFF route only GET and POST; central also takes `PUT`): `billing/access`, `billing/accounts`, `billing/accounts/{id}`, `billing/invoices`, `billing/invoices/{number|id}` and `/pdf`, `billing/invoices/{id}/void|write-off|credit`, `billing/payments`, `billing/payments/{id}`, `/allocations`, `/reversal`, `billing/issuer`, and per account `billing-profile`, `billing-profile/reveal-contact`, `billing-lines`, `billing-journal`, `invoices`, `payments`. Reads need `accounts:admin:read` or `accounts:admin:billing`; every write needs `accounts:admin:billing`, checked by the domain call, and the billing contact is masked except through the reveal, which is a write and leaves a `profile.contact_revealed` event. The PDF route returns `application/pdf` (base64 for API Gateway) when asked for it, else JSON with a base64 body for the BFF to relay.
+
+**PDF.** `billing/pdf.ts` uses `pdf-lib` 1.17.1 (exact pin): pure JavaScript, no native code, no headless browser, no font or file reads at runtime (it uses the built-in Helvetica), so it bundles into the central Lambda with esbuild and adds no layer. Output is deterministic for a record. Payment-method instructions may hold `https://` links, which render as clickable URI annotations; any other link scheme is refused when the issuer is set. A draft has no PDF. The bill-to block is read from the profile when the PDF is rendered (invoices do not copy the billing contact), so it shows the contact as it is then.
+
+**Through the staff BFF.** `/api/saas/operator/<tail>` is forwarded to `/v1/account-directory/operator/<tail>` for exactly the billing paths in `billing/paths.ts`, GET and POST only, after the BFF's usual bearer-token check and, for POST, its origin check. Central's refusal comes back with its `code` and `message` (billing refusals name rules and limits, never submitted values), and a customer BFF never forwards. The invoice PDF crosses as binary: central returns it as base64 in JSON, the BFF checks content type, filename, size and the `%PDF-` header and answers `application/pdf` with `isBase64Encoded: true`. Neither billing contacts nor PDF bytes are ever logged. Limits: a Lambda response is capped at 6 MB and base64 adds a third, so central refuses a PDF above 4,000,000 bytes as `413 pdf_too_large` (the BFF answers `502 pdf_unavailable` if one still arrives) rather than letting a gateway error surface; an invoice of 50 line items renders to a few tens of kilobytes, so the limit is a guard, not a working constraint. Request bodies for billing routes are capped at 40,000 bytes (the BFF's other routes keep 20,000).
+
+**One flag.** `billing/deployment.json` `ledger.enabled` is the only switch. Off, `accountsDeployment()` carries nothing, the synthesized infrastructure is byte for byte what it was before billing (a test proves it), and the console build replaces `VITE_BILLING_ROUTES` with `undefined` whatever the environment says. On, the same reviewed change adds the central S3 prefixes, the ten write routes to the BFF role and API access policy, and builds the console with the pages enabled.
+
+**Not built.** Stripe in any form; the CLI commands; the follow-ups and the daily past-due check; reversal of a credit; editing a draft's lines (void it and raise another); the HTTP API has no `PUT` route.
+
+### Turning the ledger on
+
+Ryan approved these steps on 2026-11-05 ("Approve and deploy"), with the ledger on the central runtime role for now and a separate billing role as hardening before customer billing or Stripe. In order:
+
+1. **Review and merge** the ledger, then the routes branch.
+2. **Grant.** Add one entry to `accounts/operator-grants.json` (`product` `prospectus-directory`, the Cognito issuer, the operator's `subjectHash`, `permission` `accounts:admin:billing`, a `reviewedGrantId`), after the same private profile confirmation as `accounts:admin:read`. `accounts:admin:billing` already exists as a permission.
+3. **Flip the flag** in one reviewed change: `ledger.enabled` to `true` in `billing/deployment.json`. That one change:
+   - adds `prospectus-central/billing/*` and `_virtuus/prospectus-central/billing/*` to the S3 object and `s3:prefix` statements of `prospectus-central-accounts-runtime`;
+   - adds the ten write routes (`POST /v1/account-directory/operator/` plus `accounts/*/invoices`, `accounts/*/payments`, `accounts/*/billing-profile`, `accounts/*/billing-profile/reveal-contact`, `billing/payments/*/allocations`, `billing/payments/*/reversal`, `billing/invoices/*/void`, `billing/invoices/*/write-off`, `billing/invoices/*/credit`, `billing/issuer`) to the BFF role `prospectus-accounts-directory-runtime` and the API access policy, and republishes the API deployment;
+   - opens billing storage in the central Lambda and enables the routes;
+   - builds the console with the billing pages on.
+   GET is already granted by `/v1/account-directory/*`. The rebuilt `prospectus-identity-files` bridge binary ships in the same Lambda package.
+4. **Issuer data.** After deploy, an admin sets the issuer record (legal name, address, payment methods and the Melio link) through the issuer page. It is data in the bucket, never in the repository.
 
 ## Stripe boundary
 
@@ -191,7 +238,7 @@ Amounts are US dollars parsed into integer cents; more than two decimal places i
 
 None of this exists. Each item needs Ryan's concrete approval before deployment:
 
-- A billing runtime (a billing Lambda, or routes on the central service) whose role has `s3:GetObject` and `s3:PutObject` on `prospectus-central/billing/*` and `_virtuus/prospectus-central/billing/*` only, `s3:ListBucket` limited by prefix to those scopes, and `ssm:GetParameter` on the two Stripe parameters. It cannot read identities, accounts or intake prefixes, and the accounts runtime cannot write billing. Entitlement and operator checks go through the central accounts service.
+- A billing runtime (a billing Lambda, or routes on the central service; the ledger as built is routes on the central service, so the role below is the central runtime role `prospectus-central-accounts-runtime` gaining these prefixes, and a separate billing role would be a later hardening) whose role has `s3:GetObject` and `s3:PutObject` on `prospectus-central/billing/*` and `_virtuus/prospectus-central/billing/*` only, `s3:ListBucket` limited by prefix to those scopes, and `ssm:GetParameter` on the two Stripe parameters. It cannot read identities, accounts or intake prefixes, and the accounts runtime cannot write billing. Entitlement and operator checks go through the central accounts service.
 - The unauthenticated webhook route `POST /billing/stripe/webhook`, with a route throttle and body limit.
 - Operator billing routes under `/v1/account-directory/operator/accounts/{id}/` (`billing-profile`, `billing-lines`, `invoices`, `payments`) and the directory BFF policy change to reach them.
 - Customer routes on the Anthus One BFF: `GET /accounts/{id}/billing`, `GET /accounts/{id}/billing/invoices`, and owner-only, origin-checked, throttled `POST /accounts/{id}/billing/checkout` and `POST /accounts/{id}/billing/portal-session`.
@@ -212,7 +259,7 @@ Ryan's decisions were recorded on 2026-10-31 on kanbus-a78bcd.
 | 4   | Who records and allocates      | Decided | Admins only (`accounts:admin:billing`), no second-operator confirmation; the CLI supports it for agents                                                |
 | 5   | Write-offs                     | Partly  | Admins only mark `uncollectible`; the invoice and journal stay on record. **Open:** whether a written-off balance counts toward what is owed           |
 | 6   | Automatic suspension           | Decided | Never automatic; operators only. Billing events create follow-ups                                                                                      |
-| 7   | Numbering and documents        | Decided | Numbers are `YYYYMM-NNN`, sequential within each month (Ryan, 2026-10-31); every invoice has a PDF, manual ones included. the issuer block and payment methods are admin-set data (`billing/issuer.json`), not code (Ryan, 2026-10-31)         |
+| 7   | Numbering and documents        | Decided | Numbers are `YYYYMM-NNN`, sequential within each month (Ryan, 2026-10-31); every invoice has a PDF, manual ones included. the issuer block and payment methods are admin-set data (`billing/issuer/0.json`), not code (Ryan, 2026-10-31)         |
 | 8   | One invoice per site or client | Decided | One combined invoice per client per period across all products; each line is its own line item. Direct: one subscription per client, one item per line |
 | 9   | Pricing and plans              | Decided | Out of scope; catalog structure with test-mode placeholder prices                                                                                      |
 | 10  | Trials and free tiers          | Open    | Is a product granted without a billing line ever client-facing, or always internal?                                                                    |

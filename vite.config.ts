@@ -2,10 +2,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
 import { KANBUS_API_PATH } from "./src/board";
+import { billingDeployment, consoleBillingDefine } from "./billing/deployment";
+
+// One reviewed flag, billing/deployment.json, turns the backend routes and the console pages on together.
+const billing = billingDeployment(JSON.parse(readFileSync("billing/deployment.json", "utf8")));
 
 export default defineConfig({
   plugins: [react()],
   resolve: { dedupe: ["react", "react-dom"] },
+  define: consoleBillingDefine(billing),
   server: {
     // dev:cloud --lan serves HTTPS at a network name so phones and tablets can sign in.
     ...(process.env.PROSPECTUS_DEV_TLS_CERT

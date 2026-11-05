@@ -39,6 +39,7 @@ export const METHOD_LABEL: Record<PaymentMethod, string> = {
   bank_transfer: "Bank transfer",
   check: "Check",
   venmo: "Venmo",
+  melio: "Melio",
   cash: "Cash",
   other: "Other",
   stripe_card: "Card, through Stripe",

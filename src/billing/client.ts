@@ -116,7 +116,8 @@ export function billingBrowser(
     // proposed: an audited reveal, so the full contact is never in the page until asked for
     revealContact: async (id) =>
       (await send(`${account(id)}/billing-profile/reveal-contact`, "POST", {})).contact,
-    saveProfile: async (id, input) => (await send(`${account(id)}/billing-profile`, "PUT", input)).profile,
+    // POST, not PUT: the accounts API and its BFF route only GET and POST, and central takes POST as the save.
+    saveProfile: async (id, input) => (await send(`${account(id)}/billing-profile`, "POST", input)).profile,
     raiseInvoice: async (input): Promise<Invoice> =>
       (await send(`${account(input.accountId)}/invoices`, "POST", input)).invoice,
     recordPayment: async (input): Promise<Payment> =>
@@ -130,6 +131,6 @@ export function billingBrowser(
     voidInvoice: async (id, input) =>
       (await send(`/operator/billing/invoices/${part(id)}/void`, "POST", input)).invoice,
     issuer: () => send("/operator/billing/issuer"),
-    saveIssuer: (input) => send("/operator/billing/issuer", "PUT", input),
+    saveIssuer: (input) => send("/operator/billing/issuer", "POST", input),
   };
 }
