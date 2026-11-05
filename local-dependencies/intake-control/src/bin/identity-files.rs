@@ -203,7 +203,20 @@ impl ObjectStore for InterruptibleFiles {
 fn path_belongs_to_project(kind: &str, project: &str) -> bool {
     match project {
         "accounts" => ["accounts", "members"].contains(&kind),
-        "billing" => ["profiles", "lines", "journal"].contains(&kind),
+        "billing" => [
+            "profiles",
+            "lines",
+            "journal",
+            "invoices",
+            "payments",
+            "allocations",
+            "credits",
+            "ledgers",
+            "numbers",
+            "sequences",
+            "issuer",
+        ]
+        .contains(&kind),
         "quota" => ["settings", "weeks", "journal"].contains(&kind),
         "identities" => [
             "google",

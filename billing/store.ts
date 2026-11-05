@@ -46,7 +46,7 @@ export function requireExpectedRevision(value: unknown): number | undefined {
   return value as number;
 }
 
-async function commitWithRetry<T>(
+export async function commitWithRetry<T>(
   files: IdentityFiles,
   path: string,
   operationId: string,
@@ -146,25 +146,25 @@ export async function updateOpenLines(
 /** True once a mutation's journal event exists, so a replay is answered without repeating any side step. */
 export async function isJournaled(
   files: IdentityFiles,
-  recordKind: "profile" | "line",
-  accountId: string,
+  recordKind: JournalEvent["recordKind"],
+  accountId: string | undefined,
   product: string | undefined,
   operationId: string,
 ) {
   return !!(await files.get(journalPath(journalEventId(recordKind, accountId, product, operationId))));
 }
-const journalEventId = (
-  recordKind: "profile" | "line",
-  accountId: string,
+export const journalEventId = (
+  recordKind: JournalEvent["recordKind"],
+  accountId: string | undefined,
   product: string | undefined,
   operationId: string,
 ) => hash(["billing-journal-v1", recordKind, accountId, product ?? null, operationId]);
 
 export interface Mutation<T extends VersionedRecord> {
   action: BillingAction;
-  recordKind: "profile" | "line";
+  recordKind: JournalEvent["recordKind"];
   path: string;
-  accountId: string;
+  accountId?: string;
   product?: string;
   operationId: string;
   actor: BillingActor;
@@ -176,7 +176,7 @@ export interface Mutation<T extends VersionedRecord> {
   apply: (current: T | null) => Promise<Omit<T, "revision" | "creation" | "audit">>;
 }
 
-const storageIdentity = (eventId: string, requestHash: string, baseRevision: number) => ({
+export const storageIdentity = (eventId: string, requestHash: string, baseRevision: number) => ({
   storageOperationId: `billing:${eventId}:${baseRevision}`,
   storageRequestHash: hash(["billing-storage-v1", requestHash, baseRevision]),
 });
@@ -313,6 +313,6 @@ export async function mutate<T extends VersionedRecord>(
   fail(409, "busy", "Concurrent billing change; retry.");
 }
 
-function idempotencyConflict(): never {
+export function idempotencyConflict(): never {
   fail(409, "idempotency_conflict", "Operation ID belongs to a different billing request.");
 }

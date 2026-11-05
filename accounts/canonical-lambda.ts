@@ -4,6 +4,7 @@ import { canonicalAccountsHandler } from "./canonical-handler";
 import {
   VirtuusS3IdentityFiles,
   VirtuusS3AccountFiles,
+  VirtuusS3BillingFiles,
   VirtuusS3QuotaFiles,
   type NativeTiming,
 } from "./identity-files";
@@ -15,6 +16,8 @@ import { editorSiteRegistrations, papyrusSiteRegistrations } from "./papyrus-sit
 import reviewedLabVerifier from "./lab-verifier.json";
 import { labVerifier, reviewedLabVerifierEntry } from "./lab-verifier";
 import reviewedDeployment from "./deployment.json";
+import reviewedBillingDeployment from "../billing/deployment.json";
+import { billingDeployment } from "../billing/deployment";
 import { accountCreationLimits, membershipLookupMode } from "./durable-accounts";
 import { operatorGrants } from "./operator-policy";
 import { CognitoKeys } from "./auth";
@@ -68,16 +71,21 @@ const siteSubjectSecret = process.env.PROSPECTUS_SITE_SUBJECT_SECRET
 const quotaRateTable = process.env.PROSPECTUS_QUOTA_RATE_TABLE
   ? new ParameterStoreRateTable(rateTableConfiguration(JSON.parse(process.env.PROSPECTUS_QUOTA_RATE_TABLE)))
   : undefined;
+// Committed disabled. While it is, no billing storage is opened and every billing route answers 404.
+const ledgerEnabled = billingDeployment(reviewedBillingDeployment).ledgerEnabled;
 let activeRequestId = "unavailable";
-const timingForProject = (project: "identities" | "accounts" | "quota") => (value: NativeTiming) =>
-  console.info(JSON.stringify({ event: "accounts.native", requestId: activeRequestId, project, ...value }));
+const timingForProject =
+  (project: "identities" | "accounts" | "quota" | "billing") => (value: NativeTiming) =>
+    console.info(JSON.stringify({ event: "accounts.native", requestId: activeRequestId, project, ...value }));
 let warmIdentities: VirtuusS3IdentityFiles | undefined;
 let warmAccounts: VirtuusS3AccountFiles | undefined;
 let warmQuota: VirtuusS3QuotaFiles | undefined;
+let warmBilling: VirtuusS3BillingFiles | undefined;
 const closeWarmBridges = () => {
   warmIdentities?.close();
   warmAccounts?.close();
   warmQuota?.close();
+  warmBilling?.close();
 };
 const warmBridges = () => {
   if (!warmIdentities || warmIdentities.isClosed)
@@ -91,7 +99,14 @@ const warmBridges = () => {
     warmAccounts = new VirtuusS3AccountFiles(config, executable, true, timingForProject("accounts"));
   if (!warmQuota || warmQuota.isClosed)
     warmQuota = new VirtuusS3QuotaFiles(config, executable, true, timingForProject("quota"));
-  return { identities: warmIdentities, accounts: warmAccounts, quota: warmQuota };
+  if (ledgerEnabled && (!warmBilling || warmBilling.isClosed))
+    warmBilling = new VirtuusS3BillingFiles(config, executable, true, timingForProject("billing"));
+  return {
+    identities: warmIdentities,
+    accounts: warmAccounts,
+    quota: warmQuota,
+    billing: ledgerEnabled ? warmBilling : undefined,
+  };
 };
 process.once("SIGTERM", closeWarmBridges);
 export const handler = async (
@@ -101,7 +116,7 @@ export const handler = async (
   activeRequestId = matchesStringPattern(context?.awsRequestId, /^[a-f0-9-]{36}$/i)
     ? context!.awsRequestId!
     : "unavailable";
-  const { identities, accounts, quota } = warmBridges();
+  const { identities, accounts, quota, billing } = warmBridges();
   const remaining = context?.getRemainingTimeInMillis?.();
   const deadline =
     remaining === undefined ? undefined : setTimeout(closeWarmBridges, Math.max(1, remaining - 250));
@@ -121,6 +136,7 @@ export const handler = async (
       siteSubjectSecret,
       quota,
       quotaRateTable,
+      billing,
     )(event);
   } finally {
     if (deadline) clearTimeout(deadline);

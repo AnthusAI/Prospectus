@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { VirtuusBillingFiles } from "../accounts/identity-files";
 import { BillingError } from "./model";
 import { hexSegment } from "./store";
-import { billingFixture, operator, profileInput } from "./testing/billing-fixture";
+import { billingFixture, issuerFields, lineItems, operator, profileInput } from "./testing/billing-fixture";
 
 const roots: string[] = [];
 after(async () => {
@@ -121,4 +121,81 @@ test("mode changes with open lines are refused through the bridge, naming the li
     (await profiles.set(ada, accountId, profileInput({ mode: "direct" }), randomUUID())).profile.mode,
     "direct",
   );
+});
+
+test("the ledger persists as ordinary billing files through the Rust bridge, with replay, numbering and races", async () => {
+  const { root, profiles, issuer, ledger, accountId } = await durable();
+  await profiles.set(ada, accountId, profileInput(), randomUUID());
+  await issuer.set(ada, issuerFields(), randomUUID());
+  const raise = (cents: number, issueDate = "2026-10-31") =>
+    ledger.raise(
+      ada,
+      accountId,
+      {
+        lineItems: lineItems([{ description: "Example work", quantity: 1, unitAmountCents: cents }]),
+        draft: false,
+        issueDate,
+      },
+      randomUUID(),
+    );
+  // The first real invoice was issued outside Prospectus: entered with its number, and never reused.
+  const entered = await ledger.enterIssued(
+    ada,
+    accountId,
+    { number: "202610-001", issueDate: "2026-10-28", lineItems: lineItems() },
+    randomUUID(),
+  );
+  assert.equal(entered.invoice.number, "202610-001");
+  const [left, right] = await Promise.all([raise(40000), raise(40000)]);
+  assert.deepEqual([left.invoice.number, right.invoice.number].sort(), ["202610-002", "202610-003"]);
+
+  const operationId = randomUUID();
+  const input = { amountCents: 50000, method: "melio", receivedAt: "2026-11-03", reference: "EX-1" };
+  const recorded = await ledger.recordPayment(ada, accountId, input, operationId);
+  const replay = await ledger.recordPayment(ada, accountId, input, operationId);
+  assert.equal(replay.replayed, true);
+  assert.deepEqual(replay.payment, recorded.payment);
+  assert.equal((await ledger.payments(accountId)).length, 1);
+
+  // Two admins allocate 40000 each of a 50000 payment at once: exactly one wins.
+  const results = await Promise.allSettled([
+    ledger.allocate(
+      ada,
+      recorded.payment.id,
+      { allocations: [{ invoiceId: left.invoice.id, amountCents: 40000 }] },
+      randomUUID(),
+    ),
+    ledger.allocate(
+      grace,
+      recorded.payment.id,
+      { allocations: [{ invoiceId: right.invoice.id, amountCents: 40000 }] },
+      randomUUID(),
+    ),
+  ]);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  const loser = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
+  assert.ok(refusedWith(409, "over_allocation")(loser.reason), String(loser.reason));
+  assert.equal((await ledger.payment(recorded.payment.id))!.unallocatedCents, 10000);
+
+  // A stale revision through the bridge is a conflict.
+  await assert.rejects(
+    ledger.reverse(ada, recorded.payment.id, { reason: "x", expectedRevision: 1 }, randomUUID()),
+    refusedWith(409, "revision_conflict"),
+  );
+  const reversed = await ledger.reverse(ada, recorded.payment.id, { reason: "Bounced" }, randomUUID());
+  assert.equal(reversed.payment.amountCents, -50000);
+  for (const invoice of [left.invoice, right.invoice])
+    assert.equal((await ledger.invoice(invoice.id))!.balanceCents, 40000);
+
+  const files = await canonicalFiles(root);
+  for (const kind of ["invoices", "payments", "allocations", "numbers", "sequences", "ledgers", "issuer"])
+    assert.ok(
+      files.some((path) => path.includes(`billing/${kind}/`)),
+      kind,
+    );
+  assert.ok(
+    files.every((path) => path.includes("billing/")),
+    "nothing lands outside the billing project",
+  );
+  assert.ok((await ledger.journal(accountId)).length >= 8);
 });

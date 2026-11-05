@@ -18,6 +18,12 @@ import { RetiredSiteSubjects } from "./retired-site-subjects";
 import { Quota } from "../quota/service";
 import { unconfiguredRateTable, type RateTableSource } from "../quota/rate-table";
 import { quotaHandler } from "../quota/handler";
+import { BillingIssuer } from "../billing/issuer";
+import { BillingLedger } from "../billing/ledger";
+import { BillingLines } from "../billing/lines";
+import { reviewedBillingPlans } from "../billing/plans";
+import { BillingProfiles } from "../billing/profile";
+import { billingOperatorRoutes } from "../billing/routes";
 /** Trusted runtime composition, intentionally no AWS configuration, resource
  * provisioning. Deployment bootstrap is separate. File adapters/namespaces are server-owned.
  */
@@ -34,6 +40,8 @@ export function canonicalAccountsHandler(
   siteSubjectSecret?: SiteSubjectSecret,
   quotaFiles?: IdentityFiles,
   quotaRateTable?: RateTableSource,
+  /** Billing storage. Absent unless billing/deployment.json enables the ledger: billing routes then answer 404. */
+  billingFiles?: IdentityFiles,
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),
@@ -61,6 +69,39 @@ export function canonicalAccountsHandler(
       quotaRateTable ?? unconfiguredRateTable,
     );
   const quotaRoutes = quotaHandler(quota, products);
+  const clock = () => new Date(nowSeconds() * 1000).toISOString();
+  const billing =
+    billingFiles &&
+    billingOperatorRoutes({
+      ledger: new BillingLedger(billingFiles, reviewedGrants, clock),
+      profiles: new BillingProfiles(billingFiles, reviewedGrants, clock),
+      // Read-only use: entitlements are consulted only when a line is created, and no line route is served yet.
+      lines: new BillingLines(
+        billingFiles,
+        reviewedGrants,
+        reviewedBillingPlans(),
+        {
+          entitlements: async (accountId) =>
+            Object.fromEntries(
+              Object.values((await service.read(accountId))?.value.entitlements ?? {}).map((entitlement) => [
+                entitlement.product,
+                entitlement.status,
+              ]),
+            ),
+          isPublicReader: () => false,
+        },
+        clock,
+      ),
+      issuer: new BillingIssuer(billingFiles, reviewedGrants, clock),
+      plans: reviewedBillingPlans(),
+      grants: reviewedGrants,
+      accounts: {
+        all: async () => (await service.allAccounts()).map((document) => document.account),
+        get: async (accountId) => (await service.read(accountId))?.value.account ?? null,
+      },
+      files: billingFiles,
+      now: clock,
+    });
   const directoryHandler = accountDirectoryHandler(
     service,
     products,
@@ -68,6 +109,7 @@ export function canonicalAccountsHandler(
     nowSeconds,
     reviewedGrants,
     quota,
+    billing,
   );
   const routed = (event: RestEvent) =>
     event.path.startsWith("/v1/quota/")

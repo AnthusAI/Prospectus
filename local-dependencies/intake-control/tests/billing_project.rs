@@ -34,6 +34,14 @@ fn billing_project_accepts_only_its_own_kinds_and_canonical_segments() {
         format!("profiles/{ACCOUNT}.json"),
         format!("lines/{ACCOUNT}/7061707972757300.json"),
         format!("journal/{}.json", "a".repeat(64)),
+        format!("invoices/{ACCOUNT}.json"),
+        format!("payments/{ACCOUNT}.json"),
+        format!("allocations/{ACCOUNT}.json"),
+        format!("credits/{ACCOUNT}.json"),
+        format!("ledgers/{ACCOUNT}.json"),
+        "numbers/202610-001.json".to_owned(),
+        "sequences/202610.json".to_owned(),
+        "issuer/0.json".to_owned(),
     ] {
         assert_eq!(
             call(root.path(), "billing", commit(&path))["result"]["value"]["v"],
@@ -59,7 +67,9 @@ fn billing_project_accepts_only_its_own_kinds_and_canonical_segments() {
     for path in [
         format!("accounts/{ACCOUNT}.json"),
         format!("lines/{ACCOUNT}/papyrus-site.json"),
-        "invoices/0a.json".to_owned(),
+        "invoices/invoice-one.json".to_owned(),
+        "numbers/inv-202610-001.json".to_owned(),
+        "issuer.json".to_owned(),
     ] {
         assert_eq!(
             call(root.path(), "billing", commit(&path))["error"],
