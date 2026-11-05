@@ -80,8 +80,9 @@ export function App() {
   );
   useEffect(() => {
     if (!syntheticReview) return;
+    // Read now: the address is replaced with its path before the import finishes.
+    const review = new URLSearchParams(window.location.search);
     void import("./billing/synthetic").then(({ syntheticBilling, syntheticDirectory }) => {
-      const review = new URLSearchParams(window.location.search);
       setClients({
         directory: syntheticDirectory(),
         billing: syntheticBilling({

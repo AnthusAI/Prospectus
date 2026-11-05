@@ -125,7 +125,7 @@ test(
       await link.click();
       await expect(page).toHaveURL(`${origin}/invoices/202610-003`);
       await page.goBack();
-      await expect(page).toHaveURL(`${origin}/?view=billing`);
+      await expect(page).toHaveURL(`${origin}/billing`);
       await expect(page.getByRole("heading", { name: "Usage and billing" })).toBeVisible();
       await page.goForward();
       await expect(page.getByRole("heading", { level: 1, name: "202610-003" })).toBeVisible();
