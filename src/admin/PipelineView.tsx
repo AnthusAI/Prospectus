@@ -15,7 +15,7 @@ import {
   validateFollowUp,
   websiteInquiries,
 } from "../prospect";
-import { Eyebrow } from "../shared/ui";
+import { AppMark, Eyebrow } from "../shared/ui";
 import { SubmissionDetails } from "./SubmissionDetails";
 import { mailtoHref, submissionDetails } from "./submissions";
 
@@ -237,7 +237,7 @@ function InterestPicker({ selected }: { selected: string[] }) {
               value={app.id}
               defaultChecked={selected.includes(app.id)}
             />
-            <span className="one-swatch" style={{ background: app.swatch }} aria-hidden="true" />
+            <AppMark app={app} />
             {app.name}
           </label>
         ))}

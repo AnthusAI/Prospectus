@@ -1,59 +1,82 @@
-/** Anthus apps as customers and staff see them. Swatches are theme tokens defined in styles.css. */
+/** Anthus apps as customers and staff see them. Logos are the products' own, with sources recorded in public/brand/SOURCES.md. */
 export interface AnthusApp {
   id: string;
   name: string;
-  swatch: string;
+  /** The product's own logo, one file per theme. Absent when none may be shipped; a neutral mark shows instead. */
+  logo?: { light: string; dark: string; plate?: boolean };
   /** Public address customers open, when the app has one. */
   url?: string;
   blurb?: string;
 }
 
+/**
+ * Identifiers that older accounts, entitlements and stored prospects still hold, mapped to the app that replaced
+ * them. Auritus was merged into Babulus on 2026-11-02 (Babulus epic babulus-d22d6854). Stored data is not rewritten.
+ */
+export const FORMER_APP_IDS: Readonly<Record<string, string>> = { auritus: "babulus" };
+
+/**
+ * The one place the order of products is written: every console and portal list follows it. Products are ordered by
+ * how likely they are to sell, so expect this order to change; change it here and nowhere else.
+ */
 export const ANTHUS_APPS: readonly AnthusApp[] = [
-  {
-    id: "chatticus",
-    name: "Chatticus",
-    swatch: "var(--s1)",
-    url: "https://chattic.us",
-    blurb: "Shared rooms where people and bots work together, with approvals.",
-  },
-  {
-    id: "cyclotron",
-    name: "Cyclotron",
-    swatch: "var(--s2)",
-    url: "https://lab.cyclotron.anth.us",
-    blurb: "One AI decision that learns from your team’s corrections.",
-  },
   {
     id: "papyrus",
     name: "Papyrus",
-    swatch: "var(--s3)",
+    logo: { light: "/brand/papyrus.svg", dark: "/brand/papyrus.svg" },
     url: "https://p.apyr.us",
     blurb: "An automated newsroom: agents watch your beat, your editors decide what publishes.",
   },
   {
-    id: "auritus",
-    name: "Auritus",
-    swatch: "var(--s4)",
-    url: "https://aurit.us",
-    blurb: "Every page on your site, read aloud on demand.",
+    id: "cyclotron",
+    name: "Cyclotron",
+    logo: { light: "/brand/cyclotron.svg", dark: "/brand/cyclotron.svg" },
+    url: "https://lab.cyclotron.anth.us",
+    blurb: "One AI decision that learns from your team’s corrections.",
+  },
+  {
+    id: "chatticus",
+    name: "Chatticus",
+    logo: { light: "/brand/chatticus.svg", dark: "/brand/chatticus.svg" },
+    url: "https://chattic.us",
+    blurb: "Shared rooms where people and bots work together, with approvals.",
   },
   {
     id: "babulus",
     name: "Babulus",
-    swatch: "var(--s4)",
+    // Babulus has no logo of its own; Ryan chose the Auritus mascot on 2026-11-05. Transparent art, so it sits on a plate.
+    logo: { light: "/brand/babulus.png", dark: "/brand/babulus.png", plate: true },
     url: "https://babul.us",
     blurb: "Voiceover and video made on your own machine first, in the cloud only when it is allowed.",
   },
   {
     id: "kanbus",
     name: "Kanbus",
-    swatch: "var(--s5)",
+    logo: { light: "/brand/kanbus.svg", dark: "/brand/kanbus.svg" },
     url: "https://kanb.us",
     blurb: "Durable task boards for teams of people and agents.",
   },
-  { id: "apricity", name: "Apricity", swatch: "var(--s6)" },
-  { id: "services", name: "Professional services", swatch: "var(--accent)" },
+  { id: "apricity", name: "Apricity" },
+  { id: "services", name: "Professional services" },
 ];
+
+/** The current id for a possibly former one: auritus is babulus. */
+export function canonicalAppId(id: string): string {
+  return Object.hasOwn(FORMER_APP_IDS, id) ? FORMER_APP_IDS[id] : id;
+}
+
+/** Sort products (ids such as `papyrus-p-apyr-us`) into catalog order. Stable; unknown products go last. */
+export function byAppOrder<T>(items: readonly T[], product: (item: T) => string): T[] {
+  const rank = (item: T) => {
+    const id = appForProduct(product(item)).id;
+    const index = ANTHUS_APPS.findIndex((app) => app.id === id);
+    return index < 0 ? ANTHUS_APPS.length : index;
+  };
+  return items
+    .map((item, position) => ({ item, position, rank: rank(item) }))
+    .sort((a, b) => a.rank - b.rank || a.position - b.position)
+    .map(({ item }) => item);
+}
 
 /** Papyrus sites whose host is not their product name: the `siteUrl` entries of accounts/papyrus-sites.json. */
 export const PAPYRUS_SITE_URLS: Readonly<Record<string, string>> = {
@@ -74,17 +97,20 @@ export function productUrl(product: string): string | undefined {
 
 /** Account products are per-site identifiers such as `papyrus-p-apyr-us`; the app is the leading name. */
 export function appForProduct(product: string): AnthusApp {
+  // A former id such as `auritus` or `auritus-example-com` is shown as the app that replaced it.
+  const former = Object.keys(FORMER_APP_IDS).find((id) => product === id || product.startsWith(`${id}-`));
+  const name = former ? FORMER_APP_IDS[former] : product;
   return (
-    ANTHUS_APPS.find((app) => product === app.id || product.startsWith(`${app.id}-`)) ?? {
+    ANTHUS_APPS.find((app) => name === app.id || name.startsWith(`${app.id}-`)) ?? {
       id: product,
       name: product,
-      swatch: "var(--panel-2)",
     }
   );
 }
 
 export function appById(id: string): AnthusApp | undefined {
-  return ANTHUS_APPS.find((app) => app.id === id);
+  const current = canonicalAppId(id);
+  return ANTHUS_APPS.find((app) => app.id === current);
 }
 
 /**
@@ -92,12 +118,15 @@ export function appById(id: string): AnthusApp | undefined {
  * is the list registered centrally today (Cyclotron, Babulus and the Papyrus sites of accounts/papyrus-sites.json).
  * A product missing here still shows when the Account already holds it, and central refuses an unregistered one.
  */
-export const OPERATOR_PRODUCTS: readonly string[] = [
-  "babulus",
-  "cyclotron",
-  "papyrus-dataparade",
-  "papyrus-machines-on-machines",
-  "papyrus-p-apyr-us",
-  "papyrus-pilobol-us",
-  "papyrus-shipped",
-];
+export const OPERATOR_PRODUCTS: readonly string[] = byAppOrder(
+  [
+    "babulus",
+    "cyclotron",
+    "papyrus-dataparade",
+    "papyrus-machines-on-machines",
+    "papyrus-p-apyr-us",
+    "papyrus-pilobol-us",
+    "papyrus-shipped",
+  ],
+  (product) => product,
+);
