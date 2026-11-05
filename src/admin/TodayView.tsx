@@ -10,7 +10,12 @@ import {
   type FollowUpBucket,
 } from "../prospect";
 import type { Write } from "./PipelineView";
-import { AppChip, Eyebrow, Stat, Unavailable } from "../shared/ui";
+import { billingFollowUps, totals } from "../billing/derive";
+import { formatWholeDollars } from "../billing/money";
+import { billingHref } from "../billing/routes";
+import { BillingLink } from "../shared/billing";
+import { AppChip, Eyebrow, Icon, Stat, Unavailable } from "../shared/ui";
+import { useBilling } from "./BillingProvider";
 import { issuePath, PAGE_PATHS } from "../deep-links";
 import { AppLink } from "./AppLink";
 import { hiddenAsSpam } from "../spam-review";
@@ -52,6 +57,8 @@ export function TodayView({
   onError: (message: string) => void;
 }) {
   const today = localDate();
+  const billing = useBilling();
+  const ledger = billing.overview.status === "ready" ? billing.overview.data : null;
   const [followUps, setFollowUps] = useState<IssueRecord[] | null>(null);
   const [leads, setLeads] = useState<IssueRecord[] | null>(null);
   const [open, setOpen] = useState<{ count: number; more: boolean } | null>(null);
@@ -105,9 +112,15 @@ export function TodayView({
       })),
     [followUps, today],
   );
+  // Billing follow-ups are worked out from the ledger each time; none is stored.
+  const billingRows = useMemo(
+    () => (ledger ? billingFollowUps(ledger.accounts, ledger.invoices, ledger.payments, today) : []),
+    [ledger, today],
+  );
+  const billingTotals = ledger ? totals(ledger.invoices, ledger.payments, today) : null;
   const overdue = grouped[0].items.length;
-  const due = overdue + grouped[1].items.length;
-  const remaining = grouped.reduce((sum, group) => sum + group.items.length, 0);
+  const due = overdue + grouped[1].items.length + billingRows.length;
+  const remaining = grouped.reduce((sum, group) => sum + group.items.length, 0) + billingRows.length;
   useEffect(() => {
     if (followUps) onSummary({ due, overdue });
   }, [followUps, due, overdue, onSummary]);
@@ -163,6 +176,18 @@ export function TodayView({
             href={PAGE_PATHS.accounts}
             onClick={onNavigateAccounts}
           />
+          {billingTotals ? (
+            <Stat
+              value={formatWholeDollars(billingTotals.pastDueCents)}
+              label="PAST DUE"
+              note={`${formatWholeDollars(billingTotals.outstandingCents)} outstanding in all`}
+              hot={billingTotals.pastDueCents > 0}
+              href="/billing"
+              onClick={() => billing.go("/billing")}
+            />
+          ) : (
+            <Stat value={null} label="PAST DUE" note="Needs billing data" />
+          )}
         </div>
       </section>
       <div className="one-columns">
@@ -181,9 +206,13 @@ export function TodayView({
             <div key={group.key} className={`one-group ${group.tone}`}>
               <div className="one-group-head">
                 <span className="label">{group.label.toUpperCase()}</span>
-                <span className="count">{group.items.length}</span>
+                <span className="count">
+                  {group.items.length + (group.key === "today" ? billingRows.length : 0)}
+                </span>
               </div>
-              {group.items.length === 0 && <p className="one-empty">Nothing {group.label.toLowerCase()}.</p>}
+              {group.items.length === 0 && !(group.key === "today" && billingRows.length) && (
+                <p className="one-empty">Nothing {group.label.toLowerCase()}.</p>
+              )}
               {group.items.map((record) => (
                 <div key={record.issue.id} className="one-row">
                   <input
@@ -209,6 +238,30 @@ export function TodayView({
                   </span>
                 </div>
               ))}
+              {group.key === "today" &&
+                billingRows.map((row) => (
+                  <div key={row.key} className="one-row">
+                    <span className="billing-rowicon" aria-hidden="true">
+                      <Icon name="receipt" size={16} />
+                    </span>
+                    <span className="one-row-main">
+                      <span className="one-row-title">
+                        <BillingLink
+                          href={
+                            row.target.type === "invoice"
+                              ? billingHref.invoice(row.target.id)
+                              : billingHref.payment(row.target.id)
+                          }
+                        >
+                          {row.action}
+                        </BillingLink>
+                      </span>
+                      <span className="one-row-sub">{row.account} · Invoiced account</span>
+                    </span>
+                    <span className="one-pill">Billing</span>
+                    <span className="one-due">Today</span>
+                  </div>
+                ))}
             </div>
           ))}
         </section>

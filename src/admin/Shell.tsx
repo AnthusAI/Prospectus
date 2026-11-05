@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { billingRouteFromPath, type BillingRoute } from "../billing/routes";
 import {
   legacyLocation,
   opensElsewhere,
@@ -29,7 +30,19 @@ export const PAGES: Record<Page, { label: string; icon: IconName; group: "Sell" 
 export function readLocation(
   search = window.location.search,
   pathname = window.location.pathname,
-): RouteLocation {
+): RouteLocation & { billing?: BillingRoute } {
+  // Billing pages have their own paths; each opens inside the page or account it belongs to.
+  const billing = billingRouteFromPath(pathname);
+  if (billing) {
+    const page: Page =
+      billing.kind === "account-billing" ? "accounts" : billing.kind === "settings" ? "settings" : "billing";
+    return {
+      page,
+      account: billing.kind === "account-billing" ? billing.accountId : null,
+      issueId: null,
+      billing,
+    };
+  }
   return routeFromPath(pathname) ?? legacyLocation(pathname === "/" ? search : "");
 }
 

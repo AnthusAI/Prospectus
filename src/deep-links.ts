@@ -1,3 +1,4 @@
+import { billingRouteFromPath } from "./billing/routes";
 const CALLBACK_PATH = "/auth/callback";
 const PLACEHOLDER_ORIGIN = "https://return-target.invalid";
 const MAXIMUM_RETURN_TARGET_LENGTH = 300;
@@ -120,6 +121,9 @@ export function safeReturnPath(value: unknown): string | null {
   if (["code", "error", "state"].some((name) => target.searchParams.has(name))) return null;
   // The home page keeps only the older ?view= form, which the console then replaces with a path.
   if (target.pathname === "/") return LEGACY_RETURN_QUERY.test(target.search) ? `/${target.search}` : "/";
+  // A billing page keeps only the account a new invoice or payment opens for.
+  if (billingRouteFromPath(target.pathname))
+    return `${target.pathname}${/^\?account=[A-Za-z0-9_-]{1,100}$/.test(target.search) ? target.search : ""}`;
   // A known path is returned in its canonical form without a query string.
   const route = routeFromPath(target.pathname);
   return route ? pathFor(route) : null;

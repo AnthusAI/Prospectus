@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AccountsView } from "./AccountsView";
-import { accountsBrowser } from "./accounts-client";
+import { accountsBrowser, type AccountsBrowser } from "./accounts-client";
 import { ApiError, KanbusClient, type Configuration, type IssueRecord } from "./client";
 import {
   AccountsConfirmationError,
@@ -13,7 +13,17 @@ import {
   type AuthenticationConfiguration,
 } from "./auth";
 import { AdminShell, PAGES, pageHref, readLocation, type Page } from "./admin/Shell";
+import { BillingContext, useBillingState } from "./admin/BillingProvider";
+import { BillingSettingsView } from "./admin/BillingSettingsView";
+import { BillingView } from "./admin/BillingView";
+import { InvoiceView } from "./admin/InvoiceView";
+import { PaymentView, RecordPaymentView } from "./admin/PaymentViews";
 import { PipelineView } from "./admin/PipelineView";
+import { RaiseInvoiceView } from "./admin/RaiseInvoiceView";
+import { attention } from "./billing/derive";
+import { billingBrowser, unavailableBilling } from "./billing/client";
+import type { BillingClient } from "./billing/types";
+import { localDate } from "./prospect";
 import { TodayView, type TodaySummary } from "./admin/TodayView";
 import { KANBUS_API_PATH } from "./board";
 import { LeadPage, LeadPlaceholder } from "./admin/LeadPage";
@@ -38,13 +48,18 @@ const api = new KanbusClient(
   syntheticReview,
 );
 const directory = accountsBrowser(import.meta.env.VITE_ACCOUNTS_BFF_URL);
+// The billing routes are not deployed yet. Build with VITE_BILLING_ROUTES=1 once they are.
+const productionBilling: BillingClient = import.meta.env.VITE_BILLING_ROUTES
+  ? billingBrowser(import.meta.env.VITE_ACCOUNTS_BFF_URL)
+  : unavailableBilling;
+interface Clients {
+  directory: AccountsBrowser;
+  billing: BillingClient;
+}
 
 const UNAVAILABLE_PAGES: Partial<Record<Page, string>> = {
   engagements: "Services engagements will be tracked here, inside the account each one is for.",
-  billing:
-    "Plans, quota use and invoices for every account will appear here once Anthus One records billing.",
   team: "Anthus staff and their CRM roles will be managed here. Roles are assigned in the identity service for now.",
-  settings: "Workspace settings for Prospectus will live here.",
 };
 
 export function App() {
@@ -57,7 +72,27 @@ export function App() {
   );
   const [accessDenied, setAccessDenied] = useState(false);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
-  const [{ page, account, issueId }, setLocation] = useState(() => readLocation());
+  const [{ page, account, issueId, billing: billingRoute }, setLocation] = useState(() => readLocation());
+  // Synthetic review swaps in a fixture of fictional clients. It is imported on demand, so a production bundle
+  // never contains it.
+  const [clients, setClients] = useState<Clients | null>(
+    syntheticReview ? null : { directory, billing: productionBilling },
+  );
+  useEffect(() => {
+    if (!syntheticReview) return;
+    // Read now: the address is replaced with its path before the import finishes.
+    const review = new URLSearchParams(window.location.search);
+    void import("./billing/synthetic").then(({ syntheticBilling, syntheticDirectory }) => {
+      setClients({
+        directory: syntheticDirectory(),
+        billing: syntheticBilling({
+          today: localDate(),
+          readOnly: review.get("access") === "read",
+          stripeConnected: review.get("stripe") === "connected",
+        }),
+      });
+    });
+  }, []);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<IssueRecord | null>(null);
   const [creating, setCreating] = useState(false);
@@ -83,6 +118,17 @@ export function App() {
     setSelected(null);
     setCreating(false);
   }, []);
+  // Opens an address inside the console, such as a billing page, without a page load.
+  const go = useCallback((href: string) => {
+    window.history.pushState(null, "", href);
+    setLocation(readLocation());
+    setError("");
+    setNotice("");
+    setSelected(null);
+    setCreating(false);
+    window.scrollTo(0, 0);
+  }, []);
+  const billingState = useBillingState(clients?.billing ?? unavailableBilling, go);
   useEffect(() => {
     const restore = () => setLocation(readLocation());
     window.addEventListener("popstate", restore);
@@ -91,10 +137,12 @@ export function App() {
   // One path per location: older ?view= links and a trailing slash are replaced, never left in history.
   useEffect(() => {
     if (completingSignIn || window.location.pathname === "/auth/callback") return;
+    // A billing address is already a path, and may name the account a new invoice opens for.
+    if (billingRoute) return;
     const canonical = pathFor({ page, account, issueId });
     if (`${window.location.pathname}${window.location.search}` !== canonical)
       window.history.replaceState(null, "", canonical);
-  }, [page, account, issueId, completingSignIn]);
+  }, [page, account, issueId, billingRoute, completingSignIn]);
   const showProspect = useCallback((record: IssueRecord | null, replace = false) => {
     const address = record ? issuePath(record.issue.id) : pageHref("pipeline");
     if (replace) window.history.replaceState(null, "", address);
@@ -217,6 +265,15 @@ export function App() {
     if (nextStep) setNotice("Set the next action and follow-up date, then save changes.");
   }
 
+  if (!clients)
+    return (
+      <SignInFrame>
+        <Eyebrow>•••••• Anthus · Prospectus</Eyebrow>
+        <h1>Prospectus</h1>
+        <p role="status">Loading the synthetic review…</p>
+      </SignInFrame>
+    );
+
   if (!signedIn && completingSignIn && !error)
     return (
       <SignInFrame>
@@ -318,15 +375,34 @@ export function App() {
     );
 
   const person = configuration.actor_id;
-  return (
+  const billingAttention =
+    billingState.overview.status === "ready"
+      ? attention(
+          billingState.overview.data.accounts,
+          billingState.overview.data.invoices,
+          billingState.overview.data.payments,
+          localDate(),
+        ).length
+      : 0;
+  const shell = (
     <AdminShell
       page={page}
       onNavigate={(next) => navigate(next)}
-      counts={today ? { today: { value: today.due, alert: today.overdue > 0 } } : {}}
+      counts={{
+        ...(today ? { today: { value: today.due, alert: today.overdue > 0 } } : {}),
+        ...(billingAttention ? { billing: { value: billingAttention, alert: true } } : {}),
+      }}
       search={search}
       onSearch={(value) => {
         setSearch(value);
-        if (page === "today" || UNAVAILABLE_PAGES[page] || issueId) navigate("pipeline");
+        if (
+          page === "today" ||
+          page === "billing" ||
+          page === "settings" ||
+          UNAVAILABLE_PAGES[page] ||
+          issueId
+        )
+          navigate("pipeline");
       }}
       searchPlaceholder={page === "accounts" ? "Search accounts" : "Search prospects"}
       onNewProspect={() => {
@@ -375,7 +451,9 @@ export function App() {
         )}
         {page === "accounts" ? (
           <AccountsView
-            client={directory}
+            client={clients.directory}
+            tab={billingRoute?.kind === "account-billing" ? "billing" : "overview"}
+            onOverview={() => navigate("accounts", account)}
             search={search}
             account={account}
             onAccountChange={(id) => navigate("accounts", id)}
@@ -383,9 +461,23 @@ export function App() {
             automaticConfirmationAllowed={() => !hasAttemptedAccountsConfirmation()}
             onConnect={async () => {
               if (!authentication) throw new Error("Sign-in is not configured.");
-              await signIn(authentication, await directory.challenge());
+              await signIn(authentication, await clients.directory.challenge());
             }}
           />
+        ) : page === "billing" ? (
+          billingRoute?.kind === "invoice" ? (
+            <InvoiceView key={billingRoute.reference} reference={billingRoute.reference} />
+          ) : billingRoute?.kind === "new-invoice" ? (
+            <RaiseInvoiceView />
+          ) : billingRoute?.kind === "payment" ? (
+            <PaymentView key={billingRoute.id} id={billingRoute.id} />
+          ) : billingRoute?.kind === "new-payment" ? (
+            <RecordPaymentView />
+          ) : (
+            <BillingView />
+          )
+        ) : page === "settings" ? (
+          <BillingSettingsView />
         ) : UNAVAILABLE_PAGES[page] ? (
           <main className="one-main narrow" aria-label={PAGES[page].label}>
             <div className="one-pagehead">
@@ -457,6 +549,7 @@ export function App() {
       </div>
     </AdminShell>
   );
+  return <BillingContext.Provider value={billingState}>{shell}</BillingContext.Provider>;
 }
 
 function SignInFrame({ children }: { children: React.ReactNode }) {
