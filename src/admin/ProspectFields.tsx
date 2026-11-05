@@ -1,6 +1,7 @@
 import { ANTHUS_APPS } from "../apps";
 import type { IssueRecord } from "../client";
 import { websiteInquiries } from "../prospect";
+import { AppMark } from "../shared/ui";
 
 export function InterestPicker({ selected }: { selected: string[] }) {
   return (
@@ -16,7 +17,7 @@ export function InterestPicker({ selected }: { selected: string[] }) {
               value={app.id}
               defaultChecked={selected.includes(app.id)}
             />
-            <span className="one-swatch" style={{ background: app.swatch }} aria-hidden="true" />
+            <AppMark app={app} />
             {app.name}
           </label>
         ))}

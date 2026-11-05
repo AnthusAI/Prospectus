@@ -2,9 +2,9 @@ import { useState, type ReactNode } from "react";
 import type { DirectoryAccount } from "../../packages/accounts-client/src/directory";
 import type { QuotaView } from "../../packages/accounts-client/src/quota";
 
-import { appForProduct, productUrl } from "../apps";
+import { appForProduct, byAppOrder, productUrl } from "../apps";
 import { initials } from "../shared/initials";
-import { BrandMark, Eyebrow, Icon, Wordmark, type IconName } from "../shared/ui";
+import { AppMark, BrandMark, Eyebrow, Icon, Wordmark, type IconName } from "../shared/ui";
 
 export type PortalPage = "home" | "apps" | "usage" | "plans" | "people" | "keys" | "settings";
 
@@ -64,7 +64,10 @@ export function PortalShell({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const shown = quota ?? null;
-  const activeApps = workspace.products.filter((product) => product.status === "active");
+  const activeApps = byAppOrder(
+    workspace.products.filter((product) => product.status === "active"),
+    (product) => product.product,
+  );
   return (
     <div className="one portal" data-theme={theme}>
       <div className="one-stripe portal" aria-hidden="true" />
@@ -167,11 +170,7 @@ export function PortalShell({
                 const url = productUrl(product.product);
                 return url ? (
                   <a key={product.product} className="one-navlink portal-applink" href={url}>
-                    <span
-                      className="one-swatch square"
-                      style={{ background: app.swatch }}
-                      aria-hidden="true"
-                    />
+                    <AppMark app={app} />
                     {app.name}
                   </a>
                 ) : null;
