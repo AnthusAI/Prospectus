@@ -658,14 +658,16 @@ export function syntheticBilling(options: Options): BillingClient {
         const invoice: Invoice = {
           id: ID(2, next()),
           accountId: input.accountId,
-          number: input.draft ? null : sequence(today),
+          number: input.alreadySent ? input.alreadySent.number : input.draft ? null : sequence(today),
           currency: "usd",
           lineItems: input.lineItems,
           subtotalCents: total,
           totalCents: total,
           issuedVia: input.issuedVia,
-          issuedAt: input.draft ? null : today,
-          dueAt: input.draft ? null : addDays(today, input.netTermsDays),
+          issuedAt: input.alreadySent ? input.alreadySent.issueDate : input.draft ? null : today,
+          dueAt: input.draft
+            ? null
+            : addDays(input.alreadySent ? input.alreadySent.issueDate : today, input.netTermsDays),
           netTermsDays: input.netTermsDays,
           status: input.draft ? "draft" : "issued",
           period: input.period,

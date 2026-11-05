@@ -118,6 +118,16 @@ Feature: Operator billing in the CRM
     And the invoice as sent, with the issuer, bill to and payment methods copied when it was issued
     And an invoice with payments applied cannot be voided and says why
 
+  Scenario: Record an invoice already sent outside Prospectus
+    Given an admin raising an invoice for an invoiced account
+    When they tick "Already sent outside Prospectus" and enter the number 202610-001 and an October 2026 issue date
+    Then the invoice is recorded with that number and issue date, due net terms after it, and no draft is offered
+    And a number whose year and month differ from the issue date is refused in the form before any request
+
+  Scenario: The billing permission does not wait for the billing lists
+    Given an admin with accounts:admin:billing whose billing lists are slow or fail to load
+    Then billing settings are editable as soon as the permission is confirmed
+
   Scenario: Download an invoice PDF
     Given an issued invoice
     When the operator chooses Download PDF

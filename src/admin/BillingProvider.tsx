@@ -48,18 +48,13 @@ export function useBillingState(client: BillingClient, go: (href: string) => voi
       return;
     }
     let current = true;
-    void Promise.all([
-      client.access().then(
-        (access) => access.permissions.includes(BILLING_PERMISSION),
-        () => false,
-      ),
-      client.overview(),
-    ]).then(
-      ([allowed, data]) => {
-        if (!current) return;
-        setCanAct(allowed);
-        setOverview({ status: "ready", data });
-      },
+    // The permission is settled on its own, so a slow or failed listing never leaves a form read-only.
+    void client.access().then(
+      (access) => current && setCanAct(access.permissions.includes(BILLING_PERMISSION)),
+      () => current && setCanAct(false),
+    );
+    void client.overview().then(
+      (data) => current && setOverview({ status: "ready", data }),
       (cause: Error) => current && setOverview({ status: "error", message: cause.message }),
     );
     return () => {
