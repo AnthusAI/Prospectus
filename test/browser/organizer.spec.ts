@@ -33,9 +33,9 @@ test("LAN admin pipeline preserves inquiry, edits and customer handoff using sha
   await expect(card).toHaveCount(1);
   await expect(card).toHaveCSS("border-radius", "0px");
   await card.press("Enter");
-  const panel = page.locator(".kb-issue-detail");
-  await expect(panel).toBeVisible();
-  await expect(panel.getByRole("heading", { name })).toBeFocused();
+  const lead = page.getByRole("main", { name: "Lead" });
+  await expect(lead).toBeVisible();
+  await expect(lead.getByRole("heading", { name })).toBeFocused();
   await expect(page.getByRole("region", { name: "Conversation" })).toContainText(
     "Made-up organizer inquiry 2.",
   );
@@ -65,7 +65,7 @@ for (const [width, colorScheme] of [
   test(`organizer fits ${width} ${colorScheme} with readable focus and reduced motion`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
-    await page.goto("/?view=pipeline");
+    await page.goto("/pipeline");
     await expect(page.locator(".kb-grid")).toBeVisible();
     await expect(page.locator(".issue-card").first()).toBeVisible();
     await page.evaluate(() => document.fonts.ready);

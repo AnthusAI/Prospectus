@@ -49,7 +49,7 @@ test("a signed-in identity without membership sees only access pending, never th
   await expect(page.getByRole("button", { name: "View SaaS accounts" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
   // A deep link into the console still shows only the access-pending screen.
-  await page.goto("/?view=accounts");
+  await page.goto("/accounts");
   await expect(page.getByRole("heading", { name: "Workspace access pending" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Accounts", exact: true })).toHaveCount(0);
@@ -97,7 +97,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await nav.getByRole("link", { name: "Engagements" }).click();
   await expect(page.getByRole("note")).toContainText("Not yet available");
   await nav.getByRole("link", { name: "Pipeline", exact: true }).click();
-  await expect(page).toHaveURL(/view=pipeline/);
+  await expect(page).toHaveURL(/\/pipeline$/);
   await expect(page.getByText("Loading workspace…", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "New prospect", exact: true }).click();
   const title = `Proof contact ${Date.now()}`;
@@ -111,9 +111,11 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
     .fill("Asked for a demonstration. Synthetic local test record.");
   await page.getByRole("button", { name: "Add to New", exact: true }).click();
   await expect(
-    page.locator("aside").getByRole("heading", { name: "Example research team", exact: true }),
+    page
+      .getByRole("main", { name: "Lead" })
+      .getByRole("heading", { name: "Example research team", exact: true }),
   ).toBeVisible();
-  const identifier = await page.locator("aside .kb-detail-id").textContent();
+  const identifier = await page.locator(".lead-page .lead-id").textContent();
   await page.getByRole("link", { name: /^Today/ }).click();
   await expect(page.getByRole("region", { name: "Your follow-ups" })).toContainText("Example research team");
   await page
@@ -123,7 +125,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
     .click();
   await expect(page).toHaveURL(/\/pipeline\/prsp-/);
   await expect(page.getByLabel("Next action", { exact: true })).toBeFocused();
-  await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
+  await expect(page.locator(".lead-page .lead-id")).toHaveText(identifier!);
   for (const stage of ["Contacted", "Qualified", "Proposal", "Customer success"]) {
     await page.getByRole("radio", { name: stage, exact: true }).check();
     const response = page.waitForResponse(
@@ -143,12 +145,7 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
   await page.getByRole("button", { name: "Add note", exact: true }).click();
   await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();
   await page.reload();
-  await page
-    .getByRole("group", { name: "Layout", exact: true })
-    .getByRole("button", { name: "List" })
-    .click();
-  await page.getByText(title, { exact: true }).click();
-  await expect(page.locator("aside .kb-detail-id")).toHaveText(identifier!);
+  await expect(page.locator(".lead-page .lead-id")).toHaveText(identifier!);
   await expect(page.getByLabel("Owner", { exact: true })).toHaveValue("customer-success");
   await expect(page.getByText("proof@example.invalid", { exact: true })).toBeVisible();
   await expect(page.getByText("Customer success owns the next check-in.", { exact: true })).toBeVisible();

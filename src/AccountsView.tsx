@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AccountsBrowser } from "./accounts-client";
+import { DirectoryError, type AccountsBrowser } from "./accounts-client";
+import { AppLink } from "./admin/AppLink";
+import { accountPath, PAGE_PATHS } from "./deep-links";
 import { OPERATOR_PRODUCTS, appForProduct, byAppOrder } from "./apps";
 import type {
   DirectoryList,
@@ -24,6 +26,7 @@ export function AccountsView({
   search = "",
   account: controlledAccount,
   onAccountChange,
+  onTitle,
 }: {
   client: AccountsBrowser;
   onConnect: () => Promise<void>;
@@ -31,6 +34,8 @@ export function AccountsView({
   search?: string;
   account?: string | null;
   onAccountChange?: (id: string | null) => void;
+  /** Reports the open account's name for the tab title; null when no account is open. */
+  onTitle?: (name: string | null) => void;
 }) {
   // The open account follows the address when the host routes it, otherwise it is local state.
   const [localAccount, setLocalAccount] = useState<string | null>(null);
@@ -168,12 +173,19 @@ export function AccountsView({
       .operatorDetail(account)
       .then((value) => sequence === request.current && setDetail(value))
       .catch(
-        () =>
+        (cause: unknown) =>
           sequence === request.current &&
-          setDetailError("Account details are unavailable or administrator access has changed."),
+          setDetailError(
+            cause instanceof DirectoryError && cause.status === 404
+              ? "This account could not be found. It may have been removed, or the link may be wrong."
+              : "Account details are unavailable or administrator access has changed.",
+          ),
       )
       .finally(() => sequence === request.current && setDetailLoading(false));
   }, [account, client, operatorAllowed]);
+
+  const openName = account ? (detail?.name ?? null) : null;
+  useEffect(() => onTitle?.(openName), [onTitle, openName]);
 
   // Re-read the open Account after a product change, without blanking the page.
   async function refreshDetail(id: string) {
@@ -199,9 +211,9 @@ export function AccountsView({
     return (
       <main className="one-main narrow" aria-label="Account">
         <nav className="one-breadcrumb" aria-label="Breadcrumb">
-          <button type="button" onClick={() => openAccount(null)}>
+          <AppLink href={PAGE_PATHS.accounts} onNavigate={() => openAccount(null)}>
             Accounts
-          </button>
+          </AppLink>
           <span aria-hidden="true">/</span>
           <span>{detail?.name ?? "Account"}</span>
         </nav>
@@ -364,13 +376,13 @@ export function AccountsView({
                       <tr key={row.id}>
                         <th scope="row">
                           <span className="one-cellstack">
-                            <button
-                              type="button"
+                            <AppLink
                               className="one-linkbutton"
-                              onClick={() => openAccount(row.id)}
+                              href={accountPath(row.id)}
+                              onNavigate={() => openAccount(row.id)}
                             >
                               {row.name}
-                            </button>
+                            </AppLink>
                             <small>{row.members}</small>
                           </span>
                         </th>

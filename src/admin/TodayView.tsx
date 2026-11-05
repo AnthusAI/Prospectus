@@ -11,6 +11,8 @@ import {
 } from "../prospect";
 import type { Write } from "./PipelineView";
 import { AppChip, Eyebrow, Stat, Unavailable } from "../shared/ui";
+import { issuePath, PAGE_PATHS } from "../deep-links";
+import { AppLink } from "./AppLink";
 import { hiddenAsSpam } from "../spam-review";
 
 const GROUPS: Array<{ key: Exclude<FollowUpBucket, "later">; label: string; tone: string }> = [
@@ -151,14 +153,14 @@ export function TodayView({
             value={open ? `${open.count}${open.more ? "+" : ""}` : "…"}
             label="OPEN PROSPECTS"
             note="Pipeline value not yet available"
-            href="?view=pipeline"
+            href={PAGE_PATHS.pipeline}
             onClick={onNavigatePipeline}
           />
           <Stat
             value={null}
             label="ACCOUNTS TO WATCH"
             note="Needs quota, trial and payment data"
-            href="?view=accounts"
+            href={PAGE_PATHS.accounts}
             onClick={onNavigateAccounts}
           />
         </div>
@@ -195,15 +197,9 @@ export function TodayView({
                       {String(record.issue.custom?.next_action || "Follow up")}
                     </span>
                     <span className="one-row-sub">
-                      <a
-                        href={`?view=pipeline`}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onOpen(record);
-                        }}
-                      >
+                      <AppLink href={issuePath(record.issue.id)} onNavigate={() => onOpen(record)}>
                         {String(record.issue.custom?.company || record.issue.title)}
-                      </a>
+                      </AppLink>
                       {record.issue.custom?.company ? ` · ${record.issue.title}` : ""}
                     </span>
                   </span>
@@ -230,7 +226,11 @@ export function TodayView({
               return (
                 <div className="one-lead" key={record.issue.id}>
                   <span className="one-lead-head">
-                    <strong>{String(record.issue.custom?.company || record.issue.title)}</strong>
+                    <strong>
+                      <AppLink href={issuePath(record.issue.id)} onNavigate={() => onOpen(record)}>
+                        {String(record.issue.custom?.company || record.issue.title)}
+                      </AppLink>
+                    </strong>
                     <span>{relative(String(latest.received_at ?? ""))}</span>
                   </span>
                   <p>“{truncate(String(latest.message ?? ""), 140)}”</p>
