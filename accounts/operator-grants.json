@@ -19,5 +19,26 @@
     "subjectHash": "3354c9f139ef4d2e872245b1af080140816a95954c4e54aa596f2106c86cf95c",
     "permission": "accounts:admin:billing",
     "reviewedGrantId": "accounts-admin-billing-approved-20261105"
+  },
+  {
+    "product": "prospectus-directory",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hlSyajw9S",
+    "subjectHash": "ccb813fe4be0ea4ea2e3b8d453b1a975031f3d783e9db0866566b609b16e8951",
+    "permission": "accounts:admin:read",
+    "reviewedGrantId": "accounts-admin-read-david-approved-20261106"
+  },
+  {
+    "product": "prospectus-directory",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hlSyajw9S",
+    "subjectHash": "ccb813fe4be0ea4ea2e3b8d453b1a975031f3d783e9db0866566b609b16e8951",
+    "permission": "accounts:admin:entitlements",
+    "reviewedGrantId": "accounts-admin-entitlements-david-approved-20261106"
+  },
+  {
+    "product": "prospectus-directory",
+    "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hlSyajw9S",
+    "subjectHash": "ccb813fe4be0ea4ea2e3b8d453b1a975031f3d783e9db0866566b609b16e8951",
+    "permission": "accounts:admin:billing",
+    "reviewedGrantId": "accounts-admin-billing-david-approved-20261106"
   }
 ]
