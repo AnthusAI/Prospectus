@@ -1,5 +1,7 @@
 # Quota
 
+> **Agreed change, not built yet (2026-11-05):** quota is moving to real cost. Units become microdollars of what each Account actually costs, a plan's weekly allowance becomes a quarter of its monthly cost budget, and pay-after usage moves to an SQS queue. See [COST_ACCOUNTING.md](COST_ACCOUNTING.md), which wins where the two differ. The rest of this document describes what is built and deployed today.
+
 Every Account has one weekly quota, shared by every app on it. A customer sees a single number: the percent of this week's quota used, from 0 to 100, and when it resets. Products do not report money. They report billable items (tokens, vCPU seconds, Lambda GB-seconds), and Prospectus converts them into its own internal usage units with a private rate table. This document is the reviewed model. The behavior specifications are `features/quota-*.feature`; the code is in `quota/`, the product client is in `packages/accounts-client` (`/server`), and the epic is kanbus-05fc67.
 
 Billing is separate. Quota says how much an Account may use per week; billing (see [BILLING.md](BILLING.md), not built) may later sell more. Quota writes no billing record and billing writes no quota record. Reconciling recorded usage against real AWS and OpenAI bills is out of scope for now (kanbus card in the epic).
