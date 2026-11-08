@@ -27,10 +27,22 @@
         "model": "claude-fable-5-1",
         "name": "Billing planner"
       }
+    },
+    {
+      "id": "998e7810-e1c7-4783-a316-130b2dfe852a",
+      "author": "home",
+      "text": "Ryan's decision 2026-11-08 (relayed by the Papyrus session): new Papyrus sites must launch from data changes only. See epic kanbus-b770c2 for API-created deployments of one papyrus product; this card's scope should follow that model for the shared tier, while dedicated sites keep the per-site registry until moved.",
+      "created_at": "2026-11-08T21:44:52.540609Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-opus-5-5",
+        "name": "Prospectus intake"
+      }
     }
   ],
   "created_at": "2026-10-31T12:34:04.964350Z",
-  "updated_at": "2026-10-31T12:36:38.054686Z",
+  "updated_at": "2026-11-08T21:44:52.540830Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

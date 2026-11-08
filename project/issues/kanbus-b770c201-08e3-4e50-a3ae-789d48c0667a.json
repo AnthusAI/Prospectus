@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-b770c201-08e3-4e50-a3ae-789d48c0667a",
+  "title": "Papyrus deployments created through an API and held as data (shared tier)",
+  "description": "Ryan's decision (2026-11-08, relayed by the Papyrus implementation session): launching a new site must need only data changes, never a code edit or deploy. Target: one papyrus product with tenant deployments created through an API and stored as Prospectus data, replacing a reviewed accounts/papyrus-sites.json entry per site for the shared tier. The shared tier signs in through ONE shared Google OAuth client by default; tenancy comes from the deployment record and Account membership, so there is no per-site Cognito pool, client or role registration. Later a tenant may bring its own Google client ID and secret. Dedicated sites (including the design partner's first three) stay on today's per-site registry until moved. Needs its own security review before any build reaches production. Related: kanbus-59284c (provisioning API), kanbus-4c99c6 (operator account setup), kanbus-db57cb (Papyrus as one sellable family), kanbus-6efecd (lifecycle events), kanbus-b19d5a (billing standing), kanbus-bb0b6c (cost accounting).",
+  "type": "epic",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-fe470f62-d5d9-4e67-bf4f-b746bd090e0e",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-11-08T21:44:52.379638Z",
+  "updated_at": "2026-11-08T21:44:52.380197Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus intake"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
