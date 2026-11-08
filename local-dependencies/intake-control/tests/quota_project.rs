@@ -34,6 +34,7 @@ fn quota_project_accepts_only_its_own_kinds_and_canonical_segments() {
         format!("settings/{ACCOUNT}.json"),
         format!("weeks/{ACCOUNT}/12.json"),
         format!("journal/{}.json", "a".repeat(64)),
+        format!("costs/{ACCOUNT}/20261109.json"),
     ] {
         assert_eq!(
             call(root.path(), "quota", commit(&path))["result"]["value"]["v"],
@@ -49,6 +50,7 @@ fn quota_project_accepts_only_its_own_kinds_and_canonical_segments() {
         format!("accounts/{ACCOUNT}.json"),
         format!("lines/{ACCOUNT}/7061707972757300.json"),
         "weeks/not-hex.json".to_owned(),
+        "costs/not-hex/20261109.json".to_owned(),
     ] {
         assert_eq!(
             call(root.path(), "quota", commit(&path))["error"],
@@ -61,6 +63,16 @@ fn quota_project_accepts_only_its_own_kinds_and_canonical_segments() {
                 root.path(),
                 project,
                 commit(&format!("weeks/{ACCOUNT}/1.json"))
+            )["error"],
+            "invalid"
+        );
+    }
+    for project in ["billing", "accounts", "identities"] {
+        assert_eq!(
+            call(
+                root.path(),
+                project,
+                commit(&format!("costs/{ACCOUNT}/20261109.json"))
             )["error"],
             "invalid"
         );
