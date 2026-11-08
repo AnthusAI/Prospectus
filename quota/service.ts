@@ -418,6 +418,51 @@ export class Quota {
     });
   }
 
+  /**
+   * The cost ledger's charge (docs/COST_ACCOUNTING.md): a signed amount of real cost in microdollars, applied to the
+   * current week whatever product or week the cost came from, because past weeks are never rewritten. A correction may
+   * lower usage but never below zero. The ledger has already checked the account and product; this writes only the
+   * week. Repeating the same operation ID returns the first result.
+   */
+  async applyCost(input: {
+    accountId: unknown;
+    operationId: unknown;
+    product: string;
+    units: number;
+    source: string;
+    detail?: Record<string, unknown>;
+  }) {
+    const operationId = requireOperationId(input.operationId);
+    if (!Number.isSafeInteger(input.units))
+      fail(400, "invalid_quantity", "A cost must be whole microdollars.");
+    const context = await this.context(input.accountId);
+    const { accountId } = context;
+    return this.run<QuotaWeek>({
+      action: "cost.charged",
+      path: weekPath(accountId, context.week),
+      accountId,
+      operationId,
+      actor: "system:cost-ledger",
+      request: { product: input.product, units: input.units, source: input.source },
+      apply: (current, _nowMs, at) => {
+        const next = structuredClone(current ?? this.blankWeek(context, operationId, at));
+        const applied = Math.max(input.units, -next.usedUnits);
+        next.usedUnits = sum(next.usedUnits, applied);
+        next.usedByProduct[input.product] = Math.max(0, sum(next.usedByProduct[input.product] ?? 0, applied));
+        const bucket = `cost:${input.source}`;
+        next.usedByTableVersion[bucket] = sum(next.usedByTableVersion[bucket] ?? 0, applied);
+        next.allowanceUnits = context.allowanceUnits;
+        next.overshootUnits =
+          context.allowanceUnits === null ? 0 : Math.max(0, next.usedUnits - context.allowanceUnits);
+        return {
+          next,
+          result: { accountId, status: "charged" },
+          detail: { units: applied, requested: input.units, week: context.week, ...input.detail },
+        };
+      },
+    });
+  }
+
   /** Operator: choose the account's plan and/or a per-account weekly allowance override. `null` clears a field. */
   async setAllowance(
     operator: Context,

@@ -61,9 +61,25 @@ test("an unparseable, placeholder or inconsistent table is unavailable and never
     text((table) => (table.rates["example.tokens"].units = "1")),
     text((table) => (table.rates["NoNamespace"] = { units: 1, per: 1 })),
     text((table) => (table.defaultPlan = "missing")),
+    text(
+      (table) => (table.plans["example-basic"] = { weeklyAllowanceUnits: 1, monthlyBudgetMicrodollars: 4 }),
+    ),
+    text((table) => (table.plans["example-basic"] = {})),
+    text((table) => (table.plans["example-basic"] = { monthlyBudgetMicrodollars: -4 })),
+    text((table) => (table.plans["example-basic"] = { monthlyBudgetMicrodollars: 4.5 })),
   ];
   for (const value of broken)
     assert.throws(() => parseRateTable(value), refused(503, "quota_unavailable"), value);
+});
+
+// features/quota-real-cost.feature: the weekly allowance is a quarter of the monthly budget, rounded down.
+test("a monthly cost budget allows a quarter of itself each week, and weekly tables still parse", () => {
+  const plans = (plan: Record<string, number>) =>
+    parseRateTable(text((table) => (table.plans["example-basic"] = plan))).plans["example-basic"];
+  assert.deepEqual(plans({ monthlyBudgetMicrodollars: 40_000_000 }), { weeklyAllowanceUnits: 10_000_000 });
+  assert.deepEqual(plans({ monthlyBudgetMicrodollars: 10_000_001 }), { weeklyAllowanceUnits: 2_500_000 });
+  assert.deepEqual(plans({ monthlyBudgetMicrodollars: 0 }), { weeklyAllowanceUnits: 0 });
+  assert.deepEqual(plans({ weeklyAllowanceUnits: 7 }), { weeklyAllowanceUnits: 7 });
 });
 
 test("the Parameter Store source caches briefly, refreshes, and never caches a failure", async () => {

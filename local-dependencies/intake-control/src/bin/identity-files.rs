@@ -217,7 +217,7 @@ fn path_belongs_to_project(kind: &str, project: &str) -> bool {
             "issuer",
         ]
         .contains(&kind),
-        "quota" => ["settings", "weeks", "journal"].contains(&kind),
+        "quota" => ["settings", "weeks", "journal", "costs"].contains(&kind),
         "identities" => [
             "google",
             "aliases",
