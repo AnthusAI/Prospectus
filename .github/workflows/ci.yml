@@ -40,6 +40,9 @@ jobs:
       - run: npm run build --prefix .build/kanbus-ui/packages/ui
       - run: npm ci
       - run: npm ci --prefix packages/accounts-client
+      - run: npm ci --prefix packages/cost-accounting
+      - run: npm run build --prefix packages/cost-accounting
+      - run: npm run test:cost-accounting
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

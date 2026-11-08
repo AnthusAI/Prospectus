@@ -1,0 +1,51 @@
+{
+  "name": "@anthus/cost-accounting",
+  "version": "0.1.0",
+  "description": "Anthus cost accounting for every app: the anthus: cost tags, a CDK helper and CI check that apply them, and the batched usage sender for Prospectus usage queues.",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    "./tags": {
+      "types": "./dist/tags.d.ts",
+      "default": "./dist/tags.js"
+    },
+    "./cdk": {
+      "types": "./dist/cdk.d.ts",
+      "default": "./dist/cdk.js"
+    },
+    "./usage": {
+      "types": "./dist/usage.d.ts",
+      "default": "./dist/usage.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "aws-cdk-lib": "^2.200.0",
+    "constructs": "^10.0.0",
+    "@aws-sdk/client-sqs": "^3.900.0"
+  },
+  "peerDependenciesMeta": {
+    "aws-cdk-lib": {
+      "optional": true
+    },
+    "constructs": {
+      "optional": true
+    },
+    "@aws-sdk/client-sqs": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aws-sdk/client-sqs": "3.1152.0",
+    "@types/node": "22.20.5",
+    "aws-cdk-lib": "2.272.0",
+    "constructs": "10.8.1",
+    "typescript": "5.9.3"
+  }
+}
