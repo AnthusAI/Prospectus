@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build && vite build --config vite.portal.config.ts",
     "verify:bundles": "node scripts/verify-bundles.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts accounts/google-identity.test.ts accounts/google-direct.test.ts accounts/site-subjects.test.ts accounts/babulus.test.ts accounts/deployment.test.ts accounts/refusal-log.test.ts billing/plans.test.ts billing/profile.test.ts billing/lines.test.ts billing/ledger.test.ts billing/pdf.test.ts billing/deployment.test.ts quota/quota.test.ts quota/costs.test.ts quota/handler.test.ts quota/rate-table.test.ts quota/week.test.ts",
+    "test": "node --import tsx --test test/*.test.ts accounts/google-identity.test.ts accounts/google-direct.test.ts accounts/site-subjects.test.ts accounts/babulus.test.ts accounts/deployment.test.ts accounts/refusal-log.test.ts billing/plans.test.ts billing/profile.test.ts billing/lines.test.ts billing/ledger.test.ts billing/pdf.test.ts billing/deployment.test.ts quota/quota.test.ts quota/costs.test.ts quota/usage-drain.test.ts quota/handler.test.ts quota/rate-table.test.ts quota/week.test.ts",
     "intake:local": "node --import tsx server/local.ts",
     "test:all": "npm test && npm run test:accounts:durable && npm run test:billing:durable && npm run test:quota:durable && npm run test:accounts:ui && npm run test:intake:integration && npm run test:control-binding",
     "test:intake": "node --import tsx --test test/intake*.test.ts",
@@ -37,6 +37,7 @@
   "dependencies": {
     "@aws-sdk/client-lambda": "3.1152.0",
     "@aws-sdk/client-sesv2": "3.1152.0",
+    "@aws-sdk/client-sqs": "3.1152.0",
     "@kanbus/ui": "file:.build/kanbus-ui/packages/ui",
     "pdf-lib": "1.17.1",
     "react": "^18.3.1",
