@@ -36,10 +36,22 @@
       "text": "Ryan's decision 2026-10-31: suspension is only ever done by operators/admins, never automatically. Failed or late payments create follow-ups for an operator; nothing in billing changes an entitlement.",
       "created_at": "2026-10-31T12:53:23.515195Z",
       "comment_type": "default"
+    },
+    {
+      "id": "3a586af8-a0e5-4e28-9051-9e632097c8f0",
+      "author": "home",
+      "text": "Ryan's decision 2026-11-08 (confirmed in the Prospectus session) replaces the 2026-10-31 'never automatic' rule: 14 days past due makes the product read-only (public pages stay up, paying restores it); cancellation deletes the deployment's data after 30 days, export available throughout. Billing still never writes the account document: each line has a derived standing (good, restricted, cancelled, deleted) that authorize combines with the entitlement. Model: docs/BILLING.md 'Billing standing and access'; spec: features/billing-standing.feature. Open questions there (admin hold, customer warnings, reopening, invoiced mode) go to Ryan before building.",
+      "created_at": "2026-11-08T21:16:46.282278Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-opus-5-5",
+        "name": "Prospectus intake"
+      }
     }
   ],
   "created_at": "2026-10-31T12:33:32.747757Z",
-  "updated_at": "2026-10-31T12:53:23.515667Z",
+  "updated_at": "2026-11-08T21:16:46.282997Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",

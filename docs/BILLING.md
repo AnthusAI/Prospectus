@@ -6,7 +6,7 @@ Billing charges clients for the products their accounts hold: each Papyrus site 
 
 - **Quota is separate.** The weekly usage quota an Account may consume is [QUOTA.md](QUOTA.md): its own records, its own routes and its own operator permission. Billing may sell quota later but writes none of it.
 
-- **Billing is separate from access.** The account document stays the authorization record, committed by one conditional write (see [ARCHITECTURE.md](ARCHITECTURE.md#accounts)). Billing never writes it and never grants, disables or suspends an entitlement. An account with no billing profile works normally.
+- **Billing never writes access, but its standing limits it.** The account document stays the authorization record, committed by one conditional write (see [ARCHITECTURE.md](ARCHITECTURE.md#accounts)). Billing never writes it and never grants or disables an entitlement. Instead billing derives a standing for each line, and authorization combines the entitlement with that standing: a line long past due makes the product read-only, and a cancelled line schedules the deployment's data for deletion (see [Billing standing and access](#billing-standing-and-access)). An account with no billing profile, and a product with no line, works normally.
 - **Ordinary files.** Every billing record is an ordinary Kanbus/Virtuus JSON file under `prospectus-central/billing/`, with control files under `_virtuus/prospectus-central/billing/`, written through the Rust bridge with conditional writes and deterministic operation ids. DynamoDB may hold a catalog for CRM listing that can be rebuilt from the files; nothing consults it for authority or balances.
 - **US dollars, integer cents.** `currency` is always `usd`; any other value is refused. Every amount is an integer in minor units (cents). No floating point is used anywhere in billing.
 - **No tax lines.** Invoices carry no tax in the MVP, so total equals subtotal. Tax is revisited before any live mode.
@@ -195,7 +195,38 @@ Everything that talks to Stripe goes through one `PaymentProcessor` interface (`
 - **Parameters.** The restricted API key and the webhook signing secret are SSM SecureString parameters `/prospectus/billing/stripe/secret-key/v1` and `/prospectus/billing/stripe/webhook-secret/v1`, created by Ryan by hand (kanbus-c49243), never by CDK or the repository. A missing or short parameter fails closed with `503 billing_unavailable`.
 - **Webhook.** `POST /billing/stripe/webhook` has no authorizer. It verifies Stripe's v1 signature with a 300-second tolerance, rejects bodies over the limit, unsigned, tampered or stale events and unknown event types with `400` and writes nothing, deduplicates by event id in the journal, and applies events idempotently and in any delivery order. An event for an unknown account is refused and logged with a reason code only.
 - **Events consumed:** `invoice.finalized`, `invoice.paid`, `invoice.payment_failed`, `invoice.voided`, `invoice.marked_uncollectible`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `checkout.session.completed`, `charge.refunded`.
-- **No automatic suspension.** A failed payment marks the invoice past due and creates a billing follow-up. Nothing in billing changes an entitlement; suspension is only ever an operator action through the entitlement route.
+- **Standing, not suspension.** A failed payment marks the invoice past due and creates a billing follow-up. Nothing in billing changes an entitlement; the line's standing follows the rules in [Billing standing and access](#billing-standing-and-access), and disabling a product outright stays an operator action through the entitlement route.
+
+## Billing standing and access
+
+Ryan decided on 2026-11-08 that billing state may change access automatically, replacing the earlier rule that it never does. The rule is:
+
+- **Past due for 14 days: editing becomes read-only.** The product keeps working for reading, and a Papyrus site's public pages stay up. Paying restores editing automatically.
+- **Cancelled: the deployment's data is deleted 30 days later.** Export stays available the whole time, including while read-only and after cancellation.
+
+**Standing is derived, never edited.** Each billing line has a standing computed from the ledger and the line, never stored by hand:
+
+| Standing | When | Effect |
+| --- | --- | --- |
+| `good` | No invoice for the line is more than 14 days past its due date, and the line is not cancelled | Normal access |
+| `restricted` | An invoice covering the line has a balance above zero more than 14 days after its due date (`restrictedSince` = due date + 14 days) | Read-only: write capabilities are withheld; read and export remain |
+| `cancelled` | The line is `ended` by cancellation (a Stripe `customer.subscription.deleted`, or an admin ending it as cancelled); `deleteAfter` = end + 30 days | Read-only, export available; the product deletes the deployment's data at `deleteAfter` |
+| `deleted` | The product has confirmed deletion | No access; the line stays on record |
+
+A line with no invoices past due is `good`. Partial payment does not restore standing: the balance must reach zero, or the invoice be voided, credited to zero or written off. Net terms still apply first, so an invoice issued on Net 30 becomes restricted 44 days after issue.
+
+**How access applies it.** The central `authorize` decision and the account directory include each product's standing. For a `restricted` or `cancelled` line, authorize withholds write capabilities (`console:write`, `members:write` and any product write capability) and keeps read capabilities. Prospectus does not serve product data, so the product enforces read-only for its own data and keeps any public pages up; export is a read capability and is never withheld before `deleted`.
+
+**How products learn of it.** Every standing change is published as an account lifecycle event (kanbus-6efecd) to the product's subscriber: `billing.standing_changed {accountId, product, deployment, standing, restrictedSince?, deleteAfter?, revision, operationId, at}`. At `deleteAfter`, `deployment.deletion_due` is published; the product deletes the deployment's data and confirms, which moves the line to `deleted`. Prospectus never deletes a product's data itself. Until the event stream exists, products read standing from authorize.
+
+**Dates.** Standing is evaluated against the clock whenever it is read, so it needs no scheduled job to take effect. Events for time-based changes (a line becoming restricted, deletion becoming due) are produced by the daily billing check.
+
+Not decided yet (put to Ryan before building):
+
+- Whether an admin may hold an account's standing at `good` (for example a design partner or a slow-paying invoiced client), and whether that hold expires.
+- Whether the customer is warned before restriction and before deletion (for example at 7 days past due and 7 days before deletion), and through which channel.
+- Whether a cancelled line can be reopened before `deleteAfter`, cancelling the deletion.
+- Whether the rule applies to invoiced-mode clients exactly as to direct-mode (Stripe) clients.
 
 ## Permission
 
@@ -209,7 +240,8 @@ Billing produces follow-ups in the CRM Serve queue, made from the account id and
 
 - an invoice becomes past due (a Stripe `invoice.payment_failed`, or a manual invoice past its due date at the daily check), with the balance and days overdue;
 - a subscription is cancelled or a line ended, asking whether to disable the product;
-- an entitlement is granted with no line, or disabled with a line still open.
+- an entitlement is granted with no line, or disabled with a line still open;
+- a line's standing changes (restricted, restored, cancelled, deletion due), with the dates.
 
 `scripts/reconcile-billing.ts` runs with the operator's own credentials, dry run by default, and lists ledger records that differ from Stripe, Stripe objects with no ledger record and payments with unallocated remainders, printing counts and ids only. The daily due-date check runs inside that script unless Ryan approves a scheduled rule and role.
 
@@ -258,7 +290,7 @@ Ryan's decisions were recorded on 2026-10-31 on kanbus-a78bcd.
 | 3   | Net terms and due dates        | Decided | Net 30 by default, optional per-account override, no late fees                                                                                         |
 | 4   | Who records and allocates      | Decided | Admins only (`accounts:admin:billing`), no second-operator confirmation; the CLI supports it for agents                                                |
 | 5   | Write-offs                     | Partly  | Admins only mark `uncollectible`; the invoice and journal stay on record. **Open:** whether a written-off balance counts toward what is owed           |
-| 6   | Automatic suspension           | Decided | Never automatic; operators only. Billing events create follow-ups                                                                                      |
+| 6   | Automatic suspension           | Decided | Revised 2026-11-08: 14 days past due makes the product read-only (public pages stay up); cancellation deletes the deployment's data after 30 days, export available throughout. See [Billing standing and access](#billing-standing-and-access). Replaces "never automatic" (2026-10-31) |
 | 7   | Numbering and documents        | Decided | Numbers are `YYYYMM-NNN`, sequential within each month (Ryan, 2026-10-31); every invoice has a PDF, manual ones included. the issuer block and payment methods are admin-set data (`billing/issuer/0.json`), not code (Ryan, 2026-10-31)         |
 | 8   | One invoice per site or client | Decided | One combined invoice per client per period across all products; each line is its own line item. Direct: one subscription per client, one item per line |
 | 9   | Pricing and plans              | Decided | Out of scope; catalog structure with test-mode placeholder prices                                                                                      |
