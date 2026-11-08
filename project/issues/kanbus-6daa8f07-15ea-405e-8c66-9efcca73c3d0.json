@@ -1,0 +1,25 @@
+{
+  "id": "kanbus-6daa8f07-15ea-405e-8c66-9efcca73c3d0",
+  "title": "Custom domains on deployments with ownership verification",
+  "description": "A deployment may claim hostnames after a DNS TXT proof; a hostname belongs to one deployment at a time; a retired deployment's hostnames are released only after a cooling-off period to prevent takeover.",
+  "type": "story",
+  "status": "open",
+  "priority": 2,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-b770c201-08e3-4e50-a3ae-789d48c0667a",
+  "labels": [],
+  "dependencies": [],
+  "comments": [],
+  "created_at": "2026-11-08T21:44:52.456765Z",
+  "updated_at": "2026-11-08T21:44:52.456783Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus intake"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}
