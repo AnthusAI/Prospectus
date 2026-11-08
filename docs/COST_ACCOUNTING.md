@@ -2,7 +2,7 @@
 
 Prospectus keeps a private ledger of what each customer actually costs Anthus, in US dollars, broken down by Account, app and day. The weekly quota is drawn against that real cost. Customers never see dollars: they see the percent of this week's quota used, and each app's share of it in percent (see [QUOTA.md](QUOTA.md)). Anthus sets the price of each plan and so engineers the margin.
 
-This is the model Ryan agreed on 2026-11-05. It is not built yet. Where it changes what [QUOTA.md](QUOTA.md) describes, this document wins, and the quota code changes to match (see [Changes to the built quota](#changes-to-the-built-quota)).
+This is the model Ryan agreed on 2026-11-05. Ryan asked for it to be built on 2026-11-08, tested first on the Papyrus sites Anthus operates and then on a design partner's three new sites; the epic is kanbus-bb0b6c and the behavior specifications are `features/cost-*.feature`. Where it changes what [QUOTA.md](QUOTA.md) describes, this document wins, and the quota code changes to match (see [Changes to the built quota](#changes-to-the-built-quota)).
 
 ## Principles
 
@@ -16,13 +16,13 @@ This is the model Ryan agreed on 2026-11-05. It is not built yet. Where it chang
 
 Every cost is attributed to:
 
-| Field      | Value                                                                                                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Account    | The Prospectus central Account UUID                                                                                                                                                              |
-| App        | The product's ID in the Prospectus product registry (`papyrus`, `cyclotron`, `babulus`, `chatticus`, ...). A registry ID, never free text, so a breakdown cannot split into near-duplicate rows. |
-| Deployment | Optional. Distinguishes several deployments of one app on one Account, for example two Papyrus sites.                                                                                            |
-| Category   | What was consumed, for example `openai.tokens.input`, `jev.tokens`, `aws.lambda`, `aws.appsync`, `aws.dynamodb`, `aws.amplify`. The same namespaced kinds as quota items.                        |
-| Day        | The UTC day the cost was incurred.                                                                                                                                                               |
+| Field      | Value                                                                                                                                                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Account    | The Prospectus central Account UUID                                                                                                                                                                                                                                                                          |
+| App        | The product family (`papyrus`, `cyclotron`, `babulus`, `chatticus`, ...), from a fixed list in the registry, never free text, so a breakdown cannot split into near-duplicate rows. Every Papyrus site is app `papyrus` (agreed with the Papyrus session on 2026-11-08), whatever its registry product name. |
+| Deployment | Optional. Distinguishes several deployments of one app on one Account. For Papyrus it is the site ID (`dataparade`, `p-apyr-us`).                                                                                                                                                                            |
+| Category   | What was consumed, for example `openai.tokens.input`, `jev.tokens`, `aws.lambda`, `aws.appsync`, `aws.dynamodb`, `aws.amplify`. The same namespaced kinds as quota items.                                                                                                                                    |
+| Day        | The UTC day the cost was incurred.                                                                                                                                                                                                                                                                           |
 
 The customer's cost breakdown is by app (and deployment where there is more than one), shown only as each app's percent of the quota.
 
@@ -30,11 +30,14 @@ The customer's cost breakdown is by app (and deployment where there is more than
 
 Every AWS resource every app creates carries these tags. Prospectus reads costs by them.
 
-| Tag key             | Value                                                                                              |
-| ------------------- | -------------------------------------------------------------------------------------------------- |
-| `anthus:app`        | The app's registry ID. Always present.                                                             |
-| `anthus:account`    | The Account UUID, on a resource that serves one customer. `shared` on a resource that serves many. |
-| `anthus:deployment` | The deployment ID, where an app can have several per Account.                                      |
+| Tag key             | Value                                                                                                       |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `anthus:app`        | The app's registry ID. Always present.                                                                      |
+| `anthus:account`    | The Account UUID, on a resource that serves one customer. `shared` on a resource that serves many.          |
+| `anthus:deployment` | The deployment ID, where an app can have several per Account.                                               |
+| `anthus:cost-key`   | `<account>/<app>/<deployment>` (deployment empty when absent), set by the helper from the three tags above. |
+
+Cost Explorer groups by at most two dimensions per query, so the daily import groups by `anthus:cost-key` and service in one query and splits the key back into its parts. The three separate tags stay for people reading the bill.
 
 The existing `anthus:project` and `anthus:surface` tags stay.
 
@@ -58,18 +61,22 @@ There are three sources, all landing in the same ledger.
 
 ## How apps send usage
 
-Apps send usage to an Amazon SQS queue that Prospectus owns.
+Apps send usage to Amazon SQS queues that Prospectus owns, **one queue per registered product**.
 
 1. The app keeps a running tally in memory, per Account, app, deployment and category.
-2. About once a minute it sends one message with the tally to the queue: one fast call that never waits on Prospectus. A failed send is retried with the same message.
-3. A Prospectus consumer function reads messages up to ten at a time and writes them to the ledger and the quota.
-4. If Prospectus is down or busy, messages wait in the queue (retention up to 14 days). Messages that keep failing go to a dead-letter queue, with an alarm.
+2. About once a minute it sends one message with the tally to its queue: one fast call that never waits on Prospectus. A failed send is retried with the same message. In a short-lived runtime (Lambda, Amplify compute), where a frozen process can lose memory, the sender sends before the invocation ends, one message per invocation that recorded anything.
+3. A scheduled Prospectus consumer runs once a minute, drains every product queue up to a bounded number of messages, and writes them to the ledger and the quota.
+4. If Prospectus is down or busy, messages wait in the queue (retention up to 14 days). Messages that keep failing go to the product's dead-letter queue, with an alarm.
 
 Each message carries a client-generated operation ID, so a message delivered twice is counted once.
 
-Cost: SQS is about $0.40 per million requests after the first million a month, which are free. At one message per app instance per minute this is pennies a month. EventBridge (about $1 per million events) and the existing signed HTTP route were considered: they cost more and make the app depend on Prospectus being up.
+**Why one queue per product.** SQS does not tell the consumer which product sent a message in a form the registry can check (it reports an opaque role ID, not the role ARN the registry holds). A queue whose policy lets exactly one registered role send proves the sender, so the consumer takes the product from the queue and never from the message body. Queues cost nothing to exist.
 
-The queue, its dead-letter queue, the consumer and the queue policy are Prospectus infrastructure code. The queue policy lets each registered product's role send, and nothing else, generated from the product registry. Each app's role gains `sqs:SendMessage` on that one queue in its own infrastructure code. Both are new persistent permissions and need the owner's approval when they are built.
+**Why a scheduled drain.** A Lambda event source mapping keeps long-polling every queue, which costs roughly 650,000 empty receives per queue per month. Draining all queues once a minute costs about 43,000 receives per queue per month and one small invocation a minute, and usage already reaches the quota about a minute late.
+
+Cost: SQS is about $0.40 per million requests after the first million a month, which are free, so this is pennies a month. EventBridge (about $1 per million events) and the existing signed HTTP route were considered: they cost more and make the app depend on Prospectus being up.
+
+The queues, dead-letter queues, alarm, consumer, schedule and queue policies are Prospectus infrastructure code generated from the product registry, behind a deployment flag that is off until approved. Each app's role gains `sqs:SendMessage` on its own queue in its own infrastructure code. Both are new persistent permissions and need the owner's approval before they are deployed.
 
 The library apps use for this (batching, retries, operation IDs) lives in `packages/accounts-client`, with a Python equivalent for Python apps, so no app writes its own.
 
@@ -80,7 +87,7 @@ The library apps use for this (batching, retries, operation IDs) lives in `packa
 - **Units are microdollars of real cost.** The private price list holds Anthus's actual cost per item (per token, per GB-second, per job), not a marked-up rate.
 - **Weekly budget = monthly amount ÷ 4.** A plan names a monthly cost budget, for example $40, and each quota week allows a quarter of it, $10. The monthly amount is a parameter of the plan in the private table and changes without code. The worst case is 52 weeks a year, about $43 a month on average, which the plan's price covers.
 - **The week** is unchanged: it starts Saturday at 12:00 noon America/New_York for every Account, and unused budget does not carry over.
-- **Costs that accrue without use count.** The daily import charges each Account's attributed costs to the quota week they fall in, so the percentage drops a little each day even when nobody uses the app.
+- **Costs that accrue without use count.** The daily import charges each Account's attributed costs, and any correction of an estimate, to the current quota week, so the percentage drops a little each day even when nobody uses the app. Past weeks are never rewritten, so a cost incurred on a Friday and imported on Sunday counts in the new week.
 - **Refusal** is unchanged: at 100% new work is refused until the week resets.
 
 ## Changes to the built quota
@@ -88,7 +95,7 @@ The library apps use for this (batching, retries, operation IDs) lives in `packa
 The quota service in `quota/` is built and deployed. These changes bring it to this model:
 
 - Units become microdollars; the rate table's `rates` become cost prices, and a plan's allowance becomes `monthlyBudgetMicrodollars`, with the weekly allowance computed as a quarter of it.
-- A new private cost ledger records estimated and actual costs per Account, app, deployment, category and day, separate from the quota week records, and replaces estimates with actuals.
+- A new private cost ledger records estimated and actual costs per Account, app, deployment, category and day, separate from the quota week records, and replaces estimates with actuals. It is stored in the existing `quota` Virtuus project under a new `costs` kind (`prospectus-central/quota/costs/<accountUUID>/<YYYYMMDD>.json`), so it needs no new storage permission: the Rust bridge adds `costs` to the quota project's kinds. Each day's document holds aggregates only (bounded by apps, deployments and categories); every message and import is its own journal file.
 - The quota accepts charges from the daily import and from the queue consumer, in addition to the existing routes.
 - `usage` (pay-after recording) moves to the queue. `check` and the reservation routes stay as they are.
 
