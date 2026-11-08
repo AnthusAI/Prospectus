@@ -4,6 +4,10 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as gateway from "aws-cdk-lib/aws-apigateway";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as events from "aws-cdk-lib/aws-events";
+import * as eventTargets from "aws-cdk-lib/aws-events-targets";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import type * as cognito from "aws-cdk-lib/aws-cognito";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -20,6 +24,7 @@ import {
   SITE_SUBJECT_SECRET_INITIALIZER_SOURCE,
 } from "./site-subject-secret";
 import type { RateTableConfiguration } from "../../quota/rate-table";
+import { appOf } from "../../quota/costs";
 export interface AccountsPlaneOptions {
   code: lambda.Code;
   bffCode: lambda.Code;
@@ -52,6 +57,11 @@ export interface AccountsPlaneOptions {
    * the ten operator write routes to the staff BFF role and the API access policy. Absent or false: the synthesized
    * output is exactly what it was before billing existed. */
   billingLedger?: boolean;
+  /** `usageQueues` in accounts/deployment.json (docs/COST_ACCOUNTING.md). True creates one usage queue and dead-letter
+   * queue per registered cost-accounted product, each sendable only by that product's roles, an alarm per
+   * dead-letter queue, receive and delete for the central runtime, and a once-a-minute drain schedule. Absent or
+   * false: the synthesized output is exactly what it was before cost accounting. */
+  usageQueues?: boolean;
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
@@ -383,6 +393,76 @@ export class AccountsPlane extends Construct {
         PROSPECTUS_PRODUCTS: cdk.Stack.of(this).toJsonString(products),
       },
     });
+    if (options.usageQueues) {
+      const queueUrls: Record<string, string> = {};
+      const queueArns: string[] = [];
+      // Papyrus sites are not in PROSPECTUS_PRODUCTS (the Lambda reads the bundled registry), so take both.
+      for (const entry of [...(products as ProductRegistration[]), ...(options.papyrusSites ?? [])]) {
+        if (!appOf(entry.product) || entry.audience === "public-reader") continue;
+        if (entry.product.length > 59) throw new Error(`Usage queue name too long for ${entry.product}.`);
+        const senders = [
+          entry.roleArn,
+          entry.quotaCaller?.roleArn,
+          (entry as { executionDelegation?: { roleArn?: string } }).executionDelegation?.roleArn,
+        ].filter((arn): arn is string => typeof arn === "string");
+        const id = entry.product.replace(/[^A-Za-z0-9]/g, "");
+        const deadLetters = new sqs.Queue(this, `UsageDeadLetters${id}`, {
+          queueName: `prospectus-usage-${entry.product}-dlq`,
+          retentionPeriod: cdk.Duration.days(14),
+          encryption: sqs.QueueEncryption.SQS_MANAGED,
+          enforceSSL: true,
+        });
+        const queue = new sqs.Queue(this, `Usage${id}`, {
+          queueName: `prospectus-usage-${entry.product}`,
+          retentionPeriod: cdk.Duration.days(14),
+          visibilityTimeout: cdk.Duration.minutes(5),
+          encryption: sqs.QueueEncryption.SQS_MANAGED,
+          enforceSSL: true,
+          deadLetterQueue: { queue: deadLetters, maxReceiveCount: 10 },
+        });
+        // Exactly this product's roles may send; the drain takes the product from the queue, never the message.
+        queue.addToResourcePolicy(
+          new iam.PolicyStatement({
+            actions: ["sqs:SendMessage"],
+            principals: senders.map((arn) => new iam.ArnPrincipal(arn)),
+            resources: [queue.queueArn],
+          }),
+        );
+        new cloudwatch.Alarm(this, `UsageDeadLetterAlarm${id}`, {
+          alarmName: `prospectus-usage-${entry.product}-dead-letters`,
+          metric: deadLetters.metricApproximateNumberOfMessagesVisible({
+            period: cdk.Duration.minutes(5),
+            statistic: "Maximum",
+          }),
+          threshold: 1,
+          evaluationPeriods: 1,
+          comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        });
+        queueUrls[entry.product] = queue.queueUrl;
+        queueArns.push(queue.queueArn);
+      }
+      if (queueArns.length) {
+        runtime.addToPolicy(
+          new iam.PolicyStatement({
+            actions: ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility"],
+            resources: queueArns,
+          }),
+        );
+        central.addEnvironment("PROSPECTUS_USAGE_QUEUES", stack.toJsonString(queueUrls));
+        new events.Rule(this, "UsageDrainSchedule", {
+          ruleName: "prospectus-usage-drain",
+          description: "Drains every product's usage queue into the cost ledger once a minute.",
+          schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+          targets: [
+            new eventTargets.LambdaFunction(central, {
+              event: events.RuleTargetInput.fromObject({ prospectusTask: "usage-drain" }),
+              retryAttempts: 0,
+            }),
+          ],
+        });
+      }
+    }
     // The secret exists before the runtime that reads it is updated.
     if (siteSubjectSecretResource) central.node.addDependency(siteSubjectSecretResource);
     if (rateTableResource) central.node.addDependency(rateTableResource);

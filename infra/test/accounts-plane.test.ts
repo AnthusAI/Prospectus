@@ -30,6 +30,7 @@ function template(
   quotaRateTable?: { version: "v1"; parameterName: string },
   babulus?: ProductRegistration,
   billingLedger?: boolean,
+  usageQueues?: boolean,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -54,6 +55,7 @@ function template(
           ...(quotaRateTable ? { quotaRateTable } : {}),
           ...(babulus ? { babulus } : {}),
           ...(billingLedger !== undefined ? { billingLedger } : {}),
+          ...(usageQueues !== undefined ? { usageQueues } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -1243,4 +1245,78 @@ test("the API access policy stays within the API Gateway size limit with the led
   assert.ok(added < 1300, "the ten routes stay small");
   // The ledger costs room, but the reviewed registry still fits with a wide margin.
   assert.ok(capacity(true) >= reviewed.length * 2, "room for at least twice the reviewed sites");
+});
+
+// features/cost-usage-queue.feature
+const withUsageQueues = (usageQueues: boolean | undefined, sites = deployedLengthSites(3)) =>
+  template(
+    true,
+    true,
+    true,
+    sites,
+    parameterStoreSigner,
+    false,
+    undefined,
+    [],
+    undefined,
+    undefined,
+    undefined,
+    usageQueues,
+  ) as any;
+
+test("with the usage queues flag off, the synthesized output is byte for byte what it was before", () => {
+  const reference = JSON.stringify(withUsageQueues(undefined));
+  assert.equal(JSON.stringify(withUsageQueues(false)), reference);
+  assert.ok(!reference.includes("prospectus-usage"), "no usage queue without the flag");
+  assert.ok(!reference.includes("sqs:"), "no SQS permission without the flag");
+  assert.equal(accountsDeployment()!.usageQueues, undefined, "committed off until approved");
+});
+
+test("with the usage queues flag on, each cost product gets its own queue, sendable only by its roles, and a drain", () => {
+  const sites = deployedLengthSites(3);
+  const built = withUsageQueues(true, sites);
+  const resources = Object.entries(built.Resources) as Array<[string, any]>;
+  const queues = resources.filter(([, resource]) => resource.Type === "AWS::SQS::Queue");
+  const names = queues.map(([, resource]) => resource.Properties.QueueName).sort();
+  // Three Papyrus sites and the Cyclotron console product; Anthus One and the CRM are not cost-accounted products.
+  assert.deepEqual(
+    names,
+    ["cyclotron", ...sites.map((site) => site.product)]
+      .flatMap((product) => [`prospectus-usage-${product}`, `prospectus-usage-${product}-dlq`])
+      .sort(),
+  );
+  const policies = resources.filter(([, resource]) => resource.Type === "AWS::SQS::QueuePolicy");
+  const sends = policies.flatMap(([, resource]) =>
+    resource.Properties.PolicyDocument.Statement.filter(
+      (statement: any) => statement.Action === "sqs:SendMessage",
+    ),
+  );
+  assert.equal(sends.length, 4);
+  for (const site of sites)
+    assert.ok(
+      sends.some(
+        (statement: any) => JSON.stringify(statement.Principal) === JSON.stringify({ AWS: site.roleArn }),
+      ),
+      `only ${site.product}'s role may send to its queue`,
+    );
+  for (const [, queue] of queues.filter(([, resource]) => !resource.Properties.QueueName.endsWith("-dlq"))) {
+    assert.equal(queue.Properties.RedrivePolicy.maxReceiveCount, 10);
+    assert.equal(queue.Properties.MessageRetentionPeriod, 1209600);
+    assert.equal(queue.Properties.SqsManagedSseEnabled, true);
+  }
+  const alarms = resources.filter(([, resource]) => resource.Type === "AWS::CloudWatch::Alarm");
+  assert.equal(alarms.length, 4);
+  const rules = resources.filter(([, resource]) => resource.Type === "AWS::Events::Rule");
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0][1].Properties.ScheduleExpression, "rate(1 minute)");
+  assert.deepEqual(JSON.parse(rules[0][1].Properties.Targets[0].Input), { prospectusTask: "usage-drain" });
+  const runtimePolicies = JSON.stringify(
+    resources.filter(([, resource]) => resource.Type === "AWS::IAM::Policy").map(([, resource]) => resource),
+  );
+  assert.ok(runtimePolicies.includes("sqs:ReceiveMessage"));
+  assert.ok(!runtimePolicies.includes("sqs:SendMessage"), "the central runtime never sends usage");
+  const central = resources.find(
+    ([, resource]) => resource.Properties?.FunctionName === "prospectus-central-accounts",
+  )![1];
+  assert.ok(central.Properties.Environment.Variables.PROSPECTUS_USAGE_QUEUES);
 });

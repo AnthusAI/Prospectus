@@ -18,6 +18,8 @@ import { RetiredSiteSubjects } from "./retired-site-subjects";
 import { Quota } from "../quota/service";
 import { unconfiguredRateTable, type RateTableSource } from "../quota/rate-table";
 import { quotaHandler } from "../quota/handler";
+import { CostLedger } from "../quota/costs";
+import { drainUsage, type UsageQueueClient } from "../quota/usage-drain";
 import { BillingIssuer } from "../billing/issuer";
 import { BillingLedger } from "../billing/ledger";
 import { BillingLines } from "../billing/lines";
@@ -42,6 +44,13 @@ export function canonicalAccountsHandler(
   quotaRateTable?: RateTableSource,
   /** Billing storage. Absent unless billing/deployment.json enables the ledger: billing routes then answer 404. */
   billingFiles?: IdentityFiles,
+  /** Per-product usage queues (docs/COST_ACCOUNTING.md). Absent unless the deployment enables them: the scheduled
+   * drain task then does nothing. */
+  usageDrain?: {
+    client: UsageQueueClient;
+    queues: Readonly<Record<string, string>>;
+    hasTime?: () => boolean;
+  },
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),
@@ -124,5 +133,31 @@ export function canonicalAccountsHandler(
   const retired = siteSubjectSecret
     ? new RetiredSiteSubjects(identityFiles, products, siteSubjectSecret, nowSeconds)
     : undefined;
-  return publicReaderHandler(routed, products, siteSubjectSecret, retired, nowSeconds);
+  const http = publicReaderHandler(routed, products, siteSubjectSecret, retired, nowSeconds);
+  const ledger =
+    quota && quotaFiles && usageDrain
+      ? new CostLedger(
+          quotaFiles,
+          async (accountId) => {
+            const document = (await service.read(accountId))?.value;
+            return document ? { entitlements: document.entitlements } : null;
+          },
+          quota,
+          quotaRateTable ?? unconfiguredRateTable,
+          clock,
+        )
+      : undefined;
+  // The scheduled usage drain (docs/COST_ACCOUNTING.md). Without the queues it does nothing.
+  const drain = async () => {
+    if (!ledger || !usageDrain) return { drained: false, recorded: 0, refused: 0, deferred: 0 };
+    const counts = await drainUsage({
+      client: usageDrain.client,
+      queues: usageDrain.queues,
+      ledger,
+      hasTime: usageDrain.hasTime,
+      log: (entry) => console.info(JSON.stringify(entry)),
+    });
+    return { drained: true, ...counts };
+  };
+  return Object.assign(http, { drainUsage: drain });
 }
