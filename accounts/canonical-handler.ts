@@ -20,6 +20,7 @@ import { unconfiguredRateTable, type RateTableSource } from "../quota/rate-table
 import { quotaHandler } from "../quota/handler";
 import { CostLedger } from "../quota/costs";
 import { drainUsage, type UsageQueueClient } from "../quota/usage-drain";
+import { importRecentCosts, type CostExplorerSource } from "../quota/cost-import";
 import { BillingIssuer } from "../billing/issuer";
 import { BillingLedger } from "../billing/ledger";
 import { BillingLines } from "../billing/lines";
@@ -49,6 +50,12 @@ export function canonicalAccountsHandler(
   usageDrain?: {
     client: UsageQueueClient;
     queues: Readonly<Record<string, string>>;
+    hasTime?: () => boolean;
+  },
+  /** The daily Cost Explorer import (docs/COST_ACCOUNTING.md). Absent unless the deployment enables it: the scheduled
+   * import task then does nothing. */
+  costImport?: {
+    source: CostExplorerSource;
     hasTime?: () => boolean;
   },
 ) {
@@ -135,7 +142,7 @@ export function canonicalAccountsHandler(
     : undefined;
   const http = publicReaderHandler(routed, products, siteSubjectSecret, retired, nowSeconds);
   const ledger =
-    quota && quotaFiles && usageDrain
+    quota && quotaFiles && (usageDrain || costImport)
       ? new CostLedger(
           quotaFiles,
           async (accountId) => {
@@ -159,5 +166,18 @@ export function canonicalAccountsHandler(
     });
     return { drained: true, ...counts };
   };
-  return Object.assign(http, { drainUsage: drain });
+  // The scheduled daily cost import. Without the configuration it does nothing.
+  const importCosts = async () => {
+    if (!ledger || !costImport) return { imported: false, days: [] };
+    const days = await importRecentCosts({
+      source: costImport.source,
+      ledger,
+      accountIds: async () => (await service.allAccounts()).map((document) => document.account.id),
+      nowMs: nowSeconds() * 1000,
+      hasTime: costImport.hasTime,
+      log: (entry) => console.info(JSON.stringify(entry)),
+    });
+    return { imported: days.length > 0 && days.every((day) => day.imported), days };
+  };
+  return Object.assign(http, { drainUsage: drain, importCosts });
 }

@@ -69,6 +69,10 @@ export function accountsDeployment() {
   if (config.usageQueues !== undefined && typeof config.usageQueues !== "boolean")
     throw new Error("usageQueues must be true or absent.");
   const usageQueues = config.usageQueues === true;
+  // docs/COST_ACCOUNTING.md: committed absent. True runs the daily Cost Explorer import through the management account.
+  if (config.costImport !== undefined && typeof config.costImport !== "boolean")
+    throw new Error("costImport must be true or absent.");
+  const costImport = config.costImport === true;
   const babulus = babulusFromEnvironment();
   return {
     consoleClientEnabled: consoleConfig.clientEnabled,
@@ -84,6 +88,7 @@ export function accountsDeployment() {
     ...(billingLedger ? { billingLedger } : {}),
     // Absent, not false, while off, so nothing in the synthesized output can differ.
     ...(usageQueues ? { usageQueues } : {}),
+    ...(costImport ? { costImport } : {}),
     labVerifier: reviewedLabVerifierEntry(
       JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
     ),

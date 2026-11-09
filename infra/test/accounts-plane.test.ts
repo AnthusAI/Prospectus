@@ -31,6 +31,7 @@ function template(
   babulus?: ProductRegistration,
   billingLedger?: boolean,
   usageQueues?: boolean,
+  costImport?: boolean,
 ) {
   const stack = new Stack(new App(), "AccountsReview", {
     env: { account: "712236451410", region: "us-east-1" },
@@ -56,6 +57,7 @@ function template(
           ...(babulus ? { babulus } : {}),
           ...(billingLedger !== undefined ? { billingLedger } : {}),
           ...(usageQueues !== undefined ? { usageQueues } : {}),
+          ...(costImport !== undefined ? { costImport } : {}),
           loginChallengeSigner,
           ...(anthusOne
             ? {
@@ -1319,4 +1321,49 @@ test("with the usage queues flag on, each cost product gets its own queue, senda
     ([, resource]) => resource.Properties?.FunctionName === "prospectus-central-accounts",
   )![1];
   assert.ok(central.Properties.Environment.Variables.PROSPECTUS_USAGE_QUEUES);
+});
+
+// features/cost-daily-import.feature
+const withCostImport = (costImport: boolean | undefined) =>
+  template(
+    true,
+    true,
+    true,
+    deployedLengthSites(3),
+    parameterStoreSigner,
+    false,
+    undefined,
+    [],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    costImport,
+  ) as any;
+
+test("with the cost import flag off, the synthesized output is byte for byte what it was before", () => {
+  const reference = JSON.stringify(withCostImport(undefined));
+  assert.equal(JSON.stringify(withCostImport(false)), reference);
+  assert.ok(!reference.includes("prospectus-cost-import"));
+  assert.ok(!reference.includes("organizations:"));
+  assert.equal(accountsDeployment()!.costImport, undefined, "committed off until approved");
+});
+
+test("with the cost import flag on, the runtime may assume only the cost import role, daily", () => {
+  const built = withCostImport(true);
+  const resources = Object.values(built.Resources) as any[];
+  const statements = resources
+    .filter((resource) => resource.Type === "AWS::IAM::Policy")
+    .flatMap((resource) => resource.Properties.PolicyDocument.Statement);
+  const assume = statements.filter((statement: any) => statement.Action === "sts:AssumeRole");
+  assert.equal(assume.length, 1);
+  assert.match(JSON.stringify(assume[0].Resource), /:iam::\*:role\/prospectus-cost-import"/);
+  assert.ok(statements.some((statement: any) => statement.Action === "organizations:DescribeOrganization"));
+  const rule = resources.find((resource) => resource.Properties?.Name === "prospectus-cost-import");
+  assert.equal(rule.Properties.ScheduleExpression, "cron(15 7 * * ? *)");
+  assert.deepEqual(JSON.parse(rule.Properties.Targets[0].Input), { prospectusTask: "cost-import" });
+  const central = resources.find(
+    (resource) => resource.Properties?.FunctionName === "prospectus-central-accounts",
+  );
+  assert.equal(central.Properties.Environment.Variables.PROSPECTUS_COST_IMPORT, "enabled");
 });

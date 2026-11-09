@@ -15,13 +15,27 @@ Feature: Daily import of real AWS costs
     Then Account A is charged 600 and Account B 300
     And the split rounds so the parts sum to exactly 900
 
+  Scenario: Shared cost with usage of the app but not of that service
+    Given shared AWS Lambda cost for app "cyclotron" and no aws.lambda usage reported that day
+    But Accounts reported other usage of "cyclotron" that day
+    Then the cost is split by each Account's total reported usage of the app
+
+  Scenario: The real figure replaces the live estimate
+    Given the app reported aws.appsync.requests for an Account, priced as an estimate
+    When the import records that Account's actual for aws.appsync
+    Then the estimate no longer counts and only the actual is charged
+
   Scenario: Shared cost with no reported usage
-    Given shared cost for app "cyclotron" on a day with no reported usage
+    Given shared cost for app "cyclotron" on a day with no reported usage of the app
     Then it is recorded as unattributed overhead for that app and charged to no Account
 
   Scenario: Untagged cost
     Given cost with no anthus:cost-key
     Then it is recorded as untagged overhead for that day, by service, and charged to no Account
+
+  Scenario: Unknown Accounts and credits
+    Given a cost key naming an Account that does not exist, or a negative amount
+    Then it is recorded as overhead and charged to no Account
 
   Scenario: Costs not yet final
     Given Cost Explorer marks the day's figures as estimated
