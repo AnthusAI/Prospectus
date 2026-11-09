@@ -562,6 +562,33 @@ function idempotencyConflict(): never {
   fail(409, "idempotency_conflict", "Operation ID belongs to a different cost request.");
 }
 
+/**
+ * Looks up the owner of a per-customer deployment tagged `owner`: the one Account holding the active entitlement to
+ * its product (`papyrus-<site>` for a Papyrus site, otherwise the app). Null when no Account or more than one does,
+ * so the cost is overhead rather than charged to a guess. Reads every Account once per import run.
+ */
+export function costOwners(
+  accounts: () => Promise<
+    Array<{ account: { id: string }; entitlements: Record<string, { product?: string; status: string }> }>
+  >,
+) {
+  let owners: Promise<Map<string, string[]>> | undefined;
+  return async (app: CostApp, deployment: string) => {
+    owners ??= accounts().then((documents) => {
+      const map = new Map<string, string[]>();
+      for (const document of documents)
+        for (const [key, entitlement] of Object.entries(document.entitlements))
+          if (entitlement.status === "active") {
+            const product = entitlement.product ?? key;
+            map.set(product, [...(map.get(product) ?? []), document.account.id]);
+          }
+      return map;
+    });
+    const holders = (await owners).get(productOf(app, deployment)) ?? [];
+    return holders.length === 1 ? holders[0] : null;
+  };
+}
+
 const overheadKey = (cost: OverheadCost) => `${cost.overhead}|${cost.app ?? ""}|${cost.category}`;
 
 export const isUuid = (value: unknown): value is string => matchesStringPattern(value, UUID_PATTERN);
