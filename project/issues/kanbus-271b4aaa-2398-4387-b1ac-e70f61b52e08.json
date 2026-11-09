@@ -10,9 +10,22 @@
   "parent": "kanbus-b770c201-08e3-4e50-a3ae-789d48c0667a",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "a712a701-5179-48b6-a2e0-91826a068c56",
+      "author": "home",
+      "text": "Ryan, 2026-11-09: the design partner's three new sites launch directly on the shared tier at Papyrus M7, never as dedicated sites. This is required for the partner launch at M7, not a later migration. Priority raised to 1.",
+      "created_at": "2026-11-09T00:28:12.387339Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-opus-5-5",
+        "name": "Prospectus intake"
+      }
+    }
+  ],
   "created_at": "2026-11-08T21:44:52.418999Z",
-  "updated_at": "2026-11-08T21:44:52.419021Z",
+  "updated_at": "2026-11-09T00:28:12.387548Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
