@@ -152,6 +152,8 @@ export function canonicalAccountsHandler(
           quota,
           quotaRateTable ?? unconfiguredRateTable,
           clock,
+          // Read lazily, once per invocation, and only when a message names its owner.
+          costOwners(async () => service.allAccounts()),
         )
       : undefined;
   // The scheduled usage drain (docs/COST_ACCOUNTING.md). Without the queues it does nothing.

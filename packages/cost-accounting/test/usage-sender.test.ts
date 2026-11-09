@@ -89,6 +89,13 @@ test("a failed send is kept and retried with the same operation ID", async () =>
 test("bad input throws at once and a Papyrus site must send as its own product", () => {
   const usage = sender(async () => {});
   assert.throws(() => usage.record("not-a-uuid", []), /accountId/);
+  assert.doesNotThrow(() => usage.record("owner", [{ itemKind: "jev.tokens", quantity: 1 }]));
+  const noDeployment = new UsageSender({
+    product: "cyclotron",
+    app: "cyclotron",
+    queueUrl: queueUrl("cyclotron"),
+  });
+  assert.throws(() => noDeployment.record("owner", []), /needs a deployment/);
   assert.throws(() => usage.record(ACCOUNT, [{ itemKind: "Tokens", quantity: 1 }]), /itemKind/);
   assert.throws(() => usage.record(ACCOUNT, [{ itemKind: "jev.tokens", quantity: 1.5 }]), /quantity/);
   assert.throws(() => usage.record(ACCOUNT, [{ itemKind: "jev.tokens", quantity: -1 }]), /quantity/);
