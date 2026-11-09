@@ -17,7 +17,7 @@ applyCostTags(sharedStack, { account: "shared", app: "cyclotron" });
 assertCostTags(Template.fromStack(stack).toJSON());
 ```
 
-This adds `anthus:account`, `anthus:app`, `anthus:deployment` (when given) and `anthus:cost-key` to every taggable resource in the scope. Prospectus imports each day's cost from Cost Explorer by `anthus:cost-key`.
+This adds `anthus:account`, `anthus:app`, `anthus:deployment` (when given) and `anthus:cost-key` to every taggable resource in the scope. The check also requires them on IAM roles: a role's tags decide which Prospectus usage queue it may send to. Prospectus imports each day's cost from Cost Explorer by `anthus:cost-key`.
 
 ## Send usage
 
