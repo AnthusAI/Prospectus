@@ -2,7 +2,7 @@
 
 Prospectus keeps a private ledger of what each customer actually costs Anthus, in US dollars, broken down by Account, app and day. The weekly quota is drawn against that real cost. Customers never see dollars: they see the percent of this week's quota used, and each app's share of it in percent (see [QUOTA.md](QUOTA.md)). Anthus sets the price of each plan and so engineers the margin.
 
-This is the model Ryan agreed on 2026-11-05. Ryan asked for it to be built on 2026-11-08, tested first on the Papyrus sites Anthus operates and then on a design partner's three new sites; the epic is kanbus-bb0b6c and the behavior specifications are `features/cost-*.feature`. Where it changes what [QUOTA.md](QUOTA.md) describes, this document wins, and the quota code changes to match (see [Changes to the built quota](#changes-to-the-built-quota)).
+This is the model Ryan agreed on 2026-11-05. Ryan asked for it to be built on 2026-11-08, tested first on the Papyrus sites Anthus operates and then on a design partner's three new sites, which launch directly on the shared multi-tenant Papyrus tier at Papyrus milestone M7 and are never dedicated sites (Ryan, 2026-11-09; their costs follow the shared-tier path, kanbus-f45f7f); the epic is kanbus-bb0b6c and the behavior specifications are `features/cost-*.feature`. Where it changes what [QUOTA.md](QUOTA.md) describes, this document wins, and the quota code changes to match (see [Changes to the built quota](#changes-to-the-built-quota)).
 
 ## Principles
 
