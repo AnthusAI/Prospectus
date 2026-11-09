@@ -89,6 +89,9 @@ export async function importCostDay(input: {
   ledger: Pick<CostLedger, "recordActual" | "recordOverhead" | "day">;
   /** Every Account ID, for splitting shared cost by reported usage. */
   accountIds: () => Promise<string[]>;
+  /** The Account holding the active entitlement to an app deployment's product, for `owner` cost keys; null when
+   * none or more than one does. */
+  ownerOf?: (app: CostApp, deployment: string) => Promise<string | null>;
   day: number;
   log?: Log;
 }): Promise<ImportResult> {
@@ -140,6 +143,10 @@ export async function importCostDay(input: {
       const costs = shared.get(key.app) ?? new Map<string, number>();
       addTo(costs, category, row.micros);
       shared.set(key.app, costs);
+    } else if (key.account === "owner") {
+      const owner = input.ownerOf && key.deployment ? await input.ownerOf(key.app, key.deployment) : null;
+      if (owner) addActual(owner, key.app, key.deployment, category, row.micros);
+      else addOverhead({ overhead: "unknown_account", app: key.app, category, micros: row.micros });
     } else addActual(key.account, key.app, key.deployment, category, row.micros);
   }
 
@@ -223,6 +230,7 @@ export async function importRecentCosts(input: {
   source: CostExplorerSource;
   ledger: Pick<CostLedger, "recordActual" | "recordOverhead" | "day">;
   accountIds: () => Promise<string[]>;
+  ownerOf?: (app: CostApp, deployment: string) => Promise<string | null>;
   nowMs: number;
   lookbackDays?: number;
   /** False when the invocation is close to its deadline: the remaining days wait for the next run. */

@@ -82,3 +82,19 @@ test("cost keys parse back into their parts", () => {
   assert.equal(parseCostKey("not-a-key"), null);
   assert.equal(parseCostKey(`${ACCOUNT}/unknown/`), null);
 });
+
+test('"owner" lets Prospectus look up the owning Account from the deployment, so no customer ID is in code', () => {
+  assert.deepEqual(costTags({ account: "owner", app: "papyrus", deployment: "example" }), {
+    "anthus:account": "owner",
+    "anthus:app": "papyrus",
+    "anthus:deployment": "example",
+    "anthus:cost-key": "owner/papyrus/example",
+  });
+  assert.throws(() => costTags({ account: "owner", app: "papyrus" }), /deployment/);
+  assert.deepEqual(parseCostKey("owner/papyrus/example"), {
+    account: "owner",
+    app: "papyrus",
+    deployment: "example",
+  });
+  assert.equal(parseCostKey("owner/papyrus/"), null);
+});
