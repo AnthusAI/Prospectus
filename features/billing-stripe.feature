@@ -2,8 +2,8 @@ Feature: Stripe through one payment processor boundary
   Everything that talks to Stripe goes through one PaymentProcessor interface. Every spec runs against an
   in-memory fake that mirrors Stripe's documented shapes, so billing is built before any Stripe account
   exists. In direct mode each client has one Stripe Subscription with one item per billing line, and
-  Stripe produces one invoice per client per period. Card data never reaches Prospectus, and billing
-  never changes access on its own.
+  Stripe produces one invoice per client per period. Card data never reaches Prospectus. Stripe never changes access
+  directly: access follows only the derived billing standing (features/billing-standing.feature).
 
   Scenario: No network in specs
     When the billing specs run

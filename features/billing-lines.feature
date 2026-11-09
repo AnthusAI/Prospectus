@@ -1,7 +1,8 @@
 Feature: Plan catalog and billing lines
   A billing line is the billable unit, keyed by account and product, with a plan from the reviewed catalog.
   Each Papyrus site is its own product, so each site deployment is its own line, added, paused and ended on
-  its own. The entitlement is access and the line is money; billing never grants or removes access.
+  its own. The entitlement is access and the line is money; billing never writes the entitlement.
+  The line's derived standing does limit access (features/billing-standing.feature).
   Prices in the catalog are test-mode placeholders until real pricing is decided.
 
   Scenario: The plan catalog is reviewed and validated
