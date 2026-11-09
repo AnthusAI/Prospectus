@@ -18,6 +18,9 @@ import { RetiredSiteSubjects } from "./retired-site-subjects";
 import { Quota } from "../quota/service";
 import { unconfiguredRateTable, type RateTableSource } from "../quota/rate-table";
 import { quotaHandler } from "../quota/handler";
+import { CostLedger } from "../quota/costs";
+import { drainUsage, type UsageQueueClient } from "../quota/usage-drain";
+import { importRecentCosts, type CostExplorerSource } from "../quota/cost-import";
 import { BillingIssuer } from "../billing/issuer";
 import { BillingLedger } from "../billing/ledger";
 import { BillingLines } from "../billing/lines";
@@ -42,6 +45,19 @@ export function canonicalAccountsHandler(
   quotaRateTable?: RateTableSource,
   /** Billing storage. Absent unless billing/deployment.json enables the ledger: billing routes then answer 404. */
   billingFiles?: IdentityFiles,
+  /** Per-product usage queues (docs/COST_ACCOUNTING.md). Absent unless the deployment enables them: the scheduled
+   * drain task then does nothing. */
+  usageDrain?: {
+    client: UsageQueueClient;
+    queues: Readonly<Record<string, string>>;
+    hasTime?: () => boolean;
+  },
+  /** The daily Cost Explorer import (docs/COST_ACCOUNTING.md). Absent unless the deployment enables it: the scheduled
+   * import task then does nothing. */
+  costImport?: {
+    source: CostExplorerSource;
+    hasTime?: () => boolean;
+  },
 ) {
   const reviewedGrants = operatorGrants(grants);
   const repository = new DurableGoogleIdentities(identityFiles),
@@ -124,5 +140,44 @@ export function canonicalAccountsHandler(
   const retired = siteSubjectSecret
     ? new RetiredSiteSubjects(identityFiles, products, siteSubjectSecret, nowSeconds)
     : undefined;
-  return publicReaderHandler(routed, products, siteSubjectSecret, retired, nowSeconds);
+  const http = publicReaderHandler(routed, products, siteSubjectSecret, retired, nowSeconds);
+  const ledger =
+    quota && quotaFiles && (usageDrain || costImport)
+      ? new CostLedger(
+          quotaFiles,
+          async (accountId) => {
+            const document = (await service.read(accountId))?.value;
+            return document ? { entitlements: document.entitlements } : null;
+          },
+          quota,
+          quotaRateTable ?? unconfiguredRateTable,
+          clock,
+        )
+      : undefined;
+  // The scheduled usage drain (docs/COST_ACCOUNTING.md). Without the queues it does nothing.
+  const drain = async () => {
+    if (!ledger || !usageDrain) return { drained: false, recorded: 0, refused: 0, deferred: 0 };
+    const counts = await drainUsage({
+      client: usageDrain.client,
+      queues: usageDrain.queues,
+      ledger,
+      hasTime: usageDrain.hasTime,
+      log: (entry) => console.info(JSON.stringify(entry)),
+    });
+    return { drained: true, ...counts };
+  };
+  // The scheduled daily cost import. Without the configuration it does nothing.
+  const importCosts = async () => {
+    if (!ledger || !costImport) return { imported: false, days: [] };
+    const days = await importRecentCosts({
+      source: costImport.source,
+      ledger,
+      accountIds: async () => (await service.allAccounts()).map((document) => document.account.id),
+      nowMs: nowSeconds() * 1000,
+      hasTime: costImport.hasTime,
+      log: (entry) => console.info(JSON.stringify(entry)),
+    });
+    return { imported: days.length > 0 && days.every((day) => day.imported), days };
+  };
+  return Object.assign(http, { drainUsage: drain, importCosts });
 }

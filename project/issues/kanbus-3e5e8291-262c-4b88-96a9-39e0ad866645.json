@@ -1,0 +1,38 @@
+{
+  "id": "kanbus-3e5e8291-262c-4b88-96a9-39e0ad866645",
+  "title": "Shared sign-in for the shared tier: one Google client, tenancy from deployment and membership",
+  "description": "One shared Google OAuth client and Cognito client for every shared-tier deployment. authorize takes the deployment, checks the token is bound to it (host or audience), the Account owns the deployment and the person is a member, and returns capabilities combined with billing standing. Reader subjects become pairwise per deployment.",
+  "type": "story",
+  "status": "open",
+  "priority": 1,
+  "assignee": null,
+  "creator": null,
+  "parent": "kanbus-b770c201-08e3-4e50-a3ae-789d48c0667a",
+  "labels": [],
+  "dependencies": [],
+  "comments": [
+    {
+      "id": "59e0ed04-0301-4b0b-92b0-f351aaec183e",
+      "author": "home",
+      "text": "Ryan, 2026-11-09: the design partner's three new sites launch directly on the shared tier at Papyrus M7, never as dedicated sites. This is required for the partner launch at M7, not a later migration. Priority raised to 1.",
+      "created_at": "2026-11-09T00:28:12.410679Z",
+      "comment_type": "default",
+      "agent": {
+        "platform": "claude_code",
+        "model": "claude-opus-5-5",
+        "name": "Prospectus intake"
+      }
+    }
+  ],
+  "created_at": "2026-11-08T21:44:52.438468Z",
+  "updated_at": "2026-11-09T00:28:12.410890Z",
+  "closed_at": null,
+  "agent": {
+    "platform": "claude_code",
+    "model": "claude-opus-5-5",
+    "name": "Prospectus intake"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {}
+}

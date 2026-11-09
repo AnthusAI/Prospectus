@@ -25,6 +25,7 @@ export const quotaActions = [
   "reservation.expired",
   "usage.recorded",
   "usage.refused",
+  "cost.charged",
 ] as const;
 export type QuotaAction = (typeof quotaActions)[number];
 

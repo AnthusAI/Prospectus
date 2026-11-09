@@ -241,3 +241,51 @@ test("the operator route needs the reviewed quota permission and a clean body", 
   assert.equal((await grant({}, operator)).status, 400);
   assert.equal((await grant({ plan: "example-large" }, operator)).status, 200);
 });
+
+// features/cost-ledger.feature: the ledger's costs kind through the real Rust bridge, in the quota project.
+test("the cost ledger records, replays and corrects through real Virtuus files", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { Quota, weekPath } = await import("./service");
+  const { CostLedger, costDayPath, utcDay } = await import("./costs");
+  const root = await mkdtemp(join(tmpdir(), "quota-costs-"));
+  environments.push({ root });
+  const files = new VirtuusQuotaFiles(root);
+  const accountId = randomUUID();
+  const accounts = async (id: string) =>
+    id === accountId ? { entitlements: { "papyrus-example": { status: "active" } } } : null;
+  const table = new FakeTable();
+  (table.table as any).rates["openai.tokens.input"] = { units: 2, per: 1 };
+  const now = () => new Date().toISOString();
+  const quota = new Quota(files, accounts, [], now, table);
+  const ledger = new CostLedger(files, accounts, quota, table, now);
+  const day = utcDay(Date.now());
+  const message = {
+    version: 1,
+    operationId: randomUUID(),
+    accountId,
+    app: "papyrus",
+    deployment: "example",
+    day,
+    items: [{ itemKind: "openai.tokens.input", quantity: 500 }],
+  };
+  await ledger.recordUsage("papyrus-example", message);
+  assert.equal((await ledger.recordUsage("papyrus-example", structuredClone(message))).replayed, true);
+  await ledger.recordActual({
+    accountId,
+    app: "papyrus",
+    deployment: "example",
+    day,
+    costs: [{ category: "openai.tokens.input", micros: 900 }],
+    source: "durable-test",
+  });
+  const document = (await files.get<any>(costDayPath(accountId, day)))!.value;
+  assert.equal(document.entries["papyrus|example|openai.tokens.input"].estimatedMicros, 1000);
+  assert.equal(document.entries["papyrus|example|openai.tokens.input"].actualMicros, 900);
+  const weeks = await files.list(`weeks/${accountId}/`);
+  assert.equal(weeks.length, 1);
+  const week = (await files.get<any>(weeks[0]))!.value;
+  assert.equal(week.usedUnits, 900);
+  assert.ok(weekPath);
+});

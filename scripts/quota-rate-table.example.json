@@ -2,9 +2,9 @@
   "version": "<a name for this exact table>",
   "defaultPlan": "<plan name>",
   "plans": {
-    "<plan name>": { "weeklyAllowanceUnits": "<units>" }
+    "<plan name>": { "monthlyBudgetMicrodollars": "<microdollars of real cost per month>" }
   },
   "rates": {
-    "<item kind>": { "units": "<units>", "per": "<quantity>" }
+    "<item kind>": { "units": "<microdollars of real cost>", "per": "<quantity>" }
   }
 }

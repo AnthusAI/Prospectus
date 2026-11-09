@@ -65,6 +65,14 @@ export function accountsDeployment() {
   const billingLedger = billingDeployment(
     JSON.parse(readFileSync(new URL("../billing/deployment.json", import.meta.url), "utf8")),
   ).ledgerEnabled;
+  // docs/COST_ACCOUNTING.md: on since 2026-11-09 (Ryan). True creates the per-product usage queues and the drain schedule.
+  if (config.usageQueues !== undefined && typeof config.usageQueues !== "boolean")
+    throw new Error("usageQueues must be true or absent.");
+  const usageQueues = config.usageQueues === true;
+  // docs/COST_ACCOUNTING.md: on since 2026-11-09 (Ryan). True runs the daily Cost Explorer import through the management account.
+  if (config.costImport !== undefined && typeof config.costImport !== "boolean")
+    throw new Error("costImport must be true or absent.");
+  const costImport = config.costImport === true;
   const babulus = babulusFromEnvironment();
   return {
     consoleClientEnabled: consoleConfig.clientEnabled,
@@ -78,6 +86,9 @@ export function accountsDeployment() {
     ...(quotaRateTable ? { quotaRateTable } : {}),
     // Absent, not false, while the ledger is off, so nothing in the synthesized output can differ.
     ...(billingLedger ? { billingLedger } : {}),
+    // Absent, not false, while off, so nothing in the synthesized output can differ.
+    ...(usageQueues ? { usageQueues } : {}),
+    ...(costImport ? { costImport } : {}),
     labVerifier: reviewedLabVerifierEntry(
       JSON.parse(readFileSync(new URL("./lab-verifier.json", import.meta.url), "utf8")),
     ),

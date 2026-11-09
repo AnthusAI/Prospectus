@@ -168,10 +168,11 @@ Feature: Operator billing in the CRM
     When the admin marks an invoice uncollectible with a reason
     Then its status shows as uncollectible and it stays listed with its journal entries
 
-  Scenario: Billing never offers to suspend
+  Scenario: Billing never offers to suspend by hand
     Given an invoice that is past due
-    Then the page shows the follow-up
-    And disabling the product is offered only through the existing entitlement action
+    Then the page shows the follow-up and the line's billing standing
+    And read-only access follows from the standing alone (features/billing-standing.feature)
+    And disabling the product outright is offered only through the existing entitlement action
 
   Scenario: Billing settings
     Given an operator opening Settings

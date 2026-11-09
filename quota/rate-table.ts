@@ -49,10 +49,14 @@ export function parseRateTable(text: unknown): RateTable {
   const plans: RateTable["plans"] = {},
     rates: RateTable["rates"] = {};
   for (const [id, plan] of Object.entries(value.plans)) {
-    if (!PLAN_PATTERN.test(id) || !isPlainRecord(plan) || !onlyKeys(plan, ["weeklyAllowanceUnits"]))
+    if (!PLAN_PATTERN.test(id) || !isPlainRecord(plan) || Object.keys(plan).length !== 1)
       return unavailable();
-    if (!whole(plan.weeklyAllowanceUnits, 0)) return unavailable();
-    plans[id] = { weeklyAllowanceUnits: plan.weeklyAllowanceUnits };
+    // A plan names exactly one allowance. Units are microdollars of real cost (docs/COST_ACCOUNTING.md): a monthly
+    // budget allows a quarter of itself each week, rounded down. Tables written before that keep a weekly figure.
+    if (whole(plan.weeklyAllowanceUnits, 0)) plans[id] = { weeklyAllowanceUnits: plan.weeklyAllowanceUnits };
+    else if (whole(plan.monthlyBudgetMicrodollars, 0))
+      plans[id] = { weeklyAllowanceUnits: Math.floor(plan.monthlyBudgetMicrodollars / 4) };
+    else return unavailable();
   }
   for (const [kind, rate] of Object.entries(value.rates)) {
     if (!isItemKind(kind) || !isPlainRecord(rate) || !onlyKeys(rate, ["units", "per"])) return unavailable();

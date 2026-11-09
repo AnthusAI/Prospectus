@@ -90,10 +90,12 @@ The value of the SSM SecureString parameter named by `AccountsPlaneOptions.quota
 {
   "version": "<a name for this exact table>",
   "defaultPlan": "<optional plan name>",
-  "plans": { "<plan>": { "weeklyAllowanceUnits": 0 } },
+  "plans": { "<plan>": { "monthlyBudgetMicrodollars": 0 } },
   "rates": { "<itemKind>": { "units": 0, "per": 1 } }
 }
 ```
+
+Units are microdollars of real cost ([COST_ACCOUNTING.md](COST_ACCOUNTING.md)): a rate is Anthus's actual cost per item, and a plan names `monthlyBudgetMicrodollars`, of which each week allows a quarter, rounded down. A plan names exactly one allowance; a table written before this change may still give `weeklyAllowanceUnits` instead.
 
 Unknown fields, non-integers, a rate with `per` below 1 and a `defaultPlan` that is not a plan all make the table unparseable. Rates and allowances are programmatic: nobody types them in, and there is no screen, route or command for editing them. A deployment writes the table to the parameter from private configuration that lives outside this repository. Infrastructure creates the parameter once with a placeholder that is deliberately unparseable, so an unset table refuses all spending (503) until that deployment has written a valid one, and the infrastructure itself never overwrites it. The service caches the parsed table for a minute, so a change applies within about a minute. The rate table's contents never appear in an API response, in the CRM, in logs or in this repository.
 
