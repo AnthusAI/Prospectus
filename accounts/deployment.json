@@ -16,5 +16,7 @@
   "siteSubjectSecret": {
     "version": "v1",
     "parameterName": "/prospectus/central-accounts/site-subject/v1"
-  }
+  },
+  "usageQueues": true,
+  "costImport": true
 }

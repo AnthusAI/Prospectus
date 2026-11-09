@@ -55,7 +55,7 @@ There are three sources, all landing in the same ledger.
 
 **3. Model calls, priced from token counts.** OpenAI, Jev from TypeSafe and other model bills do not know our customers. The app reports token counts per Account with every batch, and Prospectus prices them from the private price list. The providers' own usage reports serve as a check on the per-app totals.
 
-**How the daily import runs** (`quota/cost-import.ts`, built; off until `costImport` is set in `accounts/deployment.json`). Every day at 07:15 UTC the central runtime re-imports the last three complete UTC days, because Cost Explorer revises a day's figures for a day or two. It finds the management account with Organizations `DescribeOrganization`, so no account ID is configured, and assumes the read-only role `prospectus-cost-import` there (`infra/lib/cost-management.ts`, trusted by the central runtime role only). One `GetCostAndUsage` query per day groups by `anthus:cost-key` and service; each service becomes a category such as `aws.appsync` or `aws.dynamodb`.
+**How the daily import runs** (`quota/cost-import.ts`; `costImport: true` in `accounts/deployment.json` since 2026-11-09, live once develop is promoted). Every day at 07:15 UTC the central runtime re-imports the last three complete UTC days, because Cost Explorer revises a day's figures for a day or two. It finds the management account with Organizations `DescribeOrganization`, so no account ID is configured, and assumes the read-only role `prospectus-cost-import` there (`infra/lib/cost-management.ts`, trusted by the central runtime role only). One `GetCostAndUsage` query per day groups by `anthus:cost-key` and service; each service becomes a category such as `aws.appsync` or `aws.dynamodb`.
 
 - A per-customer key becomes that Account's actual for the app, deployment and service.
 - A `shared/<app>/` key is split across Accounts by the usage each reported that day for the same service (for `aws.lambda`, the quantities of `aws.lambda.*` kinds such as GB-seconds). If nobody reported usage for that service, the split uses each Account's total reported usage of the app that day. If nobody used the app, the cost is unattributed overhead.
@@ -84,7 +84,7 @@ Each message carries a client-generated operation ID, so a message delivered twi
 
 Cost: SQS is about $0.40 per million requests after the first million a month, which are free, so this is pennies a month. EventBridge (about $1 per million events) and the existing signed HTTP route were considered: they cost more and make the app depend on Prospectus being up.
 
-The queues, dead-letter queues, alarm, consumer, schedule and queue policies are Prospectus infrastructure code generated from the product registry, behind a deployment flag that is off until approved. Each app's role gains `sqs:SendMessage` on its own queue in its own infrastructure code. Both are new persistent permissions and need the owner's approval before they are deployed.
+The queues, dead-letter queues, alarm, consumer, schedule and queue policies are Prospectus infrastructure code generated from the product registry, behind the `usageQueues` deployment flag, turned on with the owner's approval on 2026-11-09. Each app's role gains `sqs:SendMessage` on its own queue in its own infrastructure code, which each app adopts with its own review.
 
 The library apps use for this (batching, retries, operation IDs) lives in `packages/accounts-client`, with a Python equivalent for Python apps, so no app writes its own.
 
@@ -109,6 +109,7 @@ The quota service in `quota/` is built and deployed. These changes bring it to t
 
 ## What needs the owner
 
-- Approval of the new permissions when they are built: the queue policy, each app's send permission, and the role the daily import uses in the management account.
-- Deploying the management-account stack (found 2026-11-09: the `management` profile is the Organizations management account). It is opt-in: `npx cdk deploy ProspectusCostManagement -c costManagement=true` with the management account's credentials, then again with `-c activateCostTags=true` once the first app's tagged resources have been billed (AWS refuses to activate a tag key it has not seen). Then `costImport: true` in `accounts/deployment.json`. Both create new IAM: the role in the management account, and `sts:AssumeRole` plus `organizations:DescribeOrganization` on the central runtime.
+- **Done 2026-11-09 (Ryan's approval):** the queue policies and the daily import's permissions (`usageQueues` and `costImport` on in `accounts/deployment.json`), and the management-account role, deployed with `npx cdk deploy ProspectusCostManagement -c costManagement=true` using the `management` profile, which is the Organizations management account.
+- **Still to approve:** each app's send permission on its own queue, in that app's adoption.
+- **Tag activation:** redeploy the same stack with `-c activateCostTags=true` once the first app's tagged resources have been billed. AWS refuses to activate a tag key it has not seen.
 - The monthly budget of each plan, and the cost prices in the private table. Neither is ever in this repository.

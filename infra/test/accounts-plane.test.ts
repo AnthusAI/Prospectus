@@ -1271,7 +1271,7 @@ test("with the usage queues flag off, the synthesized output is byte for byte wh
   assert.equal(JSON.stringify(withUsageQueues(false)), reference);
   assert.ok(!reference.includes("prospectus-usage"), "no usage queue without the flag");
   assert.ok(!reference.includes("sqs:"), "no SQS permission without the flag");
-  assert.equal(accountsDeployment()!.usageQueues, undefined, "committed off until approved");
+  assert.equal(accountsDeployment()!.usageQueues, true, "turned on with Ryan's approval, 2026-11-09");
 });
 
 test("with the usage queues flag on, each cost product gets its own queue, sendable only by its roles, and a drain", () => {
@@ -1346,7 +1346,7 @@ test("with the cost import flag off, the synthesized output is byte for byte wha
   assert.equal(JSON.stringify(withCostImport(false)), reference);
   assert.ok(!reference.includes("prospectus-cost-import"));
   assert.ok(!reference.includes("organizations:"));
-  assert.equal(accountsDeployment()!.costImport, undefined, "committed off until approved");
+  assert.equal(accountsDeployment()!.costImport, true, "turned on with Ryan's approval, 2026-11-09");
 });
 
 test("with the cost import flag on, the runtime may assume only the cost import role, daily", () => {
