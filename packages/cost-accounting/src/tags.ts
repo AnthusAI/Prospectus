@@ -96,6 +96,9 @@ export const COSTED_RESOURCE_TYPES = [
   "AWS::EFS::FileSystem",
   "AWS::RDS::DBInstance",
   "AWS::RDS::DBCluster",
+  // Not costed, but a role's tags decide which usage queue it may send to (Prospectus docs/COST_ACCOUNTING.md,
+  // "Who may send"), so a role must never lose them.
+  "AWS::IAM::Role",
 ] as const;
 
 export interface CostTagViolation {
