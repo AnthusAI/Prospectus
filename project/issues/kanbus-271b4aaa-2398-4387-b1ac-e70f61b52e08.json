@@ -22,10 +22,17 @@
         "model": "claude-opus-5-5",
         "name": "Prospectus intake"
       }
+    },
+    {
+      "id": "007b9279-dea7-42a4-aad7-87eb6680c78b",
+      "author": "home",
+      "text": "Papyrus asks (PPY-966ef5, Papyrus PR #1305): (a) a deployment.changed event; (b) a changed-since list route for deployment records; (c) Prospectus is the only writer of deployment records and hostname claims; (d) the papyrus shared-tier role gets read access plus hostname-change requests only. Papyrus re-reads a record before acting and confirms deletion back. Fold these into the specs.",
+      "created_at": "2026-11-09T00:32:55.995275Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-11-08T21:44:52.418999Z",
-  "updated_at": "2026-11-09T00:28:12.387548Z",
+  "updated_at": "2026-11-09T00:32:55.995488Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
