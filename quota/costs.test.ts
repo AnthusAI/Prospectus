@@ -270,3 +270,45 @@ test("derived operation IDs are stable UUIDs", () => {
   assert.notEqual(id, derivedOperationId("x", 2));
   assert.ok(journalPath(id));
 });
+
+test('a usage message for "owner" is charged to the deployment\'s one owning Account, or refused', async () => {
+  const fixture = quotaFixture();
+  fixture.entitlements[fixture.accountId][PRODUCT] = { status: "active" };
+  (fixture.table.table as any).rates["openai.tokens.input"] = { units: 2, per: 1 };
+  const accounts = async (id: string) =>
+    fixture.entitlements[id] ? { entitlements: structuredClone(fixture.entitlements[id]) } : null;
+  let holders: string[] = [fixture.accountId];
+  const ledger = new CostLedger(
+    fixture.store,
+    accounts,
+    fixture.quota,
+    fixture.table,
+    () => new Date(fixture.clock.ms).toISOString(),
+    async (app, deployment) =>
+      app === "papyrus" && deployment === "example" && holders.length === 1 ? holders[0] : null,
+  );
+  const body = (overrides = {}) => ({
+    version: 1,
+    operationId: randomUUID(),
+    accountId: "owner",
+    app: "papyrus",
+    deployment: "example",
+    day: DAY,
+    items: [{ itemKind: "openai.tokens.input", quantity: 10 }],
+    ...overrides,
+  });
+  await ledger.recordUsage(PRODUCT, body());
+  assert.equal(
+    (await ledger.day(fixture.accountId, DAY))?.entries["papyrus|example|openai.tokens.input"]
+      .estimatedMicros,
+    20,
+  );
+  holders = [];
+  await assert.rejects(ledger.recordUsage(PRODUCT, body()), refused(422, "owner_unknown"));
+  holders = [fixture.accountId, randomUUID()];
+  await assert.rejects(ledger.recordUsage(PRODUCT, body()), refused(422, "owner_unknown"));
+  await assert.rejects(
+    ledger.recordUsage("cyclotron", body({ app: "cyclotron", deployment: undefined })),
+    refused(400, "owner_needs_deployment"),
+  );
+});

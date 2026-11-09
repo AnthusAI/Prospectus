@@ -90,8 +90,15 @@ export class UsageSender {
   }
 
   /** Adds usage to the in-memory tally. Synchronous and network-free; invalid input throws at once. */
+  /**
+   * `accountId` is the customer's Account UUID when the runtime has a verified one, or `"owner"` when it knows only
+   * the deployment: Prospectus then charges the deployment's owning Account.
+   */
   record(accountId: string, items: readonly UsageItem[], deployment = this.options.deployment): void {
-    if (!UUID.test(accountId)) throw new Error("Usage sender: accountId must be a lower-case Account UUID.");
+    if (accountId === "owner" && deployment === undefined)
+      throw new Error('Usage sender: accountId "owner" needs a deployment.');
+    if (accountId !== "owner" && !UUID.test(accountId))
+      throw new Error('Usage sender: accountId must be a lower-case Account UUID or "owner".');
     if (deployment !== undefined && !DEPLOYMENT_PATTERN.test(deployment))
       throw new Error("Usage sender: deployment must be lower-case letters, digits and hyphens.");
     for (const item of items) {

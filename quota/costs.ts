@@ -55,6 +55,8 @@ export const OVERHEAD_KINDS: readonly OverheadKind[] = [
   "credit",
 ];
 /** The overhead day documents live under the nil UUID, which is never an Account. */
+/** The account value meaning "the deployment's owning Account", in cost tags and usage messages. */
+export const OWNER_ACCOUNT = "owner";
 export const OVERHEAD_ACCOUNT = [8, 4, 4, 4, 12].map((length) => "0".repeat(length)).join("-");
 
 export interface CostEntry {
@@ -209,11 +211,17 @@ export class CostLedger {
     private quota: Pick<Quota, "applyCost">,
     private table: RateTableSource,
     private now: () => string,
+    /** Resolves `accountId: "owner"` in a usage message to the deployment's owning Account (see `costOwners`). */
+    private ownerOf?: (app: CostApp, deployment: string) => Promise<string | null>,
   ) {}
 
   /**
    * A usage message from a product's queue. The product comes from the queue, never from the body. The items are
    * priced with the private price list and recorded as estimates.
+   *
+   * `accountId: "owner"` charges the one Account holding the active entitlement to the queue's per-deployment
+   * product, for runtimes that know the site but never see a verified customer. Without a single owner the message
+   * is refused, so it reaches the dead-letter queue and its alarm instead of being charged to a guess.
    */
   async recordUsage(product: string, body: unknown) {
     if (
@@ -225,7 +233,6 @@ export class CostLedger {
       fail(400, "unknown_fields", "Unknown fields in a usage message.");
     if (body.version !== 1) fail(400, "invalid_version", "Usage message version 1 is required.");
     const operationId = requireOperationId(body.operationId),
-      accountId = requireAccountId(body.accountId),
       items = parseItems(body.items, 1),
       nowMs = Date.parse(this.now()),
       day = requireDay(body.day, nowMs, MESSAGE_DAY_WINDOW_DAYS);
@@ -238,6 +245,12 @@ export class CostLedger {
     const app = appOf(product);
     if (!app || body.app !== app || productOf(app, deployment) !== product)
       fail(403, "wrong_product", "The message does not belong to this product's queue.");
+    let accountId: string;
+    if (body.accountId === OWNER_ACCOUNT) {
+      if (!deployment) fail(400, "owner_needs_deployment", 'accountId "owner" needs the deployment.');
+      const owner = this.ownerOf ? await this.ownerOf(app, deployment) : null;
+      accountId = owner ?? fail(422, "owner_unknown", "No single Account owns this deployment.");
+    } else accountId = requireAccountId(body.accountId);
     const account = await this.accounts(accountId);
     if (!account) fail(404, "account_missing", "Account not found.");
     if (account.entitlements[product]?.status !== "active")

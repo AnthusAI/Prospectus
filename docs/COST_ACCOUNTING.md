@@ -80,6 +80,8 @@ Apps send usage to Amazon SQS queues that Prospectus owns, **one queue per regis
 
 Each message carries a client-generated operation ID, so a message delivered twice is counted once.
 
+**The customer in a message.** A runtime that has a verified customer Account sends its UUID. A runtime that knows only its deployment, such as a Papyrus site's model-calling Lambda resolvers, which never see a verified Account, sends `accountId: "owner"`. Prospectus then charges the one Account holding the active entitlement to that deployment's product, the same lookup the `owner` tag uses (Ryan, 2026-11-09). An Account ID supplied by a browser is never trusted. Without a single owner the message is refused and reaches the dead-letter queue and its alarm.
+
 **Why one queue per product.** SQS does not tell the consumer which product sent a message in a form the registry can check (it reports an opaque role ID, not the role ARN the registry holds). A queue whose policy lets exactly one registered role send proves the sender, so the consumer takes the product from the queue and never from the message body. Queues cost nothing to exist.
 
 **Why a scheduled drain.** A Lambda event source mapping keeps long-polling every queue, which costs roughly 650,000 empty receives per queue per month. Draining all queues once a minute costs about 43,000 receives per queue per month and one small invocation a minute, and usage already reaches the quota about a minute late.
