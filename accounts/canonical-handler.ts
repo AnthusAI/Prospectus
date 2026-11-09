@@ -18,7 +18,7 @@ import { RetiredSiteSubjects } from "./retired-site-subjects";
 import { Quota } from "../quota/service";
 import { unconfiguredRateTable, type RateTableSource } from "../quota/rate-table";
 import { quotaHandler } from "../quota/handler";
-import { CostLedger } from "../quota/costs";
+import { CostLedger, costOwners } from "../quota/costs";
 import { drainUsage, type UsageQueueClient } from "../quota/usage-drain";
 import { importRecentCosts, type CostExplorerSource } from "../quota/cost-import";
 import { BillingIssuer } from "../billing/issuer";
@@ -152,6 +152,8 @@ export function canonicalAccountsHandler(
           quota,
           quotaRateTable ?? unconfiguredRateTable,
           clock,
+          // Read lazily, once per invocation, and only when a message names its owner.
+          costOwners(async () => service.allAccounts()),
         )
       : undefined;
   // The scheduled usage drain (docs/COST_ACCOUNTING.md). Without the queues it does nothing.
@@ -173,6 +175,7 @@ export function canonicalAccountsHandler(
       source: costImport.source,
       ledger,
       accountIds: async () => (await service.allAccounts()).map((document) => document.account.id),
+      ownerOf: costOwners(async () => service.allAccounts()),
       nowMs: nowSeconds() * 1000,
       hasTime: costImport.hasTime,
       log: (entry) => console.info(JSON.stringify(entry)),

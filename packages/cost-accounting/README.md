@@ -7,8 +7,8 @@ Cost accounting for every Anthus app. The model is Prospectus `docs/COST_ACCOUNT
 ```ts
 import { applyCostTags, assertCostTags } from "@anthus/cost-accounting/cdk";
 
-// In the stack: one Papyrus site, owned by one Prospectus Account.
-applyCostTags(stack, { account: config.accountId, app: "papyrus", deployment: config.siteId });
+// In the stack: one Papyrus site. Prospectus finds the owning Account itself, so no customer ID goes in code.
+applyCostTags(stack, { account: "owner", app: "papyrus", deployment: config.siteId });
 
 // A stack that serves many customers. Its cost is split by the usage the app reports.
 applyCostTags(sharedStack, { account: "shared", app: "cyclotron" });
@@ -17,7 +17,7 @@ applyCostTags(sharedStack, { account: "shared", app: "cyclotron" });
 assertCostTags(Template.fromStack(stack).toJSON());
 ```
 
-This adds `anthus:account`, `anthus:app`, `anthus:deployment` (when given) and `anthus:cost-key` to every taggable resource in the scope. Prospectus imports each day's cost from Cost Explorer by `anthus:cost-key`.
+This adds `anthus:account`, `anthus:app`, `anthus:deployment` (when given) and `anthus:cost-key` to every taggable resource in the scope. The check also requires them on IAM roles: a role's tags decide which Prospectus usage queue it may send to. Prospectus imports each day's cost from Cost Explorer by `anthus:cost-key`.
 
 ## Send usage
 

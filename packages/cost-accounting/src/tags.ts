@@ -16,11 +16,18 @@ export const COST_TAG_KEYS = [TAG_ACCOUNT, TAG_APP, TAG_DEPLOYMENT, TAG_COST_KEY
 
 /** The account value of a resource that serves many customers; its cost is split by reported usage. */
 export const SHARED = "shared";
+/**
+ * The account value of a per-customer deployment whose owner Prospectus looks up: the Account holding the active
+ * entitlement to that deployment's product (for Papyrus, `papyrus-<site>`). No customer ID is written into an app's
+ * code, and a change of owner needs no redeploy. Requires a deployment.
+ */
+export const OWNER = "owner";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const DEPLOYMENT_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export interface CostTagConfiguration {
-  /** The Prospectus Account UUID the resources serve, or "shared" for resources that serve many customers. */
+  /** "owner" (Prospectus looks up the deployment's owning Account), "shared" (many customers; split by reported
+   * usage), or a Prospectus Account UUID. */
   account: string;
   app: CostApp;
   /** Distinguishes several deployments of one app; for Papyrus, the site ID. */
@@ -32,8 +39,10 @@ export function costTags(configuration: CostTagConfiguration): Record<string, st
   const { account, app, deployment } = configuration;
   if (!(COST_APPS as readonly string[]).includes(app))
     throw new Error(`Cost tags: app must be one of ${COST_APPS.join(", ")}.`);
-  if (account !== SHARED && !UUID.test(account))
-    throw new Error('Cost tags: account must be a lower-case Prospectus Account UUID or "shared".');
+  if (account !== SHARED && account !== OWNER && !UUID.test(account))
+    throw new Error('Cost tags: account must be "owner", "shared" or a lower-case Prospectus Account UUID.');
+  if (account === OWNER && deployment === undefined)
+    throw new Error('Cost tags: account "owner" needs the deployment whose owner Prospectus looks up.');
   if (deployment !== undefined && !DEPLOYMENT_PATTERN.test(deployment))
     throw new Error("Cost tags: deployment must be lower-case letters, digits and hyphens.");
   return {
@@ -87,6 +96,9 @@ export const COSTED_RESOURCE_TYPES = [
   "AWS::EFS::FileSystem",
   "AWS::RDS::DBInstance",
   "AWS::RDS::DBCluster",
+  // Not costed, but a role's tags decide which usage queue it may send to (Prospectus docs/COST_ACCOUNTING.md,
+  // "Who may send"), so a role must never lose them.
+  "AWS::IAM::Role",
 ] as const;
 
 export interface CostTagViolation {

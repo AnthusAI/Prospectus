@@ -46,3 +46,9 @@ Feature: Apps send usage through per-product SQS queues
   Scenario: Bounded runs
     When the consumer runs
     Then it reads at most a configured number of messages per queue per run and finishes within its timeout
+
+  Scenario: A runtime that knows only its deployment sends for its owner
+    Given a usage message from the papyrus-example queue with accountId "owner"
+    When the drain records it
+    Then it is charged to the one Account holding the active papyrus-example entitlement
+    And with no such Account, or more than one, it is refused and reaches the dead-letter queue

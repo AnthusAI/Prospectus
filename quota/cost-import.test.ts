@@ -10,13 +10,15 @@ import {
   type CostExplorerDay,
   type CostExplorerSource,
 } from "./cost-import";
-import { CostLedger, costDayPath, OVERHEAD_ACCOUNT, type CostDay } from "./costs";
+import { CostLedger, costDayPath, costOwners, OVERHEAD_ACCOUNT, type CostDay } from "./costs";
 import type { QuotaWeek } from "./model";
 import { weekPath } from "./service";
 import { WEEK_KEY, quotaFixture } from "./testing/quota-fixture";
 
 // features/cost-daily-import.feature, against a fake Cost Explorer. Amounts are made up.
-const DAY = 20300319; // the day before the fixture clock (Wednesday 2030-03-20)
+const DAY = 20300319;
+/** The cost key of a Papyrus site stack tagged account "owner". */
+const ownerKey = (site: string) => ["owner", "papyrus", site].join("/"); // the day before the fixture clock (Wednesday 2030-03-20)
 
 class FakeCostExplorer implements CostExplorerSource {
   days: Record<number, CostExplorerDay> = {};
@@ -329,4 +331,38 @@ test("shared cost with usage of the app but not of that service is split by tota
     null,
     "model estimates are untouched",
   );
+});
+
+test("an owner cost key is charged to the one Account entitled to the deployment, else overhead", async () => {
+  const { a, b, source, ledger, entry, used } = importFixture();
+  const documents = [
+    { account: { id: a }, entitlements: { x: { product: "papyrus-example", status: "active" } } },
+    {
+      account: { id: b },
+      entitlements: {
+        "papyrus-twin": { status: "active" },
+        y: { product: "papyrus-gone", status: "disabled" },
+      },
+    },
+    { account: { id: randomUUID() }, entitlements: { "papyrus-twin": { status: "active" } } },
+  ];
+  const ownerOf = costOwners(async () => documents);
+  source.days[DAY] = {
+    estimated: false,
+    rows: [
+      { costKey: ownerKey("example"), service: "AWS AppSync", micros: 700 },
+      { costKey: ownerKey("twin"), service: "AWS AppSync", micros: 11 },
+      { costKey: ownerKey("gone"), service: "AWS AppSync", micros: 13 },
+    ],
+  };
+  await importCostDay({ source, ledger, accountIds: async () => [a, b], ownerOf, day: DAY });
+  assert.equal((await entry(a, "papyrus|example|aws.appsync"))?.actualMicros, 700);
+  assert.equal(await used(a), 700);
+  const overhead = await ledger.overheadDay(DAY);
+  assert.equal(
+    overhead?.entries["unknown_account|papyrus|aws.appsync"].actualMicros,
+    24,
+    "no owner, or two owners",
+  );
+  assert.equal(await used(b), 0);
 });

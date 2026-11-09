@@ -30,14 +30,16 @@ The customer's cost breakdown is by app (and deployment where there is more than
 
 Every AWS resource every app creates carries these tags. Prospectus reads costs by them.
 
-| Tag key             | Value                                                                                                       |
-| ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `anthus:app`        | The app's registry ID. Always present.                                                                      |
-| `anthus:account`    | The Account UUID, on a resource that serves one customer. `shared` on a resource that serves many.          |
-| `anthus:deployment` | The deployment ID, where an app can have several per Account.                                               |
-| `anthus:cost-key`   | `<account>/<app>/<deployment>` (deployment empty when absent), set by the helper from the three tags above. |
+| Tag key             | Value                                                                                                           |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `anthus:app`        | The app's registry ID. Always present.                                                                          |
+| `anthus:account`    | `owner` on a resource that serves one customer's deployment (the usual case); `shared` on one that serves many. |
+| `anthus:deployment` | The deployment ID, where an app can have several per Account.                                                   |
+| `anthus:cost-key`   | `<account>/<app>/<deployment>` (deployment empty when absent), set by the helper from the three tags above.     |
 
 Cost Explorer groups by at most two dimensions per query, so the daily import groups by `anthus:cost-key` and service in one query and splits the key back into its parts. The three separate tags stay for people reading the bill.
+
+**No customer IDs in app code** (Ryan, 2026-11-09: avoid configuration). A per-customer stack tags `anthus:account=owner` with its deployment, and the import charges its cost to the one Account holding the active entitlement to that deployment's product (`papyrus-<site>` for a Papyrus site). A change of owner needs no redeploy. If no Account, or more than one, holds it, the cost is overhead (`unknown_account`) rather than a guess. An explicit Account UUID is still accepted but should not be needed.
 
 The existing `anthus:project` and `anthus:surface` tags stay.
 
@@ -57,7 +59,7 @@ There are three sources, all landing in the same ledger.
 
 **How the daily import runs** (`quota/cost-import.ts`; `costImport: true` in `accounts/deployment.json` since 2026-11-09, live once develop is promoted). Every day at 07:15 UTC the central runtime re-imports the last three complete UTC days, because Cost Explorer revises a day's figures for a day or two. It finds the management account with Organizations `DescribeOrganization`, so no account ID is configured, and assumes the read-only role `prospectus-cost-import` there (`infra/lib/cost-management.ts`, trusted by the central runtime role only). One `GetCostAndUsage` query per day groups by `anthus:cost-key` and service; each service becomes a category such as `aws.appsync` or `aws.dynamodb`.
 
-- A per-customer key becomes that Account's actual for the app, deployment and service.
+- A per-customer key (`owner/<app>/<deployment>`, resolved through the entitlement, or an explicit Account UUID) becomes that Account's actual for the app, deployment and service.
 - A `shared/<app>/` key is split across Accounts by the usage each reported that day for the same service (for `aws.lambda`, the quantities of `aws.lambda.*` kinds such as GB-seconds). If nobody reported usage for that service, the split uses each Account's total reported usage of the app that day. If nobody used the app, the cost is unattributed overhead.
 - An actual for `aws.<service>` replaces the app's live estimates under `aws.<service>.<unit>` for the same Account, app and deployment, so real figures are never added on top.
 - Untagged cost (by service), cost whose key names an Account that does not exist, unattributed shared cost and credits (negative amounts) are overhead: recorded in a day document under the nil UUID (all zeros: `costs/<nil UUID>/<YYYYMMDD>.json`) and charged to no Account.
@@ -77,6 +79,10 @@ Apps send usage to Amazon SQS queues that Prospectus owns, **one queue per regis
 4. If Prospectus is down or busy, messages wait in the queue (retention up to 14 days). Messages that keep failing go to the product's dead-letter queue, with an alarm.
 
 Each message carries a client-generated operation ID, so a message delivered twice is counted once.
+
+**The customer in a message.** A runtime that has a verified customer Account sends its UUID. A runtime that knows only its deployment, such as a Papyrus site's model-calling Lambda resolvers, which never see a verified Account, sends `accountId: "owner"`. Prospectus then charges the one Account holding the active entitlement to that deployment's product, the same lookup the `owner` tag uses (Ryan, 2026-11-09). An Account ID supplied by a browser is never trusted. Without a single owner the message is refused and reaches the dead-letter queue and its alarm.
+
+**Who may send.** A product's queue accepts its registered roles (`roleArn`, and `quotaCaller` / `executionDelegation` where present) and any role in the same AWS account that carries the product's cost tags: `anthus:app`, plus `anthus:deployment=<site>` for a Papyrus site. Apps already put those tags on every resource, roles included, so a model-calling Lambda can send without being registered by hand, and a backend rebuilt with new generated role names keeps working. The policy compares the role's tags (`aws:PrincipalTag/...`), so only principals able to tag roles in that account could claim another site's queue.
 
 **Why one queue per product.** SQS does not tell the consumer which product sent a message in a form the registry can check (it reports an opaque role ID, not the role ARN the registry holds). A queue whose policy lets exactly one registered role send proves the sender, so the consumer takes the product from the queue and never from the message body. Queues cost nothing to exist.
 

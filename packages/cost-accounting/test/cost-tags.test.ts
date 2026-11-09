@@ -62,10 +62,19 @@ test("an invalid configuration fails with a message naming the field", () => {
 test("the check fails an untagged resource and names it", () => {
   const template = Template.fromStack(stack()).toJSON();
   const violations = checkCostTags(template);
-  assert.equal(violations.length, 3);
+  assert.equal(violations.length, 4, "the table, the bucket, the function and its role");
   assert.ok(violations.every((violation) => violation.missing.includes("anthus:app")));
   assert.throws(() => assertCostTags(template), /Resources missing Anthus cost tags/);
-  assert.deepEqual(checkCostTags({ Resources: { Role: { Type: "AWS::IAM::Role", Properties: {} } } }), []);
+  assert.deepEqual(
+    checkCostTags({ Resources: { Policy: { Type: "AWS::IAM::Policy", Properties: {} } } }),
+    [],
+    "untaggable or uncosted types are not checked",
+  );
+  assert.equal(
+    checkCostTags({ Resources: { Role: { Type: "AWS::IAM::Role", Properties: {} } } }).length,
+    1,
+    "a role's tags decide which usage queue it may send to",
+  );
 });
 
 test("cost keys parse back into their parts", () => {
@@ -81,4 +90,20 @@ test("cost keys parse back into their parts", () => {
   });
   assert.equal(parseCostKey("not-a-key"), null);
   assert.equal(parseCostKey(`${ACCOUNT}/unknown/`), null);
+});
+
+test('"owner" lets Prospectus look up the owning Account from the deployment, so no customer ID is in code', () => {
+  assert.deepEqual(costTags({ account: "owner", app: "papyrus", deployment: "example" }), {
+    "anthus:account": "owner",
+    "anthus:app": "papyrus",
+    "anthus:deployment": "example",
+    "anthus:cost-key": "owner/papyrus/example",
+  });
+  assert.throws(() => costTags({ account: "owner", app: "papyrus" }), /deployment/);
+  assert.deepEqual(parseCostKey("owner/papyrus/example"), {
+    account: "owner",
+    app: "papyrus",
+    deployment: "example",
+  });
+  assert.equal(parseCostKey("owner/papyrus/"), null);
 });
