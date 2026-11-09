@@ -434,6 +434,29 @@ export class AccountsPlane extends Construct {
             resources: [queue.queueArn],
           }),
         );
+        // So are the product's other roles, by the cost tags its own infrastructure puts on every resource: any role
+        // in the product's AWS account tagged with its app (and, for a Papyrus site, its deployment). Nothing is
+        // registered by hand, and a backend rebuilt with new role names keeps sending.
+        const senderAccounts = [
+          ...new Set(senders.map((arn) => arn.split(":")[4]).filter((id) => /^\d{12}$/.test(id))),
+        ];
+        const deployment = entry.product.startsWith("papyrus-")
+          ? entry.product.slice("papyrus-".length)
+          : undefined;
+        if (senderAccounts.length)
+          queue.addToResourcePolicy(
+            new iam.PolicyStatement({
+              actions: ["sqs:SendMessage"],
+              principals: senderAccounts.map((id) => new iam.AccountPrincipal(id)),
+              resources: [queue.queueArn],
+              conditions: {
+                StringEquals: {
+                  "aws:PrincipalTag/anthus:app": appOf(entry.product)!,
+                  ...(deployment ? { "aws:PrincipalTag/anthus:deployment": deployment } : {}),
+                },
+              },
+            }),
+          );
         new cloudwatch.Alarm(this, `UsageDeadLetterAlarm${id}`, {
           alarmName: `prospectus-usage-${entry.product}-dead-letters`,
           metric: deadLetters.metricApproximateNumberOfMessagesVisible({

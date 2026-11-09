@@ -1293,7 +1293,24 @@ test("with the usage queues flag on, each cost product gets its own queue, senda
       (statement: any) => statement.Action === "sqs:SendMessage",
     ),
   );
-  assert.equal(sends.length, 4);
+  assert.equal(sends.length, 8, "registered roles, and roles carrying the product's cost tags");
+  const tagged = sends.filter((statement: any) => statement.Condition);
+  assert.equal(tagged.length, 4);
+  for (const site of sites)
+    assert.ok(
+      tagged.some(
+        (statement: any) =>
+          statement.Condition.StringEquals["aws:PrincipalTag/anthus:app"] === "papyrus" &&
+          statement.Condition.StringEquals["aws:PrincipalTag/anthus:deployment"] ===
+            site.product.slice("papyrus-".length) &&
+          JSON.stringify(statement.Principal).includes(site.roleArn.split(":")[4]),
+      ),
+      `${site.product}'s queue accepts its account's roles tagged with its deployment`,
+    );
+  const cyclotronTagged = tagged.find(
+    (statement: any) => statement.Condition.StringEquals["aws:PrincipalTag/anthus:app"] === "cyclotron",
+  );
+  assert.equal(cyclotronTagged.Condition.StringEquals["aws:PrincipalTag/anthus:deployment"], undefined);
   for (const site of sites)
     assert.ok(
       sends.some(
