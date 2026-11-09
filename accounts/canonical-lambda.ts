@@ -1,5 +1,6 @@
 import { SQSClient } from "@aws-sdk/client-sqs";
 import { SqsUsageQueueClient, usageQueues } from "../quota/usage-drain";
+import { managementCostExplorer } from "../quota/cost-explorer-aws";
 import { matchesStringPattern } from "./validation-rules";
 import { resolve } from "node:path";
 import { canonicalAccountsHandler } from "./canonical-handler";
@@ -80,6 +81,8 @@ const usageQueueMap = process.env.PROSPECTUS_USAGE_QUEUES
 const usageQueueClient = usageQueueMap
   ? new SqsUsageQueueClient(new SQSClient({ region: process.env.AWS_REGION ?? "us-east-1" }))
   : undefined;
+// The daily Cost Explorer import, through a role in the Organizations management account. Absent: it does nothing.
+const costExplorer = process.env.PROSPECTUS_COST_IMPORT === "enabled" ? managementCostExplorer() : undefined;
 // Committed disabled. While it is, no billing storage is opened and every billing route answers 404.
 const ledgerEnabled = billingDeployment(reviewedBillingDeployment).ledgerEnabled;
 let activeRequestId = "unavailable";
@@ -153,10 +156,14 @@ export const handler = async (
             hasTime: () => (context?.getRemainingTimeInMillis?.() ?? 60_000) > 10_000,
           }
         : undefined,
+      costExplorer
+        ? { source: costExplorer, hasTime: () => (context?.getRemainingTimeInMillis?.() ?? 60_000) > 10_000 }
+        : undefined,
     );
     // The scheduled drain is an EventBridge event with a fixed task and no HTTP method; API Gateway never sends one.
     const task = event as unknown as Record<string, unknown>;
     if (task.prospectusTask === "usage-drain" && !("httpMethod" in task)) return await central.drainUsage();
+    if (task.prospectusTask === "cost-import" && !("httpMethod" in task)) return await central.importCosts();
     return await central(event);
   } finally {
     if (deadline) clearTimeout(deadline);

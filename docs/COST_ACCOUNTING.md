@@ -55,7 +55,15 @@ There are three sources, all landing in the same ledger.
 
 **3. Model calls, priced from token counts.** OpenAI, Jev from TypeSafe and other model bills do not know our customers. The app reports token counts per Account with every batch, and Prospectus prices them from the private price list. The providers' own usage reports serve as a check on the per-app totals.
 
-**Costs billed per month.** Most AWS charges, including Amplify hosting (storage, data served, build minutes, server-side rendering), are metered and reported per day, so the daily import picks them up as they accrue. A charge AWS bills once a month, such as a DNS hosted zone, is spread evenly over the days of its month.
+**How the daily import runs** (`quota/cost-import.ts`, built; off until `costImport` is set in `accounts/deployment.json`). Every day at 07:15 UTC the central runtime re-imports the last three complete UTC days, because Cost Explorer revises a day's figures for a day or two. It finds the management account with Organizations `DescribeOrganization`, so no account ID is configured, and assumes the read-only role `prospectus-cost-import` there (`infra/lib/cost-management.ts`, trusted by the central runtime role only). One `GetCostAndUsage` query per day groups by `anthus:cost-key` and service; each service becomes a category such as `aws.appsync` or `aws.dynamodb`.
+
+- A per-customer key becomes that Account's actual for the app, deployment and service.
+- A `shared/<app>/` key is split across Accounts by the usage each reported that day for the same service (for `aws.lambda`, the quantities of `aws.lambda.*` kinds such as GB-seconds). If nobody reported usage for that service, the split uses each Account's total reported usage of the app that day. If nobody used the app, the cost is unattributed overhead.
+- An actual for `aws.<service>` replaces the app's live estimates under `aws.<service>.<unit>` for the same Account, app and deployment, so real figures are never added on top.
+- Untagged cost (by service), cost whose key names an Account that does not exist, unattributed shared cost and credits (negative amounts) are overhead: recorded in a day document under the nil UUID (all zeros: `costs/<nil UUID>/<YYYYMMDD>.json`) and charged to no Account.
+- Every write is idempotent; a re-run with the same figures changes nothing. A Cost Explorer failure records nothing, logs a reason code (never provider text) and is retried on the next run.
+
+**Costs billed per month.** Most AWS charges, including Amplify hosting (storage, data served, build minutes, server-side rendering), are metered and reported per day, so the daily import picks them up as they accrue. A charge AWS bills once a month, such as a DNS hosted zone, is meant to be spread evenly over the days of its month (`spreadMonthly` exists); the import does not do this yet, so such a charge currently lands on the day Cost Explorer reports it, usually the first of the month.
 
 **Estimates and actuals.** For usage an app reports live (tokens, container jobs, Lambda time), the live report is an estimate until that day's real cost arrives from the import. The real figure then replaces the estimate for that Account, app, category and day; it is never added on top. Costs that only come from the import (AppSync, DynamoDB, hosting) appear when the import runs, about a day after they are incurred.
 
@@ -102,5 +110,5 @@ The quota service in `quota/` is built and deployed. These changes bring it to t
 ## What needs the owner
 
 - Approval of the new permissions when they are built: the queue policy, each app's send permission, and the role the daily import uses in the management account.
-- Which AWS account is the Organizations management account, and access for the infrastructure stack that activates the cost tags and runs the import.
+- Deploying the management-account stack (found 2026-11-09: the `management` profile is the Organizations management account). It is opt-in: `npx cdk deploy ProspectusCostManagement -c costManagement=true` with the management account's credentials, then again with `-c activateCostTags=true` once the first app's tagged resources have been billed (AWS refuses to activate a tag key it has not seen). Then `costImport: true` in `accounts/deployment.json`. Both create new IAM: the role in the management account, and `sts:AssumeRole` plus `organizations:DescribeOrganization` on the central runtime.
 - The monthly budget of each plan, and the cost prices in the private table. Neither is ever in this repository.

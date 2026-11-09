@@ -25,6 +25,7 @@ import {
 } from "./site-subject-secret";
 import type { RateTableConfiguration } from "../../quota/rate-table";
 import { appOf } from "../../quota/costs";
+import { COST_IMPORT_ROLE_NAME } from "../../quota/cost-import";
 export interface AccountsPlaneOptions {
   code: lambda.Code;
   bffCode: lambda.Code;
@@ -62,6 +63,11 @@ export interface AccountsPlaneOptions {
    * dead-letter queue, receive and delete for the central runtime, and a once-a-minute drain schedule. Absent or
    * false: the synthesized output is exactly what it was before cost accounting. */
   usageQueues?: boolean;
+  /** `costImport` in accounts/deployment.json (docs/COST_ACCOUNTING.md). True lets the central runtime read the
+   * organization and assume `prospectus-cost-import` in the Organizations management account (created by
+   * infra/lib/cost-management.ts), and runs the Cost Explorer import daily. Absent or false: the synthesized output
+   * is exactly what it was before. */
+  costImport?: boolean;
 }
 /** Additive resources only. No CRM role, client, namespace or authorizer edits. */
 export class AccountsPlane extends Construct {
@@ -462,6 +468,30 @@ export class AccountsPlane extends Construct {
           ],
         });
       }
+    }
+    if (options.costImport) {
+      runtime.addToPolicy(
+        new iam.PolicyStatement({ actions: ["organizations:DescribeOrganization"], resources: ["*"] }),
+      );
+      // The management account is read at run time; its role's trust policy names this runtime role exactly.
+      runtime.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["sts:AssumeRole"],
+          resources: [`arn:${cdk.Aws.PARTITION}:iam::*:role/${COST_IMPORT_ROLE_NAME}`],
+        }),
+      );
+      central.addEnvironment("PROSPECTUS_COST_IMPORT", "enabled");
+      new events.Rule(this, "CostImportSchedule", {
+        ruleName: "prospectus-cost-import",
+        description: "Imports the last three days of AWS cost from Cost Explorer into the cost ledger.",
+        schedule: events.Schedule.cron({ minute: "15", hour: "7" }),
+        targets: [
+          new eventTargets.LambdaFunction(central, {
+            event: events.RuleTargetInput.fromObject({ prospectusTask: "cost-import" }),
+            retryAttempts: 2,
+          }),
+        ],
+      });
     }
     // The secret exists before the runtime that reads it is updated.
     if (siteSubjectSecretResource) central.node.addDependency(siteSubjectSecretResource);

@@ -45,13 +45,28 @@ export const MESSAGE_DAY_WINDOW_DAYS = 14;
 export const IMPORT_DAY_WINDOW_DAYS = 62;
 const DAY_MS = 86_400_000;
 
+/** Why a cost is charged to no Account: no anthus:cost-key tag, shared cost with no usage reported that day, a cost
+ * key naming an Account that does not exist, or a credit (a negative amount) that is never passed to an Account. */
+export type OverheadKind = "untagged" | "unattributed" | "unknown_account" | "credit";
+export const OVERHEAD_KINDS: readonly OverheadKind[] = [
+  "untagged",
+  "unattributed",
+  "unknown_account",
+  "credit",
+];
+/** The overhead day documents live under the nil UUID, which is never an Account. */
+export const OVERHEAD_ACCOUNT = [8, 4, 4, 4, 12].map((length) => "0".repeat(length)).join("-");
+
 export interface CostEntry {
-  app: CostApp;
+  /** Null only for untagged overhead, where the app is unknown. */
+  app: CostApp | null;
   deployment: string | null;
   category: string;
   quantity: number;
   estimatedMicros: number;
   actualMicros: number | null;
+  /** Set only on entries in the overhead day document. */
+  overhead?: OverheadKind;
 }
 export interface CostAuditEntry {
   revision: number;
@@ -72,7 +87,7 @@ export interface CostDay {
   creation: { operationId: string; at: string };
   audit: CostAuditEntry[];
 }
-export type CostAction = "cost.estimated" | "cost.actual" | "cost.refused";
+export type CostAction = "cost.estimated" | "cost.actual" | "cost.refused" | "cost.overhead";
 export interface CostJournalEvent {
   version: 1;
   kind: "cost-journal-event";
@@ -174,7 +189,17 @@ interface Change {
   product: string;
   source: string;
   detail: Record<string, unknown>;
+  /** False for overhead, which is charged to no Account's quota. */
+  chargesQuota?: boolean;
   apply(day: CostDay): number;
+}
+
+/** One overhead cost from the import: charged to no Account. Credits may be negative. */
+export interface OverheadCost {
+  overhead: OverheadKind;
+  app: CostApp | null;
+  category: string;
+  micros: number;
 }
 
 export class CostLedger {
@@ -317,6 +342,65 @@ export class CostLedger {
     });
   }
 
+  /**
+   * The day's overhead from the daily import, kept in its own day document under the nil UUID and charged to no
+   * Account. Like actuals, each replaces what was recorded for its key that day.
+   */
+  async recordOverhead(input: { day: unknown; costs: readonly OverheadCost[]; source: string }) {
+    const day = requireDay(input.day, Date.parse(this.now()), IMPORT_DAY_WINDOW_DAYS);
+    const costs = [...input.costs].sort((a, b) => overheadKey(a).localeCompare(overheadKey(b)));
+    for (const cost of costs)
+      if (
+        !OVERHEAD_KINDS.includes(cost.overhead) ||
+        (cost.app !== null && !(COST_APPS as readonly string[]).includes(cost.app)) ||
+        !isItemKind(cost.category) ||
+        !Number.isSafeInteger(cost.micros)
+      )
+        fail(
+          400,
+          "invalid_cost",
+          "Each overhead cost is a kind, an app or null, a category and whole microdollars.",
+        );
+    if (new Set(costs.map(overheadKey)).size !== costs.length)
+      fail(400, "invalid_cost", "Each overhead key appears once.");
+    const operationId = derivedOperationId("overhead", day, costs);
+    return this.change({
+      action: "cost.overhead",
+      accountId: OVERHEAD_ACCOUNT,
+      day,
+      operationId,
+      requestHash: hash(["cost-overhead-v1", day, costs]),
+      actor: "system:cost-import",
+      product: "overhead",
+      source: "actual",
+      detail: { source: input.source, costs },
+      chargesQuota: false,
+      apply: (document) => {
+        let delta = 0;
+        for (const cost of costs) {
+          const key = overheadKey(cost);
+          const entry: CostEntry = document.entries[key] ?? {
+            app: cost.app,
+            deployment: null,
+            category: cost.category,
+            quantity: 0,
+            estimatedMicros: 0,
+            actualMicros: null,
+            overhead: cost.overhead,
+          };
+          delta = add(delta, cost.micros - effective(entry));
+          entry.actualMicros = cost.micros;
+          document.entries[key] = entry;
+        }
+        return delta;
+      },
+    });
+  }
+
+  async overheadDay(day: number): Promise<CostDay | null> {
+    return (await this.files.get<CostDay>(costDayPath(OVERHEAD_ACCOUNT, day)))?.value ?? null;
+  }
+
   async day(accountId: string, day: number): Promise<CostDay | null> {
     return (await this.files.get<CostDay>(costDayPath(requireAccountId(accountId), day)))?.value ?? null;
   }
@@ -396,7 +480,7 @@ export class CostLedger {
   }
 
   private async chargeQuota(change: Change, eventId: string, delta: number) {
-    if (delta === 0) return;
+    if (delta === 0 || change.chargesQuota === false) return;
     await this.quota.applyCost({
       accountId: change.accountId,
       operationId: derivedOperationId("quota", eventId),
@@ -477,5 +561,7 @@ export class CostLedger {
 function idempotencyConflict(): never {
   fail(409, "idempotency_conflict", "Operation ID belongs to a different cost request.");
 }
+
+const overheadKey = (cost: OverheadCost) => `${cost.overhead}|${cost.app ?? ""}|${cost.category}`;
 
 export const isUuid = (value: unknown): value is string => matchesStringPattern(value, UUID_PATTERN);
