@@ -552,3 +552,31 @@ test(
     }
   },
 );
+
+test("starting a billing profile takes the billing contact", { skip: !RUN }, async () => {
+  const server = await serve("synthetic-review");
+  const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
+  try {
+    const origin = server.resolvedUrls!.local[0].replace(/\/$/, "");
+    const page = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
+    await page.clock.setFixedTime(new Date("2026-11-05T12:00:00"));
+    await stubKanbus(page);
+    const kestrel = SYNTHETIC_ACCOUNT_IDS[SYNTHETIC_ACCOUNT_IDS.length - 1];
+    await page.goto(`${origin}/accounts/${kestrel}/billing`);
+    await page.getByRole("button", { name: "Set up billing profile" }).click();
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Enter the billing contact's name and email.");
+    await page.getByLabel("Name", { exact: true }).fill("Example Payables");
+    await page.getByLabel("Email", { exact: true }).fill("payables@kestrel.example");
+    await page.getByLabel("Street (optional)").fill("6 Example Street");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect(page.getByRole("alert")).toContainText("A postal address needs");
+    await page.getByLabel("Street (optional)").fill("");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect(page.getByRole("heading", { name: "This account isn’t billable yet" })).toHaveCount(0);
+    await expect(page.getByText("Billing contact", { exact: true })).toBeVisible();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});

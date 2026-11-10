@@ -129,7 +129,9 @@ export function App() {
     setCreating(false);
     window.scrollTo(0, 0);
   }, []);
-  const billingState = useBillingState(clients?.billing ?? unavailableBilling, go);
+  // Billing loads only once signed in: returning from Google, the token arrives after the first render, and a load
+  // started before it would fail with "Sign in again" and never retry.
+  const billingState = useBillingState(signedIn && clients ? clients.billing : unavailableBilling, go);
   useEffect(() => {
     const restore = () => setLocation(readLocation());
     window.addEventListener("popstate", restore);
