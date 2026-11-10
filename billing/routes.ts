@@ -21,8 +21,16 @@ import type { BillingPlanCatalog } from "./plans";
 import { renderInvoicePdf } from "./pdf";
 import { reversalOf } from "./payments";
 import { commitWithRetry, hash, journalPath, requireOperationId } from "./store";
-import { accountSummary, invoiceView, journalView, lineView, paymentView, profileView } from "./views";
-import type { InvoiceSequence, JournalEvent, LedgerPayment } from "./model";
+import {
+  accountSummary,
+  engagementView,
+  invoiceView,
+  journalView,
+  lineView,
+  paymentView,
+  profileView,
+} from "./views";
+import type { InvoiceSequence, JournalEvent, LedgerEngagement, LedgerInvoice, LedgerPayment } from "./model";
 import { sequencePath } from "./ledger-engine";
 
 const PREFIX = OPERATOR_PREFIX;
@@ -113,6 +121,25 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
     if (!invoice) fail(404, "invoice_missing", "Invoice not found.");
     return invoice;
   }
+  const today = () => deps.now().slice(0, 10);
+  /** Engagement views, each with its own account's invoices for last-invoiced and the month still waiting. */
+  async function engagementViews(engagements: LedgerEngagement[]) {
+    const invoices = new Map<string, Promise<LedgerInvoice[]>>();
+    const invoicesOf = (accountId: string) => {
+      if (!invoices.has(accountId)) invoices.set(accountId, ledger.invoices(accountId));
+      return invoices.get(accountId)!;
+    };
+    return Promise.all(
+      engagements.map(async (engagement) =>
+        engagementView(engagement, await invoicesOf(engagement.accountId), today()),
+      ),
+    );
+  }
+  async function engagementFor(engagementId: string) {
+    const engagement = await ledger.engagement(engagementId);
+    if (!engagement) fail(404, "engagement_missing", "Engagement not found.");
+    return (await engagementViews([engagement]))[0];
+  }
   const timeline = async (accountId: string) =>
     (await ledger.journal(accountId))
       .map(journalView)
@@ -162,6 +189,16 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
       return jsonResponse(200, {
         invoices: (await ledger.allInvoices()).map((invoice) => invoiceView(invoice)),
       });
+    if (get && new RegExp(`${OPERATOR}/billing/engagements$`).test(path))
+      return jsonResponse(200, { engagements: await engagementViews(await ledger.allEngagements()) });
+    if ((match = new RegExp(`${OPERATOR}/billing/engagements/${ID}$`).exec(path))) {
+      if (get) return jsonResponse(200, { engagement: await engagementFor(match[1]) });
+      if (method === "POST") {
+        const { operationId, input } = write(event);
+        const { engagement } = await ledger.changeEngagement(context, match[1], input, operationId);
+        return jsonResponse(200, { engagement: await engagementFor(engagement.id) });
+      }
+    }
     if (get && new RegExp(`${OPERATOR}/billing/payments$`).test(path))
       return jsonResponse(200, { payments: await paymentViews(await ledger.allPayments()) });
 
@@ -327,6 +364,17 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
         const { operationId, input } = write(event, ["accountId"]);
         const { payment } = await ledger.recordPayment(context, accountId, input, operationId);
         return jsonResponse(200, { payment: await paymentFor((await ledger.payment(payment.id))!) });
+      }
+    }
+    if ((match = accountRoute("engagements").exec(path))) {
+      const accountId = match[1];
+      if (get)
+        return jsonResponse(200, { engagements: await engagementViews(await ledger.engagements(accountId)) });
+      if (method === "POST") {
+        await summary(accountId);
+        const { operationId, input } = write(event, ["accountId"]);
+        const { engagement } = await ledger.createEngagement(context, accountId, input, operationId);
+        return jsonResponse(200, { engagement: await engagementFor(engagement.id) });
       }
     }
     if (get && (match = accountRoute("billing-journal").exec(path)))

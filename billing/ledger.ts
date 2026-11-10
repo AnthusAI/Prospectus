@@ -6,6 +6,14 @@ import { hasOnlyKeys, isPlainRecord, matchesStringPattern } from "../accounts/va
 import { normalizeAllocations } from "./allocations";
 import { isDate } from "./dates";
 import {
+  CHANGE_FIELDS,
+  createEngagementHandler,
+  endEngagementHandler,
+  normalizeChange,
+  normalizeEngagement,
+  updateEngagementHandler,
+} from "./engagements";
+import {
   creditHandler,
   draftHandler,
   enterHandler,
@@ -33,6 +41,7 @@ import { isCents } from "./money";
 import {
   fail,
   type JournalEvent,
+  type LedgerEngagement,
   type LedgerInvoice,
   type LedgerPayment,
   type NumberClaim,
@@ -85,6 +94,9 @@ export class BillingLedger {
       "payment.record": recordPaymentHandler,
       "payment.allocate": allocatePaymentHandler,
       "payment.reverse": reversePaymentHandler,
+      "engagement.create": createEngagementHandler,
+      "engagement.update": updateEngagementHandler,
+      "engagement.end": endEngagementHandler,
     });
   }
 
@@ -117,6 +129,15 @@ export class BillingLedger {
   }
   async allPayments(): Promise<LedgerPayment[]> {
     return (await Promise.all((await this.accountIds()).map((id) => this.reader.payments(id)))).flat();
+  }
+  engagement(engagementId: string) {
+    return this.reader.engagement(requireId(engagementId, "invalid_engagement", "Engagement ID required."));
+  }
+  engagements(accountId: string) {
+    return this.reader.engagements(requireAccountId(accountId));
+  }
+  async allEngagements(): Promise<LedgerEngagement[]> {
+    return (await Promise.all((await this.accountIds()).map((id) => this.reader.engagements(id)))).flat();
   }
   /** The account's most recent journal events, newest first. */
   async journal(accountId: string): Promise<JournalEvent[]> {
@@ -380,6 +401,46 @@ export class BillingLedger {
     );
   }
 
+  // ---- Engagements -----------------------------------------------------------------------------------------
+
+  /** Starts an engagement (or records a proposed one) for the account. */
+  async createEngagement(context: Context, accountId: string, input: unknown, operationId: string) {
+    const actor = requireBillingAdministrator(context, this.grants);
+    const id = requireAccountId(accountId),
+      operation = requireOperationId(operationId);
+    const request = {
+      engagementId: deterministicId(operation, "engagement"),
+      fields: normalizeEngagement(input),
+    };
+    return this.engagementResult(await this.run(actor, "engagement.create", id, operation, request));
+  }
+
+  /** Changes an engagement, starts a proposed one (`status: "active"`) or ends it (`status: "ended"`). */
+  async changeEngagement(context: Context, engagementId: string, input: unknown, operationId: string) {
+    const actor = requireBillingAdministrator(context, this.grants);
+    const operation = requireOperationId(operationId);
+    const fields = requireFields(
+      input,
+      [...CHANGE_FIELDS, "expectedRevision"],
+      "invalid_engagement",
+      "Engagement change",
+    );
+    const { expectedRevision, ...rest } = fields;
+    const change = normalizeChange(rest);
+    const engagement = await this.engagement(engagementId);
+    if (!engagement) fail(404, "engagement_missing", "Engagement not found.");
+    return this.engagementResult(
+      await this.run(
+        actor,
+        change.status === "ended" ? "engagement.end" : "engagement.update",
+        engagement.accountId,
+        operation,
+        { engagementId: engagement.id, change },
+        requireExpectedRevision(expectedRevision),
+      ),
+    );
+  }
+
   // ---- Plumbing --------------------------------------------------------------------------------------------
 
   private async requireInvoice(invoiceId: string) {
@@ -424,6 +485,9 @@ export class BillingLedger {
   }
   private invoiceResult(result: { record: any; event: JournalEvent; replayed: boolean }) {
     return { invoice: result.record as LedgerInvoice, event: result.event, replayed: result.replayed };
+  }
+  private engagementResult(result: { record: any; event: JournalEvent; replayed: boolean }) {
+    return { engagement: result.record as LedgerEngagement, event: result.event, replayed: result.replayed };
   }
   private paymentResult(result: { record: any; event: JournalEvent; replayed: boolean }) {
     return { payment: result.record as LedgerPayment, event: result.event, replayed: result.replayed };

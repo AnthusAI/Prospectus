@@ -38,6 +38,7 @@ fn billing_project_accepts_only_its_own_kinds_and_canonical_segments() {
         format!("payments/{ACCOUNT}.json"),
         format!("allocations/{ACCOUNT}.json"),
         format!("credits/{ACCOUNT}.json"),
+        format!("engagements/{ACCOUNT}.json"),
         format!("ledgers/{ACCOUNT}.json"),
         "numbers/202610-001.json".to_owned(),
         "sequences/202610.json".to_owned(),

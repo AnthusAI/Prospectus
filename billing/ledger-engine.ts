@@ -10,6 +10,7 @@ import {
   type IssuerRecord,
   type JournalEvent,
   type LedgerAllocation,
+  type LedgerEngagement,
   type LedgerInvoice,
   type LedgerPayment,
   type NumberClaim,
@@ -30,6 +31,7 @@ export const invoicePath = (invoiceId: string) => `invoices/${invoiceId}.json`;
 export const paymentPath = (paymentId: string) => `payments/${paymentId}.json`;
 export const allocationPath = (allocationId: string) => `allocations/${allocationId}.json`;
 export const creditPath = (creditId: string) => `credits/${creditId}.json`;
+export const engagementPath = (engagementId: string) => `engagements/${engagementId}.json`;
 export const numberPath = (number: string) => `numbers/${number}.json`;
 export const sequencePath = (month: string) => `sequences/${month}.json`;
 export const ISSUER_FILE = "issuer/0.json";
@@ -49,6 +51,9 @@ export const ledgerActions = [
   "payment.record",
   "payment.allocate",
   "payment.reverse",
+  "engagement.create",
+  "engagement.update",
+  "engagement.end",
 ] as const;
 export type LedgerAction = (typeof ledgerActions)[number];
 
@@ -77,6 +82,8 @@ interface LedgerHead {
   pending?: LedgerOperation;
   invoices: string[];
   payments: string[];
+  /** Absent on heads written before engagements existed. */
+  engagements?: string[];
   /** The latest journal events for this account, oldest first. */
   journal: string[];
 }
@@ -93,10 +100,10 @@ export interface Execution {
   action: BillingAction;
   primary: Step<any>;
   detail: Record<string, unknown>;
-  index?: { invoices?: string[]; payments?: string[] };
+  index?: { invoices?: string[]; payments?: string[]; engagements?: string[] };
 }
 export interface LedgerHandler {
-  recordKind: "invoice" | "payment";
+  recordKind: "invoice" | "payment" | "engagement";
   /** Reads only. Refuses, or returns the snapshot of facts to freeze with the operation. */
   validate(read: LedgerReader, operation: LedgerOperation): Promise<Record<string, unknown> | void>;
   /** Idempotent writes. Safe to run again after any interruption, by this caller or another. */
@@ -143,6 +150,14 @@ export class LedgerReader {
     const head = await this.head(accountId);
     const found = await Promise.all(head.payments.map((id) => this.payment(id)));
     return found.filter((payment): payment is LedgerPayment => payment !== null);
+  }
+  async engagement(engagementId: string): Promise<LedgerEngagement | null> {
+    return (await this.files.get<LedgerEngagement>(engagementPath(engagementId)))?.value ?? null;
+  }
+  async engagements(accountId: string): Promise<LedgerEngagement[]> {
+    const head = await this.head(accountId);
+    const found = await Promise.all((head.engagements ?? []).map((id) => this.engagement(id)));
+    return found.filter((engagement): engagement is LedgerEngagement => engagement !== null);
   }
   async profile(accountId: string): Promise<BillingProfile | null> {
     return (await this.files.get<BillingProfile>(profilePath(accountId)))?.value ?? null;
@@ -512,6 +527,9 @@ export class LedgerEngine {
         revision: head.revision + 1,
         invoices: union(head.invoices, event.index?.invoices),
         payments: union(head.payments, event.index?.payments),
+        ...(head.engagements || event.index?.engagements
+          ? { engagements: union(head.engagements ?? [], event.index?.engagements) }
+          : {}),
         journal: union(head.journal, [event.eventId]).slice(-MAXIMUM_INDEXED_EVENTS),
       };
     });

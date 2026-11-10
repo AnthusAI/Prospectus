@@ -55,7 +55,7 @@ export interface AccountsPlaneOptions {
    * outside Git. Absent: every quota call is refused as unavailable. */
   quotaRateTable?: RateTableConfiguration;
   /** `ledger.enabled` in billing/deployment.json. True adds the billing S3 prefixes to the central runtime role and
-   * the ten operator write routes to the staff BFF role and the API access policy. Absent or false: the synthesized
+   * the twelve operator write routes to the staff BFF role and the API access policy. Absent or false: the synthesized
    * output is exactly what it was before billing existed. */
   billingLedger?: boolean;
   /** `usageQueues` in accounts/deployment.json (docs/COST_ACCOUNTING.md). True creates one usage queue and dead-letter
@@ -570,7 +570,9 @@ export class AccountsPlane extends Construct {
     );
     // Resource policy changes must publish to the existing API stage as well.
     api.latestDeployment?.addToLogicalId({ directoryRoutes: "organization-creation-v1" });
-    if (options.billingLedger) api.latestDeployment?.addToLogicalId({ billingRoutes: "ledger-v1" });
+    // v2 adds the two engagement write routes (kanbus-935b1f), so the stage republishes with them.
+    if (options.billingLedger)
+      api.latestDeployment?.addToLogicalId({ billingRoutes: "ledger-v2-engagements" });
     if (options.consolePairEnabled) {
       const consoleBffRoutes = [
         "GET/v1/identities/me",

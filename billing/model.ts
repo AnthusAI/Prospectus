@@ -146,6 +146,9 @@ export const billingActions = [
   "payment.recorded",
   "payment.allocated",
   "payment.reversed",
+  "engagement.created",
+  "engagement.updated",
+  "engagement.ended",
 ] as const;
 export type BillingAction = (typeof billingActions)[number];
 
@@ -156,7 +159,7 @@ export interface JournalEvent {
   kind: "billing-journal-event";
   eventId: string;
   action: BillingAction;
-  recordKind: "profile" | "line" | "issuer" | "invoice" | "payment" | "contact";
+  recordKind: "profile" | "line" | "issuer" | "invoice" | "payment" | "contact" | "engagement";
   recordPath: string;
   /** Absent only for records that belong to no account (the issuer). */
   accountId?: string;
@@ -175,7 +178,7 @@ export interface JournalEvent {
   /** Ledger events: what the operation did, enough to rebuild every balance from the journal. */
   detail?: Record<string, unknown>;
   /** Ledger events: what the operation added to the account's index, so an interrupted finish can be repeated. */
-  index?: { invoices?: string[]; payments?: string[] };
+  index?: { invoices?: string[]; payments?: string[]; engagements?: string[] };
 }
 
 export type InvoiceStatus = "draft" | "issued" | "partially_paid" | "paid" | "void" | "uncollectible";
@@ -191,6 +194,8 @@ export interface InvoiceLineItem {
   product?: string;
   /** Service dates, as typed. */
   period?: string;
+  /** The engagement this item bills: an active or ended engagement of the same account. */
+  engagementId?: string;
 }
 
 /** The seller block. Admin-set data in `issuer/0.json`, copied into each invoice when it is issued. */
@@ -331,4 +336,33 @@ export interface NumberClaim {
   invoiceId: string;
   accountId: string;
   operationId: string;
+}
+
+export const engagementTypes = ["ongoing", "setup"] as const;
+export type EngagementType = (typeof engagementTypes)[number];
+export const engagementStatuses = ["proposed", "active", "ended"] as const;
+export type EngagementStatus = (typeof engagementStatuses)[number];
+export const setupStages = ["Installation", "Training", "Higher-level support", "Handed off"] as const;
+export type SetupStage = (typeof setupStages)[number];
+
+/** Services work Anthus does for one account and invoices. Money, not access: it grants nothing. */
+export interface LedgerEngagement extends VersionedRecord {
+  version: 1;
+  kind: "billing-engagement";
+  id: string;
+  accountId: string;
+  name: string;
+  type: EngagementType;
+  status: EngagementStatus;
+  /** The Anthus person leading it, as free text. Never used to find or authorize anyone. */
+  lead: string;
+  startDate: string;
+  /** Ongoing: set when ended. Setup: the start plus the length in weeks. */
+  endDate?: string;
+  /** Ongoing only. */
+  monthlyAmountCents?: number;
+  /** Setup only. */
+  packagePriceCents?: number;
+  lengthWeeks?: number;
+  stage?: SetupStage;
 }

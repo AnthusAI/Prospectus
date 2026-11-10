@@ -211,6 +211,7 @@ fn path_belongs_to_project(kind: &str, project: &str) -> bool {
             "payments",
             "allocations",
             "credits",
+            "engagements",
             "ledgers",
             "numbers",
             "sequences",

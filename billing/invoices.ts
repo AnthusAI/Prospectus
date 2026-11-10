@@ -1,4 +1,10 @@
-import { hasOnlyKeys, isPlainRecord, isProductName } from "../accounts/validation-rules";
+import { UUID_PATTERN } from "../accounts/model";
+import {
+  hasOnlyKeys,
+  isPlainRecord,
+  isProductName,
+  matchesStringPattern,
+} from "../accounts/validation-rules";
 import { deriveInvoice, isOpenInvoice, withDerivedFigures } from "./balances";
 import { addDays, isDate, isMonth } from "./dates";
 import {
@@ -46,7 +52,15 @@ export function normalizeLineItems(value: unknown): InvoiceLineItem[] {
   const items = (value as unknown[]).map((entry): InvoiceLineItem => {
     if (
       !isPlainRecord(entry) ||
-      !hasOnlyKeys(entry, ["description", "quantity", "unitAmountCents", "billingLine", "product", "period"])
+      !hasOnlyKeys(entry, [
+        "description",
+        "quantity",
+        "unitAmountCents",
+        "billingLine",
+        "product",
+        "period",
+        "engagementId",
+      ])
     )
       return refuse("a line item must have only the reviewed fields.");
     if (!text(entry.description, 200)) refuse("a line item description must be 1 to 200 characters.");
@@ -60,6 +74,8 @@ export function normalizeLineItems(value: unknown): InvoiceLineItem[] {
       refuse("a line item product must be a registered product name.");
     if (entry.period !== undefined && !text(entry.period, 100))
       refuse("a line item period must be absent or 1 to 100 characters.");
+    if (entry.engagementId !== undefined && !matchesStringPattern(entry.engagementId, UUID_PATTERN))
+      refuse("a line item engagement must be absent or an engagement ID.");
     lineTotalCents(entry.quantity, entry.unitAmountCents);
     return {
       description: entry.description,
@@ -68,6 +84,9 @@ export function normalizeLineItems(value: unknown): InvoiceLineItem[] {
       ...(entry.billingLine !== undefined ? { billingLine: entry.billingLine } : {}),
       ...(entry.product !== undefined ? { product: entry.product } : {}),
       ...(entry.period !== undefined ? { period: entry.period } : {}),
+      ...(entry.engagementId !== undefined
+        ? { engagementId: (entry.engagementId as string).toLowerCase() }
+        : {}),
     };
   });
   const total = sumCents(items.map((item) => lineTotalCents(item.quantity, item.unitAmountCents)));
@@ -159,6 +178,24 @@ async function requirePeriodFree(read: LedgerReader, accountId: string, period: 
     fail(409, "period_invoiced", "The account already has an invoice for that period.");
 }
 
+/** Refuses an invoice whose lines name an engagement that is not a started engagement of the same account. */
+async function requireBillableEngagements(
+  read: LedgerReader,
+  accountId: string,
+  lineItems: InvoiceLineItem[],
+) {
+  const ids = [...new Set(lineItems.flatMap((item) => (item.engagementId ? [item.engagementId] : [])))];
+  for (const id of ids) {
+    const engagement = await read.engagement(id);
+    if (!engagement || engagement.accountId !== accountId || engagement.status === "proposed")
+      fail(
+        400,
+        "invalid_engagement",
+        "Invoice refused: a line names an engagement that is not a started engagement of this account.",
+      );
+  }
+}
+
 async function requireInvoice(read: LedgerReader, operation: LedgerOperation, invoiceId: unknown) {
   const invoice = typeof invoiceId === "string" ? await read.invoice(invoiceId) : null;
   if (!invoice || invoice.accountId !== operation.accountId)
@@ -195,6 +232,11 @@ export const draftHandler: LedgerHandler = {
   async validate(read, operation) {
     const profile = await requireInvoicedProfile(read, operation.accountId);
     await requirePeriodFree(read, operation.accountId, operation.request.period as string | undefined);
+    await requireBillableEngagements(
+      read,
+      operation.accountId,
+      operation.request.lineItems as InvoiceLineItem[],
+    );
     return { netTermsDays: await resolvedNetTerms(read, profile, operation) };
   },
   async execute(scope, operation) {
@@ -279,6 +321,11 @@ export const enterHandler: LedgerHandler = {
   async validate(read, operation) {
     const profile = await requireInvoicedProfile(read, operation.accountId);
     await requirePeriodFree(read, operation.accountId, operation.request.period as string | undefined);
+    await requireBillableEngagements(
+      read,
+      operation.accountId,
+      operation.request.lineItems as InvoiceLineItem[],
+    );
     const number = operation.request.number as string;
     const claim = (await read.files.get<NumberClaim>(numberPath(number)))?.value;
     if (claim && claim.invoiceId !== operation.request.invoiceId)
