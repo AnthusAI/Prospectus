@@ -281,6 +281,119 @@ test(
   },
 );
 
+test(
+  "engagements: the page, the account, Raise an invoice and Today follow-ups",
+  { skip: !RUN },
+  async () => {
+    const server = await serve("synthetic-review");
+    const browser: Browser = await chromium.launch({
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    });
+    try {
+      const origin = server.resolvedUrls!.local[0].replace(/\/$/, "");
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const page = await context.newPage();
+      await page.clock.setFixedTime(new Date("2026-11-05T12:00:00"));
+      await stubKanbus(page);
+      const messages = watchConsole(page);
+
+      // The page has its own address, filters with counts, and each engagement's kind, lead and amount.
+      await page.goto(`${origin}/engagements`);
+      await expect(page.getByRole("heading", { level: 1, name: "Engagements" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Active 3/ })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("button", { name: /^Ongoing 2/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Setup packages 1/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Proposed 1/ })).toBeVisible();
+      const desk = page.locator(".engagement-row", { hasText: "Reporting Desk support" });
+      await expect(desk).toContainText("Ongoing");
+      await expect(desk).toContainText("Harbor Lantern Media");
+      await expect(desk).toContainText("Diego C. leads");
+      await expect(desk).toContainText("$8,000.00 / month");
+      await expect(desk).toContainText("October 2026 not invoiced yet");
+      await expect(page.locator(".engagement-row", { hasText: "Newsroom setup" })).toContainText(
+        "Training · week 2 of 6",
+      );
+      await page.getByRole("button", { name: /^Proposed/ }).click();
+      await page.getByRole("button", { name: "Start" }).click();
+      await expect(page.getByRole("button", { name: /^Proposed 0/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Active 4/ })).toBeVisible();
+
+      // A new ongoing engagement: amounts are dollars and cents, and the form names what is missing.
+      await page.getByRole("button", { name: "New engagement" }).click();
+      await page.getByLabel("Account").selectOption({ label: "Northfield Press" });
+      await page.getByLabel("Name").fill("Editorial agents");
+      await expect(page.getByRole("alert")).toContainText("Say who leads it.");
+      await page.getByLabel("Anthus lead").fill("Sam Rivera");
+      await page.getByLabel("Starts").fill("2026-11-01");
+      await page.getByLabel("Monthly amount").fill("1500.001");
+      await expect(page.getByRole("button", { name: "Start engagement" })).toBeDisabled();
+      await page.getByLabel("Monthly amount").fill("1500");
+      await page.getByRole("button", { name: "Start engagement" }).click();
+      await page.getByRole("button", { name: /^Active/ }).click();
+      await expect(page.locator(".engagement-row", { hasText: "Editorial agents" })).toContainText(
+        "$1,500.00 / month",
+      );
+
+      // The Account page lists the account's engagements and counts them.
+      await page.goto(`${origin}/accounts/${HARBOR}`);
+      await expect(page.getByRole("heading", { name: "Services engagements" })).toBeVisible();
+      await expect(page.locator(".engagement-row")).toHaveCount(2);
+      await expect(page.locator(".one-stats")).toContainText("1 to invoice");
+
+      // Today and Usage and billing raise the month still waiting for an invoice.
+      await page.goto(`${origin}/?view=today`);
+      await expect(
+        page.getByRole("link", { name: "Invoice Reporting Desk support for October 2026" }),
+      ).toHaveAttribute("href", `/invoices/new?account=${HARBOR}`);
+      await page.goto(`${origin}/?view=billing`);
+      await expect(page.locator(".billing-attention", { hasText: "To invoice" }).first()).toBeVisible();
+
+      // Raise an invoice offers the account's engagements; the retainer bills the month that is waiting.
+      await page.goto(`${origin}/invoices/new?account=${HARBOR}`);
+      await page.getByRole("combobox", { name: "Kind of invoice" }).selectOption("other");
+      const offers = page.getByRole("group", { name: "Add from this account" });
+      await expect(offers.getByRole("button")).toHaveCount(2);
+      await offers.getByRole("button", { name: "Reporting Desk support retainer" }).click();
+      await expect(page.getByLabel("Description").first()).toHaveValue(
+        "Reporting Desk support, monthly retainer",
+      );
+      await expect(page.getByLabel("Service dates").first()).toHaveValue("October 2026");
+      await expect(offers.getByRole("button", { name: "Reporting Desk support retainer" })).toBeDisabled();
+      await page.getByLabel("Already sent outside Prospectus").check();
+      await page.getByLabel("Number it was sent with").fill("202610-009");
+      await page.getByLabel("Issued").fill("2026-10-31");
+      await page.getByRole("button", { name: "Record 202610-009" }).click();
+      await expect(page.getByRole("heading", { name: "202610-009 issued" })).toBeVisible();
+
+      // The engagement now shows it as last invoiced, and nothing waits.
+      await page
+        .getByRole("navigation", { name: "Admin" })
+        .getByRole("link", { name: /^Engagements/ })
+        .click();
+      const billed = page.locator(".engagement-row", { hasText: "Reporting Desk support" });
+      await expect(billed).toContainText("Last invoiced Oct 31");
+      await expect(billed.getByRole("link", { name: "202610-009" })).toHaveAttribute(
+        "href",
+        "/invoices/202610-009",
+      );
+
+      // Ending asks once more, then the engagement leaves the active list.
+      await billed.getByRole("button", { name: "End Reporting Desk support" }).click();
+      await billed.getByRole("button", { name: "End today" }).click();
+      await expect(page.locator(".engagement-row", { hasText: "Reporting Desk support" })).toHaveCount(0);
+
+      // It fits a phone.
+      await page.setViewportSize({ width: 375, height: 812 });
+      assert.ok((await overflow(page)) <= 0, "no horizontal scroll on a phone");
+      assert.deepEqual(messages, [], "nothing is logged in the browser console");
+      await context.close();
+    } finally {
+      await browser.close();
+      await server.close();
+    }
+  },
+);
+
 test("a read-only operator sees the same pages with no actions", { skip: !RUN }, async () => {
   const server = await serve("synthetic-review");
   const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });

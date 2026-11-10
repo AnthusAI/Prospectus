@@ -37,3 +37,14 @@ export const billingHref = {
   accountBilling: (accountId: string) => `/accounts/${encodeURIComponent(accountId)}/billing`,
   settings: () => "/settings/billing",
 };
+
+/** Where a needs-attention item leads. */
+export function attentionHref(target: {
+  type: "invoice" | "payment" | "account" | "new-invoice";
+  id: string;
+}) {
+  if (target.type === "invoice") return billingHref.invoice(target.id);
+  if (target.type === "payment") return billingHref.payment(target.id);
+  if (target.type === "new-invoice") return billingHref.newInvoice(target.id);
+  return billingHref.accountBilling(target.id);
+}

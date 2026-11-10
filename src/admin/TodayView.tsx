@@ -12,7 +12,7 @@ import {
 import type { Write } from "./PipelineView";
 import { billingFollowUps, totals } from "../billing/derive";
 import { formatWholeDollars } from "../billing/money";
-import { billingHref } from "../billing/routes";
+import { attentionHref, billingHref } from "../billing/routes";
 import { BillingLink } from "../shared/billing";
 import { AppChip, Eyebrow, Icon, Stat, Unavailable } from "../shared/ui";
 import { useBilling } from "./BillingProvider";
@@ -114,7 +114,10 @@ export function TodayView({
   );
   // Billing follow-ups are worked out from the ledger each time; none is stored.
   const billingRows = useMemo(
-    () => (ledger ? billingFollowUps(ledger.accounts, ledger.invoices, ledger.payments, today) : []),
+    () =>
+      ledger
+        ? billingFollowUps(ledger.accounts, ledger.invoices, ledger.payments, today, ledger.engagements)
+        : [],
     [ledger, today],
   );
   const billingTotals = ledger ? totals(ledger.invoices, ledger.payments, today) : null;
@@ -246,15 +249,7 @@ export function TodayView({
                     </span>
                     <span className="one-row-main">
                       <span className="one-row-title">
-                        <BillingLink
-                          href={
-                            row.target.type === "invoice"
-                              ? billingHref.invoice(row.target.id)
-                              : billingHref.payment(row.target.id)
-                          }
-                        >
-                          {row.action}
-                        </BillingLink>
+                        <BillingLink href={attentionHref(row.target)}>{row.action}</BillingLink>
                       </span>
                       <span className="one-row-sub">{row.account} · Invoiced account</span>
                     </span>

@@ -29,6 +29,34 @@ export interface InvoiceLineItem {
   product?: string;
   /** Service dates, as typed or as the period gives them. */
   period?: string;
+  /** The engagement this item bills. */
+  engagementId?: string;
+}
+
+export type EngagementType = "ongoing" | "setup";
+export type EngagementStatus = "proposed" | "active" | "ended";
+export const SETUP_STAGES = ["Installation", "Training", "Higher-level support", "Handed off"] as const;
+export type SetupStage = (typeof SETUP_STAGES)[number];
+
+/** Services work Anthus does for one account and invoices. */
+export interface Engagement {
+  id: string;
+  accountId: string;
+  name: string;
+  type: EngagementType;
+  status: EngagementStatus;
+  lead: string;
+  startDate: string;
+  endDate?: string;
+  monthlyAmountCents?: number;
+  packagePriceCents?: number;
+  lengthWeeks?: number;
+  stage?: SetupStage;
+  /** The latest issued invoice with a line naming this engagement. */
+  lastInvoiced?: { invoiceId: string; invoiceNumber: string; issueDate: string; period?: string };
+  /** `YYYY-MM`: the last complete month of an active ongoing engagement that no invoice covers yet. */
+  uninvoicedMonth?: string;
+  revision: number;
 }
 
 export interface IssuerBlock {
@@ -147,7 +175,10 @@ export type JournalAction =
   | "payment.recorded"
   | "payment.allocated"
   | "payment.reversed"
-  | "issuer.saved";
+  | "issuer.saved"
+  | "engagement.created"
+  | "engagement.updated"
+  | "engagement.ended";
 
 export interface JournalEvent {
   id: string;
@@ -175,6 +206,7 @@ export interface BillingOverview {
   accounts: AccountSummary[];
   invoices: Invoice[];
   payments: Payment[];
+  engagements: Engagement[];
 }
 
 export interface AccountBilling {
@@ -184,6 +216,7 @@ export interface AccountBilling {
   invoices: Invoice[];
   payments: Payment[];
   journal: JournalEvent[];
+  engagements: Engagement[];
 }
 
 export interface InvoiceDetail {
@@ -228,6 +261,34 @@ export interface RaiseInvoiceInput {
   draft: boolean;
   /** An invoice already sent outside Prospectus, recorded with the number and issue date it was sent with. */
   alreadySent?: { number: string; issueDate: string };
+}
+
+export interface EngagementInput {
+  operationId: string;
+  accountId: string;
+  name: string;
+  type: EngagementType;
+  status?: "proposed" | "active";
+  lead: string;
+  startDate: string;
+  monthlyAmountCents?: number;
+  packagePriceCents?: number;
+  lengthWeeks?: number;
+}
+
+export interface EngagementChangeInput {
+  operationId: string;
+  expectedRevision: number;
+  name?: string;
+  lead?: string;
+  startDate?: string;
+  monthlyAmountCents?: number;
+  packagePriceCents?: number;
+  lengthWeeks?: number;
+  stage?: SetupStage;
+  /** `active` starts a proposed engagement; `ended` ends it. */
+  status?: "active" | "ended";
+  endDate?: string;
 }
 
 export interface AllocationInput {
@@ -302,6 +363,8 @@ export interface BillingClient {
   reversePayment(paymentId: string, input: ReasonInput): Promise<Payment>;
   writeOff(invoiceId: string, input: ReasonInput): Promise<Invoice>;
   voidInvoice(invoiceId: string, input: ReasonInput): Promise<Invoice>;
+  createEngagement(input: EngagementInput): Promise<Engagement>;
+  changeEngagement(engagementId: string, input: EngagementChangeInput): Promise<Engagement>;
   issuer(): Promise<IssuerSettings>;
   saveIssuer(input: IssuerInput): Promise<IssuerSettings>;
 }
