@@ -17,6 +17,7 @@ import type {
   BillingContact,
   BillingLine,
   BillingProfile,
+  Engagement,
   Invoice,
   InvoiceLineItem,
   IssuerSettings,
@@ -535,6 +536,91 @@ export function syntheticBilling(options: Options): BillingClient {
     }
     settleAll(payment);
   };
+  // Engagements: each one's last invoice and any month still waiting are worked out from the invoices, as the
+  // server does (billing/engagements.ts).
+  const engagements: Engagement[] = [
+    {
+      id: ID(7, 1),
+      accountId: harbor,
+      name: "Reporting Desk support",
+      type: "ongoing",
+      status: "active",
+      lead: "Diego C.",
+      startDate: addDays(previousStart, -30),
+      monthlyAmountCents: 800000,
+      revision: 1,
+    },
+    {
+      id: ID(7, 2),
+      accountId: harbor,
+      name: "Newsroom setup",
+      type: "setup",
+      status: "active",
+      lead: OPERATOR,
+      startDate: addDays(today, -10),
+      endDate: addDays(today, 32),
+      packagePriceCents: 1200000,
+      lengthWeeks: 6,
+      stage: "Training",
+      revision: 1,
+    },
+    {
+      id: ID(7, 3),
+      accountId: ridgeline,
+      name: "Back-office agents",
+      type: "ongoing",
+      status: "active",
+      lead: "Diego C.",
+      startDate: addDays(previousStart, 5),
+      monthlyAmountCents: 650000,
+      revision: 1,
+    },
+    {
+      id: ID(7, 4),
+      accountId: marigold,
+      name: "Claims triage",
+      type: "ongoing",
+      status: "proposed",
+      lead: OPERATOR,
+      startDate: addDays(monthStart, 32),
+      monthlyAmountCents: 400000,
+      revision: 1,
+    },
+  ];
+  const engagementView = (engagement: Engagement): Engagement => {
+    const billed = invoices
+      .filter((invoice) => invoice.number && invoice.issuedAt && invoice.status !== "void")
+      .filter((invoice) => invoice.lineItems.some((line) => line.engagementId === engagement.id))
+      .sort((a, b) => b.issuedAt!.localeCompare(a.issuedAt!));
+    const { lastInvoiced: _last, uninvoicedMonth: _month, ...rest } = engagement;
+    const last = billed[0];
+    const owed =
+      engagement.type === "ongoing" &&
+      engagement.status === "active" &&
+      engagement.startDate < monthStart &&
+      !billed.some((invoice) => invoice.issuedAt! >= previousStart);
+    return {
+      ...rest,
+      ...(last
+        ? {
+            lastInvoiced: {
+              invoiceId: last.id,
+              invoiceNumber: last.number!,
+              issueDate: last.issuedAt!,
+              period: last.lineItems.find((line) => line.engagementId === engagement.id)?.period,
+            },
+          }
+        : {}),
+      ...(owed ? { uninvoicedMonth: month(previousStart) } : {}),
+    };
+  };
+  const engagementViews = (accountId?: string) =>
+    engagements.filter((entry) => !accountId || entry.accountId === accountId).map(engagementView);
+  const findEngagement = (id: string) => {
+    const found = engagements.find((entry) => entry.id === id);
+    if (!found) throw new BillingError(404, "That engagement was not found.", "not_found");
+    return found;
+  };
   const refreshNext = () => {
     issuer.nextInvoiceNumber = sequence(today);
   };
@@ -545,7 +631,7 @@ export function syntheticBilling(options: Options): BillingClient {
     access: async () => ({
       permissions: ["accounts:admin:read", ...(options.readOnly ? [] : [BILLING_PERMISSION])],
     }),
-    overview: async () => copy({ accounts, invoices, payments }),
+    overview: async () => copy({ accounts, invoices, payments, engagements: engagementViews() }),
     account: async (id) =>
       copy({
         account: accountOf(id),
@@ -558,6 +644,7 @@ export function syntheticBilling(options: Options): BillingClient {
           .filter((p) => p.accountId === id)
           .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
         journal: sorted(journal.filter((entry) => entry.accountId === id)),
+        engagements: engagementViews(id),
       }),
     invoice: async (reference) => {
       const invoice = findInvoice(reference);
@@ -809,6 +896,54 @@ export function syntheticBilling(options: Options): BillingClient {
           reason: input.reason.trim(),
         });
         return invoice;
+      }),
+    createEngagement: async ({ operationId, accountId, ...input }) =>
+      once(operationId, () => {
+        accountOf(accountId);
+        if (!input.name.trim())
+          throw new BillingError(400, "Give the engagement a name.", "invalid_engagement");
+        const engagement: Engagement = {
+          id: ID(7, next()),
+          accountId,
+          name: input.name.trim(),
+          type: input.type,
+          status: input.status ?? "active",
+          lead: input.lead.trim(),
+          startDate: input.startDate,
+          ...(input.type === "ongoing"
+            ? { monthlyAmountCents: input.monthlyAmountCents }
+            : {
+                packagePriceCents: input.packagePriceCents,
+                lengthWeeks: input.lengthWeeks,
+                endDate: addDays(input.startDate, (input.lengthWeeks ?? 1) * 7),
+                stage: "Installation" as const,
+              }),
+          revision: 1,
+        };
+        engagements.push(engagement);
+        event({ at: new Date().toISOString(), actor: OPERATOR, action: "engagement.created", accountId });
+        return engagementView(engagement);
+      }),
+    changeEngagement: async (id, { operationId, expectedRevision, status, endDate, ...fields }) =>
+      once(operationId, () => {
+        const engagement = findEngagement(id);
+        stale(engagement, expectedRevision);
+        if (engagement.status === "ended")
+          throw new BillingError(409, "An ended engagement cannot be changed.", "engagement_ended");
+        Object.assign(engagement, fields);
+        if (status === "active") engagement.status = "active";
+        if (status === "ended") {
+          engagement.status = "ended";
+          engagement.endDate = endDate ?? today;
+        }
+        engagement.revision += 1;
+        event({
+          at: new Date().toISOString(),
+          actor: OPERATOR,
+          action: status === "ended" ? "engagement.ended" : "engagement.updated",
+          accountId: engagement.accountId,
+        });
+        return engagementView(engagement);
       }),
     issuer: async () => copy(issuer),
     saveIssuer: async (input) =>

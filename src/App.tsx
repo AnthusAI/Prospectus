@@ -16,6 +16,7 @@ import { AdminShell, PAGES, pageHref, readLocation, type Page } from "./admin/Sh
 import { BillingContext, useBillingState } from "./admin/BillingProvider";
 import { BillingSettingsView } from "./admin/BillingSettingsView";
 import { BillingView } from "./admin/BillingView";
+import { EngagementsView } from "./admin/EngagementsView";
 import { InvoiceView } from "./admin/InvoiceView";
 import { PaymentView, RecordPaymentView } from "./admin/PaymentViews";
 import { PipelineView } from "./admin/PipelineView";
@@ -59,7 +60,6 @@ interface Clients {
 }
 
 const UNAVAILABLE_PAGES: Partial<Record<Page, string>> = {
-  engagements: "Services engagements will be tracked here, inside the account each one is for.",
   team: "Anthus staff and their CRM roles will be managed here. Roles are assigned in the identity service for now.",
 };
 
@@ -383,6 +383,7 @@ export function App() {
           billingState.overview.data.invoices,
           billingState.overview.data.payments,
           localDate(),
+          billingState.overview.data.engagements,
         ).length
       : 0;
   const shell = (
@@ -400,6 +401,7 @@ export function App() {
           page === "today" ||
           page === "billing" ||
           page === "settings" ||
+          page === "engagements" ||
           UNAVAILABLE_PAGES[page] ||
           issueId
         )
@@ -479,6 +481,8 @@ export function App() {
           )
         ) : page === "settings" ? (
           <BillingSettingsView />
+        ) : page === "engagements" ? (
+          <EngagementsView />
         ) : UNAVAILABLE_PAGES[page] ? (
           <main className="one-main narrow" aria-label={PAGES[page].label}>
             <div className="one-pagehead">

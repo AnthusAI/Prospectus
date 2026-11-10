@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { operationId } from "../operation-id";
-import { existingForPeriod, longDate, periodChoices, periodLabel } from "../billing/derive";
+import { engagementLine, existingForPeriod, longDate, periodChoices, periodLabel } from "../billing/derive";
 import { centsToInput, formatCents, moneyProblem, parseCents } from "../billing/money";
 import { billingHref } from "../billing/routes";
-import type { Invoice, InvoiceLineItem } from "../billing/types";
+import type { Engagement, Invoice, InvoiceLineItem } from "../billing/types";
 import { addDays } from "../prospect";
 import {
   BillingLink,
@@ -23,6 +23,8 @@ interface Draft {
   quantity: string;
   unit: string;
   product?: string;
+  /** The engagement this line bills, when it was added from one. */
+  engagementId?: string;
 }
 
 const TERMS = [15, 30, 45, 60];
@@ -142,6 +144,27 @@ export function RaiseInvoiceView() {
     Boolean(existing) ||
     Boolean(sentProblem);
   const due = addDays(sent && sentDate ? sentDate : today, termDays);
+  // Each started engagement of the account can add its line: an ongoing one for the chosen month (or the month
+  // still waiting for an invoice), a setup package once for its whole span.
+  const billable = (account.data?.engagements ?? []).filter((engagement) => engagement.status === "active");
+  const addEngagement = (engagement: Engagement) => {
+    const month =
+      kind === "period"
+        ? period
+        : (engagement.uninvoicedMonth ?? (today || new Date().toISOString()).slice(0, 7));
+    const line = engagementLine(engagement, periodLabel(month));
+    setLines((previous) => [
+      ...previous,
+      {
+        key: ++serial.current,
+        description: line.description,
+        dates: line.period,
+        quantity: String(line.quantity),
+        unit: centsToInput(line.unitAmountCents),
+        engagementId: engagement.id,
+      },
+    ]);
+  };
   const change = (key: number, patch: Partial<Draft>) =>
     setLines((previous) => previous.map((line) => (line.key === key ? { ...line, ...patch } : line)));
 
@@ -154,6 +177,7 @@ export function RaiseInvoiceView() {
       unitAmountCents: unit.ok ? unit.cents : 0,
       period: line.dates.trim() || undefined,
       product: line.product,
+      ...(line.engagementId ? { engagementId: line.engagementId } : {}),
     }));
     try {
       const invoice = await client.raiseInvoice({
@@ -275,6 +299,25 @@ export function RaiseInvoiceView() {
                     Lines
                   </h2>
                 </div>
+                {billable.length > 0 && (
+                  <div className="one-toolbar" role="group" aria-label="Add from this account">
+                    <span className="one-muted">Add from this account:</span>
+                    {billable.map((engagement) => (
+                      <button
+                        key={engagement.id}
+                        type="button"
+                        className="one-button small"
+                        disabled={lines.some((line) => line.engagementId === engagement.id)}
+                        onClick={() => addEngagement(engagement)}
+                      >
+                        <Icon name="plus" size={14} />
+                        {engagement.type === "ongoing"
+                          ? `${engagement.name} retainer`
+                          : `${engagement.name} package`}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {checked.map(({ line, amount, error }) => (
                   <div className="billing-draft-line" key={line.key}>
                     <div className="billing-form-grid">

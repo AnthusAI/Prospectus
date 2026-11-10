@@ -95,6 +95,8 @@ test("real backend retains a prospect through sales, handoff, notes and reload",
     await expect(nav.getByRole("link", { name: label })).toBeVisible();
   await expect(nav.getByRole("link", { name: /^Today/ })).toHaveAttribute("aria-current", "page");
   await nav.getByRole("link", { name: "Engagements" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Engagements" })).toBeVisible();
+  await nav.getByRole("link", { name: "Anthus team" }).click();
   await expect(page.getByRole("note")).toContainText("Not yet available");
   await nav.getByRole("link", { name: "Pipeline", exact: true }).click();
   await expect(page).toHaveURL(/\/pipeline$/);

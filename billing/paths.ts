@@ -7,7 +7,7 @@ export const OPERATOR_PREFIX = "/v1/account-directory/operator";
 const ID = "[a-f0-9-]{36}";
 const OPERATOR_TAIL = [
   "billing(/.*)?",
-  `accounts/${ID}/(billing-profile|billing-lines|invoices|payments|billing-journal)(/.*)?`,
+  `accounts/${ID}/(billing-profile|billing-lines|invoices|payments|billing-journal|engagements)(/.*)?`,
 ];
 const CENTRAL = OPERATOR_TAIL.map((tail) => new RegExp(`^${OPERATOR_PREFIX}/${tail}$`));
 
@@ -28,7 +28,7 @@ export const MAXIMUM_PDF_BYTES = 4_000_000;
 export const BILLING_MAXIMUM_BODY_BYTES = 40_000;
 
 /**
- * The ten operator write routes the staff BFF role may invoke once the ledger is on, as [method, path] for the API
+ * The twelve operator write routes the staff BFF role may invoke once the ledger is on, as [method, path] for the API
  * Gateway execute-api ARNs. Reads need nothing new: `GET /v1/account-directory/*` is already granted. Central still
  * requires `accounts:admin:billing` for every one of these.
  */
@@ -43,6 +43,8 @@ export const billingWriteRoutes: ReadonlyArray<readonly [string, string]> = [
   ["POST", `${OPERATOR_PREFIX}/billing/invoices/*/write-off`],
   ["POST", `${OPERATOR_PREFIX}/billing/invoices/*/credit`],
   ["POST", `${OPERATOR_PREFIX}/billing/issuer`],
+  ["POST", `${OPERATOR_PREFIX}/accounts/*/engagements`],
+  ["POST", `${OPERATOR_PREFIX}/billing/engagements/*`],
 ];
 /** The S3 prefixes billing storage uses, added to the central runtime role only when the ledger is on. */
 export const billingStoragePrefixes = [

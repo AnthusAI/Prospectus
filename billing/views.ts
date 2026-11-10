@@ -7,18 +7,21 @@ import type {
   Allocation,
   BillingLine as LineView,
   BillingProfile as ProfileView,
+  Engagement as EngagementView,
   Invoice as InvoiceView,
   JournalAction,
   JournalEvent as JournalView,
   Payment as PaymentView,
 } from "../src/billing/types";
 import { withDerivedFigures } from "./balances";
+import { lastInvoiced, uninvoicedMonth } from "./engagements";
 import type { LedgerReader } from "./ledger-engine";
 import type {
   BillingContact,
   BillingLine,
   BillingProfile,
   JournalEvent,
+  LedgerEngagement,
   LedgerInvoice,
   LedgerPayment,
   PaymentMethodKind,
@@ -190,6 +193,9 @@ const JOURNAL_ACTION: Partial<Record<JournalEvent["action"], JournalAction>> = {
   "payment.recorded": "payment.recorded",
   "payment.allocated": "payment.allocated",
   "payment.reversed": "payment.reversed",
+  "engagement.created": "engagement.created",
+  "engagement.updated": "engagement.updated",
+  "engagement.ended": "engagement.ended",
 };
 
 /** The console's timeline entry for an event, or null for events it has no word for (lines, credits, reveals). */
@@ -213,5 +219,36 @@ export function journalView(event: JournalEvent): JournalView | null {
         : {}),
     ...(allocations.length ? { appliedCents: applied } : {}),
     ...(typeof detail.reason === "string" ? { reason: detail.reason } : {}),
+  };
+}
+
+/** An engagement as the console reads it, with when it was last invoiced and any month still waiting. */
+export function engagementView(
+  engagement: LedgerEngagement,
+  invoices: readonly LedgerInvoice[],
+  today: string,
+): EngagementView {
+  const last = lastInvoiced(engagement.id, invoices);
+  const waiting = uninvoicedMonth(engagement, invoices, today);
+  return {
+    id: engagement.id,
+    accountId: engagement.accountId,
+    name: engagement.name,
+    type: engagement.type,
+    status: engagement.status,
+    lead: engagement.lead,
+    startDate: engagement.startDate,
+    ...(engagement.endDate ? { endDate: engagement.endDate } : {}),
+    ...(engagement.monthlyAmountCents !== undefined
+      ? { monthlyAmountCents: engagement.monthlyAmountCents }
+      : {}),
+    ...(engagement.packagePriceCents !== undefined
+      ? { packagePriceCents: engagement.packagePriceCents }
+      : {}),
+    ...(engagement.lengthWeeks !== undefined ? { lengthWeeks: engagement.lengthWeeks } : {}),
+    ...(engagement.stage ? { stage: engagement.stage } : {}),
+    ...(last ? { lastInvoiced: last } : {}),
+    ...(waiting ? { uninvoicedMonth: waiting } : {}),
+    revision: engagement.revision,
   };
 }

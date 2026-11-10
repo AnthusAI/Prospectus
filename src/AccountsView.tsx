@@ -11,6 +11,7 @@ import type {
 } from "../packages/accounts-client/src/directory";
 import { AccountBillingSection, AccountTabs, BillingSummaryCard } from "./admin/AccountBilling";
 import { useBilling } from "./admin/BillingProvider";
+import { AccountEngagementStat, AccountEngagements, runningEngagements } from "./admin/EngagementsView";
 import { owedBy } from "./billing/derive";
 import { formatCents } from "./billing/money";
 import { billingHref } from "./billing/routes";
@@ -367,7 +368,12 @@ export function AccountsView({
             <Stat value={total === undefined ? "…" : String(total)} label="ACCOUNTS" />
             <Stat value={null} label="PAYING" note="Needs billing data" />
             <Stat value={null} label="IN TRIAL" note="Needs plan data" />
-            <Stat value={null} label="SERVICES ENGAGEMENTS" note="Not yet recorded" hot />
+            <Stat
+              value={ledger ? String(runningEngagements(ledger.engagements).length) : null}
+              label="SERVICES ENGAGEMENTS"
+              note={ledger ? "Active now" : "Needs billing data"}
+              href={PAGE_PATHS.engagements}
+            />
           </div>
           <div className="one-filters" role="group" aria-label="Show">
             <button type="button" aria-pressed={!pastDueOnly} onClick={() => setPastDueOnly(false)}>
@@ -599,7 +605,7 @@ function AccountPage({
         )}
         <Stat value={String(activeMembers.length)} label="ACTIVE MEMBERS" />
         <Stat value={String(activeApps)} label="APPS ON" />
-        <Stat value={null} label="SERVICES DEALS" note="Not yet recorded" hot />
+        <AccountEngagementStat accountId={detail.id} />
       </div>
       <div className="one-columns">
         <div className="primary">
@@ -666,9 +672,7 @@ function AccountPage({
                 Services engagements
               </h2>
             </div>
-            <Unavailable title="Not yet available">
-              <span>Services deals are not linked to accounts yet.</span>
-            </Unavailable>
+            <AccountEngagements accountId={detail.id} accountName={detail.name} />
           </section>
           <section className="one-card strong" aria-labelledby="members-heading">
             <div className="one-section-head">
