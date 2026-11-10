@@ -85,6 +85,17 @@ Feature: Operator billing in the CRM
     Then the page says the account is not yet billable
     And an admin sees Set up billing profile
 
+  Scenario: Starting a billing profile takes the billing contact
+    Given an account with no billing profile
+    When the admin chooses Set up billing profile
+    Then the form asks how they pay, the terms, and the billing contact's name and email, with an optional postal address
+    And saving without the contact's name and email is refused in the form, naming what is missing
+    And saving with them starts the profile with that contact
+
+  Scenario: Billing waits for sign-in
+    Given a staff member returning from Google sign-in straight onto a billing or engagements address
+    Then billing loads once the sign-in completes, without asking them to sign in again
+
   Scenario: Raise an invoice
     When the admin adds lines, keeps the net 30 due date and issues the invoice via Stripe or manually
     Then the invoice appears with its number, balance and issue method
