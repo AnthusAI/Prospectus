@@ -24,6 +24,8 @@ export const unavailableBilling: BillingClient = (() => {
     reversePayment: refuse,
     writeOff: refuse,
     voidInvoice: refuse,
+    createEngagement: refuse,
+    changeEngagement: refuse,
     issuer: refuse,
     saveIssuer: refuse,
   };
@@ -82,22 +84,29 @@ export function billingBrowser(
     access: () => send("/operator/billing/access"),
     // proposed: cross-account listings, one request each
     overview: async (): Promise<BillingOverview> => {
-      const [accounts, invoices, payments] = await Promise.all([
+      const [accounts, invoices, payments, engagements] = await Promise.all([
         send("/operator/billing/accounts"),
         send("/operator/billing/invoices"),
         send("/operator/billing/payments"),
+        send("/operator/billing/engagements"),
       ]);
-      return { accounts: accounts.accounts, invoices: invoices.invoices, payments: payments.payments };
+      return {
+        accounts: accounts.accounts,
+        invoices: invoices.invoices,
+        payments: payments.payments,
+        engagements: engagements.engagements,
+      };
     },
     // billing-profile, billing-lines, invoices and payments are in docs/BILLING.md; billing-journal is proposed
     account: async (id) => {
-      const [profile, lines, invoices, payments, journal, summary] = await Promise.all([
+      const [profile, lines, invoices, payments, journal, summary, engagements] = await Promise.all([
         send(`${account(id)}/billing-profile`),
         send(`${account(id)}/billing-lines`),
         send(`${account(id)}/invoices`),
         send(`${account(id)}/payments`),
         send(`${account(id)}/billing-journal`),
         send(`/operator/billing/accounts/${part(id)}`),
+        send(`${account(id)}/engagements`),
       ]);
       return {
         account: summary.account,
@@ -106,6 +115,7 @@ export function billingBrowser(
         invoices: invoices.invoices,
         payments: payments.payments,
         journal: journal.events,
+        engagements: engagements.engagements,
       };
     },
     // proposed: addressed by invoice number (or id for a draft) so the shareable path needs no account
@@ -130,6 +140,10 @@ export function billingBrowser(
       (await send(`/operator/billing/invoices/${part(id)}/write-off`, "POST", input)).invoice,
     voidInvoice: async (id, input) =>
       (await send(`/operator/billing/invoices/${part(id)}/void`, "POST", input)).invoice,
+    createEngagement: async ({ accountId, ...input }) =>
+      (await send(`${account(accountId)}/engagements`, "POST", input)).engagement,
+    changeEngagement: async (id, input) =>
+      (await send(`/operator/billing/engagements/${part(id)}`, "POST", input)).engagement,
     issuer: () => send("/operator/billing/issuer"),
     saveIssuer: (input) => send("/operator/billing/issuer", "POST", input),
   };

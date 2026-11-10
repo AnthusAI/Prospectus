@@ -457,3 +457,100 @@ test("an operator with only accounts:admin:read sees billing read-only and maske
     assert.equal(refused.status, 403, `${method} ${path}`);
   }
 });
+
+test("engagements start, change, end and are billed through the central handler over real files", async () => {
+  const { call, operator, stranger, accountId } = await central(
+    ["accounts:admin:read", "accounts:admin:billing"],
+    true,
+  );
+  const operation = () => ({ operationId: randomUUID() });
+  await call(operator, "PUT", "/billing/issuer", {
+    ...operation(),
+    ...issuerFields({ expectedRevision: 0 }),
+  });
+  await call(operator, "PUT", `/accounts/${accountId}/billing-profile`, {
+    ...operation(),
+    mode: "invoiced",
+    billingContact: contact(),
+  });
+  const start = operation();
+  const body = {
+    ...start,
+    accountId,
+    name: "Reporting desk support",
+    type: "ongoing",
+    lead: "Example Lead",
+    startDate: "2026-10-01",
+    monthlyAmountCents: 1000000,
+  };
+  assert.equal((await call(stranger, "POST", `/accounts/${accountId}/engagements`, body)).status, 403);
+  const created = await call(operator, "POST", `/accounts/${accountId}/engagements`, body);
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const engagement = created.body.engagement;
+  assert.equal(engagement.status, "active");
+  assert.equal(engagement.monthlyAmountCents, 1000000);
+  const replay = await call(operator, "POST", `/accounts/${accountId}/engagements`, body);
+  assert.equal(replay.body.engagement.id, engagement.id, "a replay returns the same engagement");
+  assert.equal(
+    (await call(operator, "POST", `/accounts/${accountId}/engagements`, { ...operation(), type: "ongoing" }))
+      .body.error,
+    "invalid_engagement",
+  );
+
+  // Already sent outside Prospectus, with its line naming the engagement.
+  const sent = await call(operator, "POST", `/accounts/${accountId}/invoices`, {
+    ...operation(),
+    accountId,
+    lineItems: [
+      {
+        description: "Reporting desk support, monthly retainer",
+        quantity: 1,
+        unitAmountCents: 1000000,
+        period: "October 1–31, 2026",
+        engagementId: engagement.id,
+      },
+    ],
+    netTermsDays: 30,
+    issuedVia: "manual",
+    draft: false,
+    alreadySent: { number: "202610-001", issueDate: "2026-10-31" },
+  });
+  assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  assert.equal(sent.body.invoice.lineItems[0].engagementId, engagement.id);
+
+  const listed = await call(operator, "GET", `/accounts/${accountId}/engagements`);
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.engagements.length, 1);
+  assert.equal(listed.body.engagements[0].lastInvoiced.invoiceNumber, "202610-001");
+  const all = await call(operator, "GET", "/billing/engagements");
+  assert.deepEqual(
+    all.body.engagements.map((entry: { id: string }) => entry.id),
+    [engagement.id],
+  );
+  assert.equal((await call(stranger, "GET", "/billing/engagements")).status, 403);
+  assert.equal((await call(operator, "GET", `/billing/engagements/${engagement.id}`)).status, 200);
+
+  const stale = await call(operator, "POST", `/billing/engagements/${engagement.id}`, {
+    ...operation(),
+    lead: "Someone else",
+    expectedRevision: engagement.revision + 5,
+  });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.error, "revision_conflict");
+  const ended = await call(operator, "POST", `/billing/engagements/${engagement.id}`, {
+    ...operation(),
+    status: "ended",
+    endDate: "2026-12-31",
+    expectedRevision: engagement.revision,
+  });
+  assert.equal(ended.status, 200, JSON.stringify(ended.body));
+  assert.equal(ended.body.engagement.status, "ended");
+  assert.equal(ended.body.engagement.endDate, "2026-12-31");
+  const journal = await call(operator, "GET", `/accounts/${accountId}/billing-journal`);
+  assert.deepEqual(
+    journal.body.events
+      .map((event: { action: string }) => event.action)
+      .filter((action: string) => action.startsWith("engagement.")),
+    ["engagement.ended", "engagement.created"],
+  );
+});

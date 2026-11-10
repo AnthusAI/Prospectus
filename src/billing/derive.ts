@@ -5,6 +5,7 @@ import type {
   AccountSummary,
   Allocation,
   AllocationInput,
+  Engagement,
   Invoice,
   InvoiceStatus,
   JournalEvent,
@@ -151,13 +152,13 @@ export function owedBy(
   };
 }
 
-export type AttentionKind = "Past due" | "To allocate";
+export type AttentionKind = "Past due" | "To allocate" | "To invoice";
 export interface Attention {
   key: string;
   kind: AttentionKind;
   text: string;
-  /** Where the action leads: an invoice reference, a payment id or an account id. */
-  target: { type: "invoice" | "payment" | "account"; id: string };
+  /** Where the action leads: an invoice reference, a payment id, an account id, or the account a new invoice is for. */
+  target: { type: "invoice" | "payment" | "account" | "new-invoice"; id: string };
   action: string;
   accountId: string;
 }
@@ -171,6 +172,7 @@ export function attention(
   invoices: Invoice[],
   payments: Payment[],
   today: string,
+  engagements: Engagement[] = [],
 ): Attention[] {
   const items: Attention[] = [];
   const late = invoices
@@ -197,6 +199,16 @@ export function attention(
       accountId: payment.accountId,
     });
   }
+  for (const engagement of engagements.filter((item) => item.uninvoicedMonth)) {
+    items.push({
+      key: `uninvoiced-${engagement.id}-${engagement.uninvoicedMonth}`,
+      kind: "To invoice",
+      text: `${nameOf(accounts, engagement.accountId)}: ${engagement.name} has no invoice for ${periodLabel(engagement.uninvoicedMonth!)} yet.`,
+      target: { type: "new-invoice", id: engagement.accountId },
+      action: "Raise invoice",
+      accountId: engagement.accountId,
+    });
+  }
   return items;
 }
 
@@ -206,20 +218,27 @@ export function billingFollowUps(
   invoices: Invoice[],
   payments: Payment[],
   today: string,
+  engagements: Engagement[] = [],
 ) {
-  return attention(accounts, invoices, payments, today).map((item) => {
+  return attention(accounts, invoices, payments, today, engagements).map((item) => {
     const account = nameOf(accounts, item.accountId);
     const invoice =
       item.target.type === "invoice" ? invoices.find((i) => i.number === item.target.id) : undefined;
     const payment =
       item.target.type === "payment" ? payments.find((p) => p.id === item.target.id) : undefined;
+    const engagement =
+      item.kind === "To invoice"
+        ? engagements.find((e) => item.key === `uninvoiced-${e.id}-${e.uninvoicedMonth}`)
+        : undefined;
     return {
       key: item.key,
       account,
       target: item.target,
-      action: invoice
-        ? `Chase ${invoice.number}: ${formatCents(invoice.balanceCents)} open, ${daysPastDue(invoice, today)} ${daysPastDue(invoice, today) === 1 ? "day" : "days"} late`
-        : `Apply the ${formatCents(payment?.unallocatedCents ?? 0)} left from ${payment ? paymentLabel(payment) : "a payment"}`,
+      action: engagement
+        ? `Invoice ${engagement.name} for ${periodLabel(engagement.uninvoicedMonth!)}`
+        : invoice
+          ? `Chase ${invoice.number}: ${formatCents(invoice.balanceCents)} open, ${daysPastDue(invoice, today)} ${daysPastDue(invoice, today) === 1 ? "day" : "days"} late`
+          : `Apply the ${formatCents(payment?.unallocatedCents ?? 0)} left from ${payment ? paymentLabel(payment) : "a payment"}`,
     };
   });
 }
@@ -255,6 +274,12 @@ export function describeEvent(event: JournalEvent): string {
       return "Changed the billing settings.";
     case "profile.saved":
       return event.detail ?? "Changed the billing profile.";
+    case "engagement.created":
+      return "Started an engagement.";
+    case "engagement.updated":
+      return "Changed an engagement.";
+    case "engagement.ended":
+      return "Ended an engagement.";
   }
 }
 
@@ -375,4 +400,40 @@ export function periodLabel(period: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+/** An engagement's amount as a short label: the monthly amount, or the package price. */
+export function engagementAmount(engagement: Engagement): string {
+  if (engagement.type === "ongoing" && engagement.monthlyAmountCents !== undefined)
+    return `${formatCents(engagement.monthlyAmountCents)} / month`;
+  if (engagement.packagePriceCents !== undefined)
+    return `${formatCents(engagement.packagePriceCents)} package`;
+  return "";
+}
+
+/** Where a setup package stands: its stage and the week it is in. */
+export function setupProgress(engagement: Engagement, today: string): string {
+  if (engagement.type !== "setup" || !engagement.lengthWeeks) return "";
+  const elapsed = Math.floor(daysBetween(engagement.startDate, today) / 7) + 1;
+  const week = Math.min(Math.max(elapsed, 1), engagement.lengthWeeks);
+  return `${engagement.stage ?? "Installation"} · week ${week} of ${engagement.lengthWeeks}`;
+}
+
+/** The line an engagement adds to an invoice. Service dates are the caller's; a setup package bills its whole span. */
+export function engagementLine(engagement: Engagement, serviceDates: string) {
+  if (engagement.type === "ongoing")
+    return {
+      description: `${engagement.name}, monthly retainer`,
+      period: serviceDates,
+      quantity: 1,
+      unitAmountCents: engagement.monthlyAmountCents ?? 0,
+      engagementId: engagement.id,
+    };
+  return {
+    description: `${engagement.name}: setup package`,
+    period: `${shortDate(engagement.startDate)}–${shortDate(engagement.endDate ?? engagement.startDate)}`,
+    quantity: 1,
+    unitAmountCents: engagement.packagePriceCents ?? 0,
+    engagementId: engagement.id,
+  };
 }

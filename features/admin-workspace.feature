@@ -103,7 +103,8 @@ Feature: Anthus One admin workspace for Prospectus
     When the member opens an account from Accounts
     Then the page shows its apps with capability codes, its memberships with roles and statuses
     And its account ID can be copied and its record version is shown
-    And quota, services engagements and history show as not yet available
+    And its services engagements are listed from billing (features/billing-engagements.feature)
+    And quota and history show as not yet available
     And the page states that staff access is not a membership
 
   Scenario: An operator turns a product on from the Account page
@@ -126,7 +127,7 @@ Feature: Anthus One admin workspace for Prospectus
     And its service refuses a product change request
 
   Scenario: Areas without a backend say so
-    When the member opens Engagements, Usage and billing, Anthus team or Settings
+    When the member opens Anthus team
     Then the page explains that the area is not yet available
     And no invented figures are shown
 

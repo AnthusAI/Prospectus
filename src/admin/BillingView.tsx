@@ -12,7 +12,7 @@ import {
   totals,
 } from "../billing/derive";
 import { formatCents } from "../billing/money";
-import { billingHref } from "../billing/routes";
+import { attentionHref, billingHref } from "../billing/routes";
 import type { BillingOverview, Invoice, Payment } from "../billing/types";
 import { BillingLink, BillingUnavailable, PdfButton, StatusBadge } from "../shared/billing";
 import { Eyebrow, Icon, Stat } from "../shared/ui";
@@ -59,7 +59,7 @@ function BillingPage({ data, canAct, today }: { data: BillingOverview; canAct: b
   const issued = useMemo(() => data.invoices.filter((invoice) => invoice.number), [data.invoices]);
   const sum = totals(issued, data.payments, today);
   const age = aging(issued, today);
-  const items = attention(data.accounts, issued, data.payments, today);
+  const items = attention(data.accounts, issued, data.payments, today, data.engagements);
   const accountName = (id: string) => data.accounts.find((account) => account.id === id)?.name ?? "Account";
   const tests: Record<Filter, (invoice: Invoice) => boolean> = {
     open: isOpen,
@@ -134,15 +134,7 @@ function BillingPage({ data, canAct, today }: { data: BillingOverview; canAct: b
           <div className="billing-attention" key={item.key}>
             <span className="billing-kind">{item.kind}</span>
             <span className="billing-attention-text">{item.text}</span>
-            <BillingLink
-              href={
-                item.target.type === "invoice"
-                  ? billingHref.invoice(item.target.id)
-                  : billingHref.payment(item.target.id)
-              }
-            >
-              {item.action}
-            </BillingLink>
+            <BillingLink href={attentionHref(item.target)}>{item.action}</BillingLink>
           </div>
         ))}
       </section>

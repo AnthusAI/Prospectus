@@ -1089,6 +1089,8 @@ const billingWrites = [
   "billing/invoices/*/write-off",
   "billing/invoices/*/credit",
   "billing/issuer",
+  "accounts/*/engagements",
+  "billing/engagements/*",
 ].map((tail) => `execute-api:/api/POST/v1/account-directory/operator/${tail}`);
 
 test("with the billing ledger flag off, the synthesized output is byte for byte what it was before billing existed", () => {
@@ -1126,7 +1128,7 @@ test("with the billing ledger flag off, the synthesized output is byte for byte 
   assert.equal(accountsDeployment()!.billingLedger, true);
 });
 
-test("with the billing ledger flag on, exactly the billing prefixes and the ten write routes are added", () => {
+test("with the billing ledger flag on, exactly the billing prefixes and the twelve write routes are added", () => {
   const sites = deployedLengthSites(20);
   const off = template(true, true, true, sites, parameterStoreSigner, true);
   const on = template(
@@ -1164,7 +1166,7 @@ test("with the billing ledger flag on, exactly the billing prefixes and the ten 
           JSON.stringify(statement.Action) === JSON.stringify(["s3:GetObject", "s3:PutObject"]),
       )!;
   assert.equal(objectStatement(on).Resource.length, objectStatement(off).Resource.length + 2);
-  // The API access policy: the staff BFF role gains the ten write routes and no other statement changes.
+  // The API access policy: the staff BFF role gains the twelve write routes and no other statement changes.
   const before = policyOf(off),
     after = policyOf(on);
   assert.equal(after.length, before.length);
@@ -1172,12 +1174,12 @@ test("with the billing ledger flag on, exactly the billing prefixes and the ten 
     (statement, index) => JSON.stringify(statement) !== JSON.stringify(before[index]),
   );
   assert.equal(changed.length, 1);
-  assert.deepEqual(changed[0].Resource.slice(-10), billingWrites);
+  assert.deepEqual(changed[0].Resource.slice(-12), billingWrites);
   assert.equal(
     changed[0].Resource.length,
-    before.find((s: any) => s.Resource?.includes?.("execute-api:/api/POST/v1/accounts")).Resource.length + 10,
+    before.find((s: any) => s.Resource?.includes?.("execute-api:/api/POST/v1/accounts")).Resource.length + 12,
   );
-  // The BFF role's own invoke policy lists the same ten and nothing is granted to any other role.
+  // The BFF role's own invoke policy lists the same twelve and nothing is granted to any other role.
   const invokeBlocks = (output: any) =>
     (Object.values(output.Resources) as any[])
       .filter((value) => value.Type === "AWS::IAM::Policy")
@@ -1244,7 +1246,8 @@ test("the API access policy stays within the API Gateway size limit with the led
     `API policy size with ${reviewed.length} reviewed sites, lab verifier and Anthus One: ${production(false)} bytes off, ${production(true)} bytes on (+${added}); limit 8192. Sites that fit with everything else enabled: ${capacity(false)} off, ${capacity(true)} on.`,
   );
   assert.ok(production(true) < 8192, `Deployed API resource policy would be ${production(true)} bytes`);
-  assert.ok(added < 1300, "the ten routes stay small");
+  // The two engagement routes (kanbus-935b1f) took this from 1,212 to 1,447 bytes, and room from 15 sites to 14.
+  assert.ok(added < 1600, "the twelve routes stay small");
   // The ledger costs room, but the reviewed registry still fits with a wide margin.
   assert.ok(capacity(true) >= reviewed.length * 2, "room for at least twice the reviewed sites");
 });
