@@ -511,16 +511,64 @@ function ProfileForm({
   const { client } = useBilling();
   const [mode, setMode] = useState<"direct" | "invoiced">(profile?.mode ?? "invoiced");
   const [terms, setTerms] = useState(String(profile?.netTermsDays ?? ""));
+  // The contact is never prefilled: the console only ever sees it masked. Blank on an existing profile keeps it.
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [line1, setLine1] = useState("");
+  const [line2, setLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [region, setRegion] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [country, setCountry] = useState("US");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const [attempt] = useState(operationId);
+  const name = contactName.trim(),
+    email = contactEmail.trim();
+  const hasAddress = [line1, line2, city, region, postalCode].some((part) => part.trim());
+  const contactIssue =
+    !profile && (!name || !email)
+      ? "Enter the billing contact's name and email."
+      : (name || email) && (!name || !email)
+        ? "Enter both the contact's name and email, or leave both blank to keep the current contact."
+        : email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
+          ? "Enter the contact's email address."
+          : hasAddress &&
+              (!line1.trim() || !city.trim() || !postalCode.trim() || !/^[A-Za-z]{2}$/.test(country.trim()))
+            ? "A postal address needs a street, city, postal code and two-letter country, or leave it blank."
+            : "";
   async function save() {
+    if (contactIssue) {
+      setProblem(contactIssue);
+      return;
+    }
     setBusy(true);
     setProblem("");
+    const optional = (value: string) => (value.trim() ? value.trim() : undefined);
     try {
       await client.saveProfile(accountId, {
         operationId: attempt,
         mode,
+        ...(name
+          ? {
+              billingContact: {
+                name,
+                email,
+                ...(hasAddress
+                  ? {
+                      address: {
+                        line1: line1.trim(),
+                        ...(optional(line2) ? { line2: optional(line2) } : {}),
+                        city: city.trim(),
+                        ...(optional(region) ? { region: optional(region) } : {}),
+                        postalCode: postalCode.trim(),
+                        country: country.trim().toUpperCase(),
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
         netTermsDays: terms ? Number(terms) : undefined,
         expectedRevision: profile?.revision,
       });
@@ -555,6 +603,61 @@ function ProfileForm({
           ))}
         </select>
       </label>
+      <fieldset className="billing-contact-fields">
+        <legend>
+          {profile ? "Billing contact (leave blank to keep the current one)" : "Billing contact"}
+        </legend>
+        <label>
+          Name
+          <input
+            value={contactName}
+            onChange={(event) => setContactName(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Email
+          <input
+            type="email"
+            value={contactEmail}
+            onChange={(event) => setContactEmail(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Street (optional)
+          <input value={line1} onChange={(event) => setLine1(event.target.value)} autoComplete="off" />
+        </label>
+        <label>
+          Street, line 2 (optional)
+          <input value={line2} onChange={(event) => setLine2(event.target.value)} autoComplete="off" />
+        </label>
+        <label>
+          City
+          <input value={city} onChange={(event) => setCity(event.target.value)} autoComplete="off" />
+        </label>
+        <label>
+          State or region
+          <input value={region} onChange={(event) => setRegion(event.target.value)} autoComplete="off" />
+        </label>
+        <label>
+          Postal code
+          <input
+            value={postalCode}
+            onChange={(event) => setPostalCode(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Country
+          <input
+            value={country}
+            onChange={(event) => setCountry(event.target.value)}
+            maxLength={2}
+            autoComplete="off"
+          />
+        </label>
+      </fieldset>
       {problem && (
         <p role="alert" className="one-alert">
           {problem}

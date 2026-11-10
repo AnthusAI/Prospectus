@@ -307,9 +307,24 @@ export interface RecordPaymentInput {
   allocations: AllocationInput[];
 }
 
+export interface BillingContactInput {
+  name: string;
+  email: string;
+  address?: {
+    line1: string;
+    line2?: string;
+    city: string;
+    region?: string;
+    postalCode: string;
+    country: string;
+  };
+}
+
 export interface ProfileInput {
   operationId: string;
   mode: "direct" | "invoiced";
+  /** Required to start a profile; absent on a later save keeps the contact already on record. */
+  billingContact?: BillingContactInput;
   netTermsDays?: number;
   expectedRevision?: number;
 }

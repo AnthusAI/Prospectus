@@ -693,12 +693,31 @@ export function syntheticBilling(options: Options): BillingClient {
       once(input.operationId, () => {
         const existing = profiles.get(id);
         if (existing) stale(existing, input.expectedRevision ?? existing.revision);
-        const fallback: BillingContact = {
-          name: "Billing Contact",
-          email: "billing@client.example",
-          address: "Added later",
-        };
-        contacts.set(id, contacts.get(id) ?? fallback);
+        if (!existing && !input.billingContact)
+          throw new BillingError(
+            400,
+            "A billing contact is required to start a billing profile.",
+            "billing_contact_required",
+          );
+        if (input.billingContact) {
+          const { name, email, address } = input.billingContact;
+          contacts.set(id, {
+            name,
+            email,
+            address: address
+              ? [
+                  address.line1,
+                  address.line2,
+                  address.city,
+                  address.region,
+                  address.postalCode,
+                  address.country,
+                ]
+                  .filter(Boolean)
+                  .join(", ")
+              : "",
+          });
+        }
         const profile: BillingProfile = {
           accountId: id,
           mode: input.mode,
