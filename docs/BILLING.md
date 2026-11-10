@@ -23,6 +23,7 @@ Billing charges clients for the products their accounts hold: each Papyrus site 
 | Payment                 | `payments/<paymentUUID>.json`            | Admins (external); Stripe mirror     |
 | Allocation              | `allocations/<allocationUUID>.json`      | Admins; Stripe mirror                |
 | Credit                  | `credits/<creditUUID>.json`              | Admins                               |
+| Engagement              | `engagements/<engagementUUID>.json`      | Admins                               |
 | Issuer record          | `issuer/0.json`                          | Admins                               |
 | Invoice number counter  | `sequences/<YYYYMM>.json`                | The invoice issue operation          |
 | Invoice number claim    | `numbers/<YYYYMM-NNN>.json`              | The invoice issue operation          |
@@ -141,6 +142,32 @@ Only admins record external payments (`bank_transfer`, `check`, `venmo`, `melio`
 ### Concurrency and replay
 
 Every write carries a client-generated operation id and uses revision compare-and-set. A replay of the same operation returns the original result and writes no second revision: the journal event names the storage commit, and Virtuus answers that commit with its original result. A write may carry an `expectedRevision`; a stale one is refused as `409 revision_conflict`, and without one the loser of a race re-reads and is re-evaluated. The record's bounded audit keeps the last 32 entries; the journal keeps every event. Two admins allocating the same payment at once cannot together exceed its remainder: the loser's write fails its revision check and is re-evaluated.
+
+## Engagements
+
+An engagement is services work Anthus does for one account and invoices: `billing/engagements/<engagementUUID>.json`. It is money, not access: it grants nothing and needs no entitlement, and an account may have engagements before it has a billing profile. Invoicing it needs the invoiced profile like any manual invoice. The behavior specification is `features/billing-engagements.feature` (kanbus-935b1f).
+
+| Field                  | Meaning                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `accountId`, `name`    | The account it is for and what it is called (1 to 120 characters)                                |
+| `type`                 | `ongoing` (runs until someone ends it) or `setup` (a package of installation, training and support) |
+| `status`               | `proposed`, `active` or `ended`                                                                  |
+| `lead`                 | The Anthus person leading it, as free text (1 to 120 characters); never used for authorization   |
+| `startDate`, `endDate` | `YYYY-MM-DD`. Ongoing: no end date until ended. Setup: start plus the length in weeks            |
+| `monthlyAmountCents`   | Ongoing only: the monthly amount, positive integer cents                                         |
+| `packagePriceCents`, `lengthWeeks` | Setup only: the package price in positive integer cents, and 1 to 104 weeks          |
+| `stage`                | Setup only: `Installation`, `Training`, `Higher-level support` or `Handed off`                   |
+| `revision`, `audit`    | Compare-and-set revision and bounded audit, as on every billing record                           |
+
+- **One ledger.** Starting, changing and ending an engagement are ledger operations on the account's head (`engagement.create`, `engagement.update`, `engagement.end`), so they serialize with invoices and payments and write exactly one journal event each (`engagement.created`, `engagement.updated`, `engagement.ended`). The head indexes the account's engagements beside its invoices and payments, with the same capacity.
+- **Only admins.** Every write needs `accounts:admin:billing`, an operation ID, and accepts an expected revision; a stale one is `409 revision_conflict`. Reads need `accounts:admin:read` or `accounts:admin:billing`.
+- **Starting and ending.** A proposed engagement becomes active when an admin starts it. Ending sets the status to `ended` with an end date (today by default); an ended engagement cannot be changed again (`409 engagement_ended`).
+- **Invoice lines name it.** An invoice line item may carry `engagementId`. It must name an active or ended engagement of the same account, otherwise the invoice is refused as `invalid_engagement`. Period invoices, other invoices and invoices entered as already sent all accept it.
+- **Last invoiced.** Each engagement's view carries the latest issued, non-void invoice with a line naming it: number, issue date and the line's service dates.
+- **Waiting for an invoice.** An active ongoing engagement is waiting for an invoice when its last complete calendar month (UTC) began on or after its start date and no issued, non-void invoice naming it was issued on or after that month's first day. This works for billing in arrears (the October invoice issued October 31) and in advance. The view names the month (`uninvoicedMonth`), and Today lists a follow-up. Prospectus never raises or issues the invoice itself.
+- **Raising from an engagement.** Raise an invoice offers each active engagement of the account: an ongoing one as "<name>, monthly retainer" at its monthly amount for the chosen service dates, a setup package once at its price. The added line names the engagement.
+
+Routes, under `/v1/account-directory/operator`: `GET billing/engagements` (every account's), `GET accounts/{id}/engagements`, `POST accounts/{id}/engagements` (start) and `POST billing/engagements/{id}` (change, start a proposed one, or end it with `"status": "ended"`).
 
 ## Ledger implementation
 
