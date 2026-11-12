@@ -12,13 +12,16 @@ export interface InvoiceFigures {
   balanceCents: number;
   allocatedCents: number;
   creditsCents: number;
-  /** The date the balance reached zero, when it has. */
+  /** The date the balance reached zero, when it has: the day the settling money arrived, not the day it was entered. */
   paidAt?: string;
 }
 
+/** The day each payment's money arrived, by payment id. */
+export type ReceivedOn = (paymentId: string) => string | undefined;
+
 type InvoiceBasis = Pick<LedgerInvoice, "lifecycle" | "totalCents" | "allocations" | "credits">;
 
-export function deriveInvoice(invoice: InvoiceBasis): InvoiceFigures {
+export function deriveInvoice(invoice: InvoiceBasis, receivedOn?: ReceivedOn): InvoiceFigures {
   const allocatedCents = sumCents(invoice.allocations.map((allocation) => allocation.amountCents));
   const creditsCents = sumCents(invoice.credits.map((credit) => credit.amountCents));
   if (invoice.lifecycle === "void") return { status: "void", balanceCents: 0, allocatedCents, creditsCents };
@@ -27,7 +30,10 @@ export function deriveInvoice(invoice: InvoiceBasis): InvoiceFigures {
   if (invoice.lifecycle === "uncollectible")
     return { status: "uncollectible", balanceCents, allocatedCents, creditsCents };
   if (balanceCents === 0) {
-    const settled = [...invoice.allocations, ...invoice.credits].map((entry) => entry.at).sort();
+    const settled = [
+      ...invoice.allocations.map((entry) => receivedOn?.(entry.paymentId) ?? entry.at.slice(0, 10)),
+      ...invoice.credits.map((entry) => entry.at.slice(0, 10)),
+    ].sort();
     return {
       status: "paid",
       balanceCents,
@@ -45,11 +51,17 @@ export function deriveInvoice(invoice: InvoiceBasis): InvoiceFigures {
 }
 
 /** The invoice with its stored figures recomputed from its references. */
-export function withDerivedFigures<T extends LedgerInvoice>(invoice: T): T {
+export function withDerivedFigures<T extends LedgerInvoice>(invoice: T, receivedOn?: ReceivedOn): T {
   const { paidAt: _paidAt, ...rest } = invoice;
-  const figures = deriveInvoice(invoice);
+  const figures = deriveInvoice(invoice, receivedOn);
   return { ...rest, ...figures } as T;
 }
+
+/** Looks up when each payment's money arrived. */
+export const receivedOnFrom =
+  (payments: readonly Pick<LedgerPayment, "id" | "receivedAt">[]): ReceivedOn =>
+  (paymentId) =>
+    payments.find((payment) => payment.id === paymentId)?.receivedAt?.slice(0, 10);
 
 /** What is left of a payment: its amount minus the allocations drawn from it. */
 export const paymentRemainder = (payment: Pick<LedgerPayment, "amountCents" | "allocations">) =>

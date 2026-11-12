@@ -9,6 +9,7 @@
  */
 import { addDays } from "../prospect";
 import type { AccountsBrowser } from "../accounts-client";
+import { METHOD_IN_SENTENCE } from "./derive";
 import { BILLING_PERMISSION, BillingError } from "./types";
 import type {
   AccountSummary,
@@ -294,7 +295,7 @@ export function syntheticBilling(options: Options): BillingClient {
   const method = (payment: Payment) =>
     payment.method === "check"
       ? `check ${payment.reference?.replace(/^No\.?\s*/i, "")}`
-      : payment.method.replace("_", " ");
+      : METHOD_IN_SENTENCE[payment.method];
   const allocate = (payment: Payment, invoice: Invoice, cents: number, at: string, by: string) => {
     const allocation: Allocation = {
       id: ID(4, next()),
