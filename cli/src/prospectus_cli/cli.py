@@ -194,7 +194,7 @@ class Context:
 def cmd_login(ctx: Context) -> int:
     auth.line_buffered()
     result = ctx.session.login(expected_email=ctx.args.expect_email, note=ctx.args.note, out=ctx.runtime.out)
-    ctx.emit(result, f"Signed in as {result['label']}.")
+    ctx.emit(result, "")  # the library has already printed who signed in
     return 0
 
 
@@ -264,7 +264,7 @@ def cmd_invoice_show(ctx: Context) -> int:
     invoice, account = answer["invoice"], answer.get("account") or {}
     lines = [
         f"Invoice {invoice.get('number') or 'draft'} to {account.get('name', invoice['accountId'])}",
-        f"  Status   {status_label(invoice['status'])}" + (f", paid {invoice['paidAt']}" if invoice.get("paidAt") else ""),
+        f"  Status   {status_label(invoice['status'])}" + (f" on {invoice['paidAt']}" if invoice.get("paidAt") else ""),
         f"  Issued   {invoice.get('issuedAt') or '—'}    Due {invoice.get('dueAt') or '—'}",
         f"  Total    {dollars(invoice['totalCents'])}    Balance {dollars(invoice['balanceCents'])}",
         "",
