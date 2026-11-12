@@ -16,3 +16,4 @@ project/events/
 project/.overlay/
 project-local/
 cli/.venv/
+*.egg-info/

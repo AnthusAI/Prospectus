@@ -12,6 +12,9 @@ authors = [{ name = "Anthus AI" }]
 # Pinned exactly: the pages Lambda and the broker stack run this same cli-login version.
 dependencies = ["cli-login==0.3.0"]
 
+[project.scripts]
+prospectus = "prospectus_cli.cli:entry"
+
 [project.optional-dependencies]
 test = ["pytest>=8"]
 
