@@ -1,0 +1,15 @@
+pyproject.toml
+src/prospectus_cli/__init__.py
+src/prospectus_cli/api.py
+src/prospectus_cli/auth.py
+src/prospectus_cli/auth_test.py
+src/prospectus_cli/cli.py
+src/prospectus_cli/cli_test.py
+src/prospectus_cli/pages.py
+src/prospectus_cli/pages_test.py
+src/prospectus_cli.egg-info/PKG-INFO
+src/prospectus_cli.egg-info/SOURCES.txt
+src/prospectus_cli.egg-info/dependency_links.txt
+src/prospectus_cli.egg-info/entry_points.txt
+src/prospectus_cli.egg-info/requires.txt
+src/prospectus_cli.egg-info/top_level.txt

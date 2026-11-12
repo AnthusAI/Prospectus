@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: prospectus-cli
+Version: 0.1.0
+Summary: The Prospectus command line, signed in through cli-login's remote sign-in.
+Author: Anthus AI
+License: MIT
+Requires-Python: >=3.10
+Requires-Dist: cli-login==0.3.0
+Provides-Extra: test
+Requires-Dist: pytest>=8; extra == "test"
