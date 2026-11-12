@@ -13,7 +13,7 @@ import type {
   JournalEvent as JournalView,
   Payment as PaymentView,
 } from "../src/billing/types";
-import { withDerivedFigures } from "./balances";
+import { receivedOnFrom, withDerivedFigures } from "./balances";
 import { lastInvoiced, uninvoicedMonth } from "./engagements";
 import type { LedgerReader } from "./ledger-engine";
 import type {
@@ -68,8 +68,12 @@ export function accountSummary(
   };
 }
 
-export function invoiceView(invoice: LedgerInvoice, profile?: BillingProfile | null): InvoiceView {
-  const figures = withDerivedFigures(invoice);
+export function invoiceView(
+  invoice: LedgerInvoice,
+  profile?: BillingProfile | null,
+  payments?: readonly LedgerPayment[],
+): InvoiceView {
+  const figures = withDerivedFigures(invoice, payments ? receivedOnFrom(payments) : undefined);
   return {
     id: figures.id,
     accountId: figures.accountId,
@@ -199,11 +203,16 @@ const JOURNAL_ACTION: Partial<Record<JournalEvent["action"], JournalAction>> = {
 };
 
 /** The console's timeline entry for an event, or null for events it has no word for (lines, credits, reveals). */
-export function journalView(event: JournalEvent): JournalView | null {
+export function journalView(
+  event: JournalEvent,
+  payments: readonly LedgerPayment[] = [],
+): JournalView | null {
   const action = JOURNAL_ACTION[event.action];
   if (!action) return null;
   const detail = (event.detail ?? {}) as Record<string, any>;
-  const allocations = (detail.allocations as { amountCents: number }[] | undefined) ?? [];
+  const payment = payments.find((candidate) => candidate.id === detail.paymentId);
+  const allocations =
+    (detail.allocations as { amountCents: number; invoiceNumber?: string }[] | undefined) ?? [];
   const applied = allocations.reduce((total, entry) => total + entry.amountCents, 0);
   return {
     id: event.eventId,
@@ -218,6 +227,16 @@ export function journalView(event: JournalEvent): JournalView | null {
         ? { amountCents: detail.totalCents }
         : {}),
     ...(allocations.length ? { appliedCents: applied } : {}),
+    ...(typeof detail.invoiceNumber !== "string" && typeof allocations[0]?.invoiceNumber === "string"
+      ? { invoiceNumber: allocations[0].invoiceNumber }
+      : {}),
+    ...(payment
+      ? { paymentLabel: paymentLabel(payment) }
+      : typeof detail.method === "string"
+        ? { paymentLabel: paymentLabel({ method: detail.method as LedgerPayment["method"] }) }
+        : event.action.startsWith("payment.")
+          ? { paymentLabel: "a payment" }
+          : {}),
     ...(typeof detail.reason === "string" ? { reason: detail.reason } : {}),
   };
 }

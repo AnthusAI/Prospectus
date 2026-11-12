@@ -3,6 +3,7 @@ import { operationId } from "../operation-id";
 import {
   dueLabel,
   isPastDue,
+  METHOD_IN_SENTENCE,
   METHOD_LABEL,
   daysPastDue,
   longDate,
@@ -149,7 +150,7 @@ export function AccountBillingSection({ accountId }: { accountId: string }) {
           label="LAST PAYMENT"
           note={
             owed.lastPayment
-              ? `${formatCents(owed.lastPayment.amountCents)} by ${METHOD_LABEL[owed.lastPayment.method].toLowerCase()}`
+              ? `${formatCents(owed.lastPayment.amountCents)} by ${METHOD_IN_SENTENCE[owed.lastPayment.method]}`
               : "No payment yet"
           }
         />
