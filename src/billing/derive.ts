@@ -47,6 +47,18 @@ export const METHOD_LABEL: Record<PaymentMethod, string> = {
   stripe_bank: "Bank, through Stripe",
 };
 
+/** A method as it reads mid-sentence: generic words in lower case, names (Melio, Venmo, Stripe) as written. */
+export const METHOD_IN_SENTENCE: Record<PaymentMethod, string> = {
+  bank_transfer: "bank transfer",
+  check: "check",
+  venmo: "Venmo",
+  melio: "Melio",
+  cash: "cash",
+  other: "other payment",
+  stripe_card: "card, through Stripe",
+  stripe_bank: "bank, through Stripe",
+};
+
 /** "Nov 2" from `2026-11-02`, with the year when it is not the current one. */
 export function shortDate(date: string | null | undefined, today?: string): string {
   if (!date) return "—";
@@ -244,10 +256,10 @@ export function billingFollowUps(
 }
 
 export function paymentLabel(payment: Payment): string {
-  const method = METHOD_LABEL[payment.method];
+  const method = METHOD_IN_SENTENCE[payment.method];
   if (payment.method === "check" && payment.reference)
     return `check ${payment.reference.replace(/^No\.?\s*/i, "")}`;
-  return payment.reference ? `${method.toLowerCase()} ${payment.reference}` : method.toLowerCase();
+  return payment.reference ? `${method} ${payment.reference}` : method;
 }
 
 /** The sentence a journal event reads as in a timeline. */
@@ -265,11 +277,11 @@ export function describeEvent(event: JournalEvent): string {
     case "invoice.past_due":
       return `${event.invoiceNumber} went past due. Follow-up created.`;
     case "payment.recorded":
-      return `Recorded ${event.paymentLabel} for ${money}.${event.appliedCents ? ` Applied ${formatCents(event.appliedCents)}${event.invoiceNumber ? ` to ${event.invoiceNumber}` : ""}.` : ""}`;
+      return `Recorded ${event.paymentLabel ?? "a payment"} for ${money}.${event.appliedCents ? ` Applied ${formatCents(event.appliedCents)}${event.invoiceNumber ? ` to ${event.invoiceNumber}` : ""}.` : ""}`;
     case "payment.allocated":
-      return `Applied ${money} of ${event.paymentLabel}${event.invoiceNumber ? ` to ${event.invoiceNumber}` : ""}.`;
+      return `Applied ${money} of ${event.paymentLabel ?? "a payment"}${event.invoiceNumber ? ` to ${event.invoiceNumber}` : ""}.`;
     case "payment.reversed":
-      return `Reversed ${event.paymentLabel} for ${money}${event.reason ? `: ${event.reason}` : ""}.`;
+      return `Reversed ${event.paymentLabel ?? "a payment"} for ${money}${event.reason ? `: ${event.reason}` : ""}.`;
     case "issuer.saved":
       return "Changed the billing settings.";
     case "profile.saved":

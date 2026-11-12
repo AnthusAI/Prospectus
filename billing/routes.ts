@@ -140,10 +140,12 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
     if (!engagement) fail(404, "engagement_missing", "Engagement not found.");
     return (await engagementViews([engagement]))[0];
   }
-  const timeline = async (accountId: string) =>
-    (await ledger.journal(accountId))
-      .map(journalView)
+  const timeline = async (accountId: string) => {
+    const payments = await ledger.payments(accountId);
+    return (await ledger.journal(accountId))
+      .map((event) => journalView(event, payments))
       .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+  };
 
   async function issuerSettings() {
     const record = await deps.issuer.get();
@@ -187,7 +189,10 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
       return jsonResponse(200, { account: await summary(match[1]) });
     if (get && new RegExp(`${OPERATOR}/billing/invoices$`).test(path))
       return jsonResponse(200, {
-        invoices: (await ledger.allInvoices()).map((invoice) => invoiceView(invoice)),
+        invoices: await (async () => {
+          const payments = await ledger.allPayments();
+          return (await ledger.allInvoices()).map((invoice) => invoiceView(invoice, null, payments));
+        })(),
       });
     if (get && new RegExp(`${OPERATOR}/billing/engagements$`).test(path))
       return jsonResponse(200, { engagements: await engagementViews(await ledger.allEngagements()) });
@@ -208,7 +213,7 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
         payment.allocations.some((allocation) => allocation.invoiceId === invoice.id),
       );
       return jsonResponse(200, {
-        invoice: invoiceView(invoice, await deps.profiles.get(invoice.accountId)),
+        invoice: invoiceView(invoice, await deps.profiles.get(invoice.accountId), payments),
         account: await summary(invoice.accountId),
         journal: (await timeline(invoice.accountId)).filter(
           (entry) => entry.invoiceNumber === invoice.number,
@@ -341,7 +346,12 @@ export function billingOperatorRoutes(deps: BillingRouteDependencies) {
       if (get) {
         const profile = await deps.profiles.get(accountId);
         return jsonResponse(200, {
-          invoices: (await ledger.invoices(accountId)).map((invoice) => invoiceView(invoice, profile)),
+          invoices: await (async () => {
+            const payments = await ledger.payments(accountId);
+            return (await ledger.invoices(accountId)).map((invoice) =>
+              invoiceView(invoice, profile, payments),
+            );
+          })(),
         });
       }
       if (method === "POST") {
