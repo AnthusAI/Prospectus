@@ -1,2 +1,0 @@
-[console_scripts]
-prospectus = prospectus_cli.cli:entry
