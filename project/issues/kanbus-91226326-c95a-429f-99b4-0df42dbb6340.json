@@ -22,10 +22,17 @@
         "model": "claude-opus-5-5",
         "name": "prospectus-implementation"
       }
+    },
+    {
+      "id": "ef915dbd-5946-4618-9240-341f8e76b5d0",
+      "author": "home",
+      "text": "2026-10-23 throttle stop. No change: Prospectus side enabled (#72, #73). Waiting on Cyclotron's end-to-end acceptance with LabVerifierEnabled=true. Related: the Cyclotron lab sign-in Request access link (draft AnthusAI/Cyclotron#111) is blocked because the lab front end (CloudFront d1rab2h8u5j1hk) is probably in the anthus account, whose SSO session has expired. Next step: Ryan runs aws sso login --profile anthus, then Cyclotron finds the lab deploy path.",
+      "created_at": "2026-10-23T13:24:49.710486Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-21T03:24:49.159738Z",
-  "updated_at": "2026-10-21T13:08:23.242068Z",
+  "updated_at": "2026-10-23T13:24:49.711219Z",
   "closed_at": null,
   "agent": {
     "platform": "claude_code",
